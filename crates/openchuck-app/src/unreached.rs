@@ -11,7 +11,7 @@
 //! finds them off the interface thread, on the very mesh the scene draws for
 //! the setup's part ([`crate::model::setup_part`]).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use openchuck_geom::select::TriangleSet;
@@ -137,6 +137,130 @@ fn match_on(
         }
     }
     (marked, unmatched)
+}
+
+/// How far from a sample point a triangle may be, in millimetres, to be
+/// added to an area's footprint when the footprint is closed (decision record
+/// of issue 637, amending 0515 item 2). The footprint never reaches further
+/// than this from a surface point the strategy reported, so the region drawn
+/// is never larger than the unreached area by more than this distance.
+pub const FOOTPRINT_REACH: f64 = 1.5;
+
+/// Two triangles lie on one surface when their normals are within 25 degrees
+/// (the cosine): a crease sharper than that, such as a lip's edge or a wall
+/// meeting a floor, ends a footprint's closing.
+const SAME_SURFACE_COS: f64 = 0.906_307_787_036_65;
+
+/// The most passes of closing a footprint: each fills the triangles held by
+/// two marked neighbours, so a hole several triangles across takes several.
+const CLOSING_PASSES: usize = 6;
+
+/// For each triangle of a mesh, the triangles that share an edge with it and
+/// lie on the same surface (their normals within 25 degrees), ordered, so
+/// closing a footprint never crosses a crease (decision 0515 item 2) and
+/// gives the same result every time (GC-07).
+pub struct Adjacency {
+    neighbours: Vec<Vec<u32>>,
+}
+
+impl Adjacency {
+    /// The adjacency of `mesh`. A triangle with a missing vertex or no area
+    /// has none.
+    #[must_use]
+    pub fn new(mesh: &TriangleMesh) -> Self {
+        let normals = openchuck_geom::select::triangle_normals(mesh);
+        let mut edges: BTreeMap<(u32, u32), Vec<u32>> = BTreeMap::new();
+        for (t, corners) in mesh.triangles.iter().enumerate() {
+            if normals.get(t).copied().flatten().is_none() {
+                continue;
+            }
+            for k in 0..3 {
+                let (p, q) = (corners[k], corners[(k + 1) % 3]);
+                edges.entry((p.min(q), p.max(q))).or_default().push(t as u32);
+            }
+        }
+        let mut neighbours = vec![Vec::new(); mesh.triangles.len()];
+        for sharing in edges.values() {
+            for &a in sharing {
+                for &b in sharing {
+                    let (na, nb) = (normals[a as usize], normals[b as usize]);
+                    if let (true, Some(na), Some(nb)) = (a != b, na, nb)
+                        && na.dot(nb) >= SAME_SURFACE_COS
+                    {
+                        neighbours[a as usize].push(b);
+                    }
+                }
+            }
+        }
+        for list in &mut neighbours {
+            list.sort_unstable();
+            list.dedup();
+        }
+        Self { neighbours }
+    }
+
+    /// The triangles beside `t` on the same surface, in order.
+    pub fn neighbours(&self, t: u32) -> impl Iterator<Item = u32> + '_ {
+        self.neighbours
+            .get(t as usize)
+            .into_iter()
+            .flat_map(|list| list.iter().copied())
+    }
+}
+
+/// `marked` with its holes and notches filled (issue 637): the triangles a
+/// sparse set of sample points lie on leave unmarked triangles between them,
+/// so the area drawn looks ragged. An unmarked triangle held by two marked
+/// neighbours on the same surface is marked, up to six passes, and only when
+/// it lies within [`FOOTPRINT_REACH`] of a sample point of `points`. Nothing
+/// is unmarked, nothing crosses a crease (decision 0515 item 2), and no
+/// triangle further than the reach from every sample is marked, so a reached
+/// surface is never hidden by it.
+#[must_use]
+pub fn close_footprint(
+    mesh: &TriangleMesh,
+    adjacency: &Adjacency,
+    marked: &TriangleSet,
+    points: &[Point3],
+) -> TriangleSet {
+    let mut closed = marked.clone();
+    for _ in 0..CLOSING_PASSES {
+        let candidates: BTreeSet<u32> = closed
+            .iter()
+            .flat_map(|t| adjacency.neighbours(*t))
+            .filter(|t| !closed.contains(t))
+            .collect();
+        let added: Vec<u32> = candidates
+            .into_iter()
+            .filter(|t| {
+                adjacency
+                    .neighbours(*t)
+                    .filter(|n| closed.contains(n))
+                    .count()
+                    >= 2
+                    && near_a_point(mesh, *t, points)
+            })
+            .collect();
+        if added.is_empty() {
+            break;
+        }
+        closed.extend(added);
+    }
+    closed
+}
+
+/// Whether triangle `t` lies within [`FOOTPRINT_REACH`] of any of `points`.
+fn near_a_point(mesh: &TriangleMesh, t: u32, points: &[Point3]) -> bool {
+    let Some(corners) = mesh
+        .triangles
+        .get(t as usize)
+        .and_then(|c| triangle(mesh, *c))
+    else {
+        return false;
+    };
+    points
+        .iter()
+        .any(|p| closest_on_triangle(*p, &corners).distance(*p) <= FOOTPRINT_REACH)
 }
 
 /// [`match_points`], without the count.
@@ -346,13 +470,20 @@ pub fn map_areas(
     areas: &[Unreached],
     frame: &impl AsRotaryFrame,
 ) -> Vec<AreaMarks> {
-    map_on(&Grid::new(mesh, MATCH_TOLERANCE), mesh, areas, frame)
+    map_on(
+        &Grid::new(mesh, MATCH_TOLERANCE),
+        &Adjacency::new(mesh),
+        mesh,
+        areas,
+        frame,
+    )
 }
 
 /// [`map_areas`] on a grid built once for the mesh, which every operation
 /// of a setup shares.
 fn map_on(
     grid: &Grid,
+    adjacency: &Adjacency,
     mesh: &TriangleMesh,
     areas: &[Unreached],
     frame: &impl AsRotaryFrame,
@@ -362,7 +493,10 @@ fn map_on(
         .iter()
         .enumerate()
         .map(|(i, area)| {
-            let (triangles, unmatched) = match_on(grid, mesh, &area.points, MATCH_TOLERANCE);
+            let (marked, unmatched) = match_on(grid, mesh, &area.points, MATCH_TOLERANCE);
+            // The triangles the sparse samples lie on, with their holes and
+            // notches closed (issue 637), so the area drawn has a clean edge.
+            let triangles = close_footprint(mesh, adjacency, &marked, &area.points);
             let marker = marker_of(&area.points)
                 .unwrap_or_else(|| Point3::new(0.5 * (area.x.0 + area.x.1), 0.0, 0.0));
             AreaMarks {
@@ -424,12 +558,13 @@ impl Application {
                     return Err(AppError::PartChanged(model.label()));
                 }
                 let grid = Grid::new(&part.mesh, MATCH_TOLERANCE);
+                let adjacency = Adjacency::new(&part.mesh);
                 let mut operations = Vec::new();
                 for group in wanted {
                     context.check_cancelled()?;
                     operations.push(OperationAreas {
                         operation: group.operation,
-                        areas: map_on(&grid, &part.mesh, &group.unreached, &frame),
+                        areas: map_on(&grid, &adjacency, &part.mesh, &group.unreached, &frame),
                     });
                 }
                 Ok(SetupAreas {

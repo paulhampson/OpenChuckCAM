@@ -20,7 +20,10 @@ use openchuck_app::project::{
     Item, Operation, OrderKey, ParameterValue, Placement, Setup, ToolSnapshot,
 };
 use openchuck_app::setup::{Millimetres, Stock, builtin};
-use openchuck_app::unreached::{MATCH_TOLERANCE, map_areas, triangles_on};
+use openchuck_app::unreached::{
+    Adjacency, FOOTPRINT_REACH, MATCH_TOLERANCE, close_footprint, map_areas, triangles_on,
+};
+use openchuck_geom::select::TriangleSet;
 use openchuck_app::{Application, Command, Threads};
 use openchuck_path::{Unreached, UnreachedReason};
 use openchuck_testkit::parts::revolve;
@@ -575,4 +578,184 @@ fn req_ui_12_the_unreached_warning_offers_show_in_view_for_each_listed_area() {
     let stale = b.app.overview(None, &openchuck_app::JobLog::default());
     assert!(stale.messages.iter().all(|m| m.views.is_empty()));
     let _ = std::fs::remove_dir_all(&b.dir);
+}
+
+/// A flat grid of `n` by `n` cells of 1 mm in the XY plane, two triangles a
+/// cell, normals along +Z.
+fn flat_grid(n: u32) -> TriangleMesh {
+    let mut mesh = TriangleMesh::default();
+    for j in 0..=n {
+        for i in 0..=n {
+            mesh.vertices
+                .push(Point3::new(f64::from(i), f64::from(j), 0.0));
+        }
+    }
+    let at = |i: u32, j: u32| j * (n + 1) + i;
+    for j in 0..n {
+        for i in 0..n {
+            mesh.triangles.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
+            mesh.triangles.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
+        }
+    }
+    mesh
+}
+
+/// Sample points on a lattice `step` apart inside a disc, on the grid.
+fn disc_points(centre: (f64, f64), radius: f64, step: f64) -> Vec<Point3> {
+    let mut out = Vec::new();
+    let n = (2.0 * radius / step) as i32;
+    for i in 0..=n {
+        for j in 0..=n {
+            let (x, y) = (
+                centre.0 - radius + f64::from(i) * step,
+                centre.1 - radius + f64::from(j) * step,
+            );
+            if (x - centre.0).hypot(y - centre.1) <= radius {
+                out.push(Point3::new(x, y, 0.0));
+            }
+        }
+    }
+    out
+}
+
+/// The same-surface neighbours of triangle `t` that are marked.
+fn marked_neighbours(adj: &Adjacency, marked: &TriangleSet, t: u32) -> usize {
+    adj.neighbours(t).filter(|n| marked.contains(n)).count()
+}
+
+/// Edges between a marked triangle and an unmarked one on the same surface:
+/// the length (in edges) of the area's boundary.
+fn boundary_edges(adj: &Adjacency, marked: &TriangleSet) -> usize {
+    marked
+        .iter()
+        .map(|t| adj.neighbours(*t).filter(|n| !marked.contains(n)).count())
+        .sum()
+}
+
+/// The distance from `p` to the triangle `t` of `mesh`, by sampling: the
+/// grid's triangles are tiny, so the nearest corner or the middle is within
+/// a millimetre of the true distance.
+fn distance_to(mesh: &TriangleMesh, t: u32, p: Point3) -> f64 {
+    let c = mesh.triangles[t as usize].map(|i| mesh.vertices[i as usize]);
+    let middle = Point3::new(
+        (c[0].x + c[1].x + c[2].x) / 3.0,
+        (c[0].y + c[1].y + c[2].y) / 3.0,
+        (c[0].z + c[1].z + c[2].z) / 3.0,
+    );
+    c.iter()
+        .chain([&middle])
+        .map(|q| q.distance(p))
+        .fold(f64::MAX, f64::min)
+}
+
+/// OP-20, UI-11, issue 637: the strategy's sample points are sparse, so the
+/// triangles they lie on leave holes and ragged edges; closing the footprint
+/// over the neighbouring triangles leaves no hole inside the area.
+#[test]
+fn req_op_20_a_marked_area_has_no_holes() {
+    let mesh = flat_grid(40);
+    let adj = Adjacency::new(&mesh);
+    let points = disc_points((20.0, 20.0), 9.0, 1.7);
+    let raw = triangles_on(&mesh, &points, MATCH_TOLERANCE);
+    let holes = |set: &TriangleSet| {
+        (0..mesh.triangles.len() as u32)
+            .filter(|t| !set.contains(t) && marked_neighbours(&adj, set, *t) >= 2)
+            .count()
+    };
+    assert!(holes(&raw) > 5, "the sparse samples leave holes to close");
+    let closed = close_footprint(&mesh, &adj, &raw, &points);
+    assert_eq!(holes(&closed), 0, "no unmarked triangle is held by two marked");
+    assert!(raw.iter().all(|t| closed.contains(t)), "nothing is unmarked");
+    // The area's edge is no longer than before: closing smooths it.
+    assert!(boundary_edges(&adj, &closed) <= boundary_edges(&adj, &raw));
+    // Deterministic (GC-07).
+    assert_eq!(close_footprint(&mesh, &adj, &raw, &points), closed);
+}
+
+/// Decision 0515 item 2, issue 637: closing never marks what the strategy did
+/// not report: every triangle it adds lies within [`FOOTPRINT_REACH`] of a
+/// sample point, so the region is never larger than the unreached area by
+/// more than that distance, and a surface far from every sample is not marked
+/// however the marked triangles lie.
+#[test]
+fn req_op_20_a_closed_area_stays_within_reach_of_its_samples() {
+    let mesh = flat_grid(40);
+    let adj = Adjacency::new(&mesh);
+    let points = disc_points((20.0, 20.0), 9.0, 1.7);
+    let raw = triangles_on(&mesh, &points, MATCH_TOLERANCE);
+    let closed = close_footprint(&mesh, &adj, &raw, &points);
+    assert!(closed.len() > raw.len());
+    for t in closed.difference(&raw) {
+        let near = points
+            .iter()
+            .map(|p| distance_to(&mesh, *t, *p))
+            .fold(f64::MAX, f64::min);
+        assert!(
+            near <= FOOTPRINT_REACH + 1.0,
+            "added triangle {t} is {near:.2} mm from every sample"
+        );
+    }
+    // A ring of samples with nothing inside it: the ring's hole is wider
+    // than twice the reach, so its middle stays unmarked (a real reached
+    // surface is not hidden by closing).
+    let ring: Vec<Point3> = disc_points((20.0, 20.0), 12.0, 1.0)
+        .into_iter()
+        .filter(|p| (p.x - 20.0).hypot(p.y - 20.0) > 7.0)
+        .collect();
+    let marked = triangles_on(&mesh, &ring, MATCH_TOLERANCE);
+    let closed = close_footprint(&mesh, &adj, &marked, &ring);
+    let centre = (0..mesh.triangles.len() as u32)
+        .filter(|t| distance_to(&mesh, *t, Point3::new(20.0, 20.0, 0.0)) < 3.0)
+        .collect::<Vec<_>>();
+    assert!(!centre.is_empty());
+    for t in centre {
+        assert!(!closed.contains(&t), "triangle {t} is far from every sample");
+    }
+}
+
+/// Decision 0515 item 2, issue 637: closing does not cross a crease. On the
+/// dovetail, samples along the groove's floor with every other one left out
+/// leave holes in the floor; the holes close, and no lip outside is marked.
+#[test]
+fn req_op_20_closing_a_footprint_never_marks_across_a_lip() {
+    let mesh = revolve(&DOVETAIL, 144);
+    let adj = Adjacency::new(&mesh);
+    let mut points = Vec::new();
+    for degrees in (0..360).step_by(2) {
+        let (s, c) = f64::from(degrees).to_radians().sin_cos();
+        for k in 0..=16 {
+            // A sparse, shifting lattice on the floor.
+            if (k + degrees / 2) % 2 == 0 {
+                let x = 11.0 + 0.5 * f64::from(k);
+                points.push(Point3::new(x, 6.0 * c, 6.0 * s));
+            }
+        }
+        // The undercut wall, reaching from the floor up to the lip's corner.
+        for x in [10.2, 10.6] {
+            let r = 6.0 + 4.0 * (x - 10.0);
+            points.push(Point3::new(x, r * c, r * s));
+        }
+    }
+    let raw = triangles_on(&mesh, &points, MATCH_TOLERANCE);
+    let closed = close_footprint(&mesh, &adj, &raw, &points);
+    assert!(closed.len() >= raw.len());
+    for t in &closed {
+        assert!(!on_lip_outside(&mesh, *t), "triangle {t} is a lip's outside");
+    }
+    let floor: Vec<u32> = (0..mesh.triangles.len() as u32)
+        .filter(|t| on_floor(&mesh, *t))
+        .collect();
+    assert!(floor.iter().all(|t| closed.contains(t)), "the floor is whole");
+}
+
+/// NFR-07: nothing to close, or a mesh with nothing, is not a failure.
+#[test]
+fn req_nfr_07_closing_an_empty_footprint_is_nothing() {
+    let mesh = flat_grid(4);
+    let adj = Adjacency::new(&mesh);
+    let none = TriangleSet::new();
+    assert!(close_footprint(&mesh, &adj, &none, &[]).is_empty());
+    let empty = TriangleMesh::default();
+    let adj = Adjacency::new(&empty);
+    assert!(close_footprint(&empty, &adj, &none, &[Point3::new(0.0, 0.0, 0.0)]).is_empty());
 }
