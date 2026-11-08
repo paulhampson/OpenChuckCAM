@@ -212,7 +212,7 @@ The author's test of section 2 names 0538.
   - the changelogs.
 - Message texts change in the interface and on the command line. No project file, cache key or G-code changes.
 - OI-360 (internal names in library errors) is taken up by build step 4 and closes when it is done.
-- OI-373 (Results lines belong in Messages) is not closed, and the owner's answers narrow it: warnings and errors reach Messages, while a run's information belongs in the Results tab by design (question 1), and information not about a run stays in Messages (question (b), 8 Nov 2026). What is left is the run's warnings that reach only the Results tab and the export checks (section 5); step 4 closes it.
+- OI-373 (Results lines belong in Messages) is not closed, and the owner's answers narrow it: warnings and errors reach Messages, while a run's information belongs in the Results tab by design (question 1), and information not about a run stays in Messages (question (b), 8 Nov 2026). What is left is a rapid that removes material, which reaches Messages as a warning to acknowledge; short blocks in Report mode stay in the Results tab only (question (e), 8 Nov 2026). Step 4 closes it.
 - Decisions 0538, 0539 and 0540 change what the export, workholding Apply and the command line do. Each has its own test plan and is accepted on its own.
 
 ## Open items
