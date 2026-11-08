@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="560" viewBox="0 0 820 560" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <title>End facing: already a fixed-A cut moving over Y; why the tool's end cannot face the end; and the Part-extent case (decision 0547, question 4)</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c0392b"/>
+    </marker>
+    <pattern id="slice" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" fill="#fdebd0"/>
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#e59866" stroke-width="2"/>
+    </pattern>
+  </defs>
+  <rect width="820" height="560" fill="#ffffff"/>
+
+  <!-- Panel 1 -->
+  <text x="20" y="22" font-weight="bold" font-size="13">1. End facing today: one fixed A, the tool's flank, moving over Y</text>
+  <text x="20" y="38" fill="#555">Looking along Y at the end of the stock. The spindle (tool axis) is vertical: Z.</text>
+  <rect x="40" y="80" width="230" height="180" fill="#d5d8dc" stroke="#7f8c8d"/>
+  <text x="90" y="175" fill="#424949">stock (part inside)</text>
+  <rect x="240" y="80" width="30" height="180" fill="url(#slice)" stroke="#e59866"/>
+  <line x1="240" y1="60" x2="240" y2="280" stroke="#555" stroke-dasharray="4 3"/>
+  <text x="196" y="56" fill="#555">cutting plane</text>
+  <rect x="240" y="150" width="40" height="70" fill="#aed6f1" fill-opacity="0.8" stroke="#2e86c1"/>
+  <rect x="252" y="100" width="16" height="50" fill="#aed6f1" stroke="#2e86c1"/>
+  <text x="286" y="110" fill="#2e86c1">tool, axis Z</text>
+  <circle cx="300" cy="185" r="7" fill="none" stroke="#333"/>
+  <line x1="295" y1="180" x2="305" y2="190" stroke="#333"/>
+  <line x1="305" y1="180" x2="295" y2="190" stroke="#333"/>
+  <text x="312" y="182">sweeps over Y</text>
+  <text x="312" y="196">(into the page)</text>
+  <path d="M235,300 L200,300" stroke="#333" marker-end="url(#arrow)"/>
+  <text x="40" y="305">slices step in along X</text>
+  <text x="40" y="319">(Stepover, after 0547)</text>
+  <path d="M330,230 L330,262" stroke="#333" marker-end="url(#arrow)"/>
+  <text x="338" y="244">bands step down Z</text>
+  <text x="338" y="258">(Stepdown, after 0547)</text>
+  <text x="40" y="345" fill="#1e8449">A does not turn while cutting. One view is enough unless the end is</text>
+  <text x="40" y="359" fill="#1e8449">deeper than the flutes reach (then A and A+180) or a tab is in the way.</text>
+
+  <!-- Panel 2 -->
+  <text x="470" y="22" font-weight="bold" font-size="13">2. Facing with the tool's end needs</text>
+  <text x="470" y="38" font-weight="bold" font-size="13">the tool axis along X</text>
+  <rect x="470" y="80" width="190" height="130" fill="#d5d8dc" stroke="#7f8c8d"/>
+  <text x="510" y="150" fill="#424949">stock</text>
+  <rect x="680" y="125" width="70" height="40" fill="#f5b7b1" fill-opacity="0.7" stroke="#c0392b"/>
+  <rect x="750" y="135" width="40" height="20" fill="#f5b7b1" stroke="#c0392b"/>
+  <line x1="670" y1="110" x2="800" y2="180" stroke="#c0392b" stroke-width="2.5"/>
+  <line x1="670" y1="180" x2="800" y2="110" stroke="#c0392b" stroke-width="2.5"/>
+  <text x="470" y="236">An XYZA machine with a vertical spindle (the Makera Z1,</text>
+  <text x="470" y="250">LinuxCNC's 4-axis set-up) cannot point the tool along X.</text>
+  <text x="470" y="264">A face across the rotary axis can only be cut by the</text>
+  <text x="470" y="278">flank, as End facing does. Box sides and Flat face planes</text>
+  <text x="470" y="292">along X with the tool's end; Round turns a diameter.</text>
+
+  <!-- Panel 3 -->
+  <line x1="20" y1="380" x2="800" y2="380" stroke="#d5d8dc"/>
+  <text x="20" y="402" font-weight="bold" font-size="13">3. Question 4: Extent Part on stock taller than the requested area (looking along X at the end face)</text>
+  <rect x="60" y="420" width="130" height="130" fill="#d5d8dc" stroke="#7f8c8d"/>
+  <rect x="85" y="470" width="80" height="60" fill="none" stroke="#1e8449" stroke-width="2" stroke-dasharray="5 3"/>
+  <text x="200" y="500" fill="#1e8449">requested area</text>
+  <rect x="113" y="435" width="24" height="65" fill="#aed6f1" fill-opacity="0.8" stroke="#2e86c1"/>
+  <line x1="88" y1="500" x2="165" y2="500" stroke="#2e86c1" stroke-dasharray="2 2"/>
+  <text x="200" y="440" fill="#2e86c1">first band: its tip at the band's bottom,</text>
+  <text x="200" y="454" fill="#2e86c1">its flutes reach up through the stock above the area</text>
+  <line x1="45" y1="420" x2="45" y2="500" stroke="#c0392b" marker-start="url(#arrow-red)" marker-end="url(#arrow-red)"/>
+  <text x="200" y="520" fill="#c0392b">depth along the tool = (stock top - area top) + band spacing:</text>
+  <text x="200" y="534" fill="#c0392b">more than the Stepdown whenever the stock rises above the area,</text>
+  <text x="200" y="548" fill="#c0392b">whether or not A turns. It comes from the flank and the flute length.</text>
+</svg>
