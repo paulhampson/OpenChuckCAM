@@ -1346,7 +1346,8 @@ mod tests {
         assert_eq!(
             lines[0].text,
             format!(
-                "6 moves during '{name}' were limited by the machine's feed limits. In the \
+                "Feed limit (operation '{name}'): 6 moves were limited by the machine's feed \
+                 limits. In the \
                  worst case the target was 1000.0 mm/min, but the move was reduced to 999.1 \
                  mm/min to stay within the machine's capabilities."
             )
@@ -1406,7 +1407,7 @@ mod tests {
         assert!(
             lines[0]
                 .text
-                .starts_with("2 moves during 'Renamed' were limited")
+                .starts_with("Feed limit (operation 'Renamed'): 2 moves were limited")
         );
         assert_eq!(lines[0].severity, Severity::Info);
         // A removed operation: the line says so, and the notes stay out.
@@ -1650,12 +1651,12 @@ mod tests {
     #[test]
     fn req_ui_12_copy_all_puts_the_lines_shown_and_the_build_information_on_the_clipboard() {
         let mut frames = Frames::new("copy");
-        assert!(frames.shows("4 moves during"));
+        assert!(frames.shows("4 moves were limited"));
         let at = frames.centre_of("Copy all");
         frames.click(at);
         assert_eq!(frames.copied.len(), 1, "one click, one copy");
         let text = &frames.copied[0];
-        assert!(text.contains("4 moves during"), "{text}");
+        assert!(text.contains("4 moves were limited"), "{text}");
         assert!(text.contains("operation(s)"), "{text}");
         assert!(
             text.contains(openchuck_buildinfo::current_text().trim_end()),
@@ -1671,7 +1672,7 @@ mod tests {
         assert!(!frames.shows("Build"), "the plain text starts closed");
         let at = frames.centre_of("Results as plain text");
         frames.click(at);
-        assert!(frames.shows("operation(s)") && frames.shows("4 moves during"));
+        assert!(frames.shows("operation(s)") && frames.shows("4 moves were limited"));
         let id = egui::Id::unique(PLAIN_TEXT_BOX);
         let mut reached = false;
         for _ in 0..12 {

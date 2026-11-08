@@ -1361,7 +1361,7 @@ fn req_ui_12_cli_prints_each_run_message_at_its_level() {
         .collect();
     assert_eq!(summaries.len(), 1, "{}", out.stderr);
     assert!(
-        summaries[0].starts_with("note: ") && summaries[0].contains("during 'Finish'"),
+        summaries[0].starts_with("note: Feed limit (operation 'Finish'): "),
         "{}",
         summaries[0]
     );

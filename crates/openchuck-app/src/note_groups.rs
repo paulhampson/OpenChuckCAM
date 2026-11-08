@@ -357,11 +357,17 @@ impl FeedLimit {
         } else {
             "In the worst case the target was"
         };
-        format!(
-            "{moves} during '{operation}' {was} limited by the machine's feed limits. \
-             {case} {:.1} mm/min, but the move was reduced to {:.1} mm/min to stay within \
-             the machine's capabilities.",
-            self.worst_target, self.worst_feed
+        // In the one form, under the topic of the per-move notes it stands
+        // for (decision record 0536 section 3).
+        crate::lead_in::in_form(
+            openchuck_path::topic::FEED_LIMIT,
+            &crate::lead_in::Context::operation(operation),
+            &format!(
+                "{moves} {was} limited by the machine's feed limits. {case} {:.1} mm/min, but \
+                 the move was reduced to {:.1} mm/min to stay within the machine's \
+                 capabilities.",
+                self.worst_target, self.worst_feed
+            ),
         )
     }
 }
@@ -612,14 +618,15 @@ mod tests {
         };
         assert_eq!(
             many.describe_for("Roughing"),
-            "6 moves during 'Roughing' were limited by the machine's feed limits. In the \
+            "Feed limit (operation 'Roughing'): 6 moves were limited by the machine's feed \
+             limits. In the \
              worst case the target was 1000.0 mm/min, but the move was reduced to 999.1 \
              mm/min to stay within the machine's capabilities."
         );
         let one = FeedLimit { moves: 1, ..many };
         let line = one.describe_for("Finishing");
         assert!(
-            line.starts_with("1 move during 'Finishing' was limited"),
+            line.starts_with("Feed limit (operation 'Finishing'): 1 move was limited"),
             "{line}"
         );
         assert!(line.contains("The target was 1000.0 mm/min"), "{line}");

@@ -291,9 +291,9 @@ fn req_tl_04_req_nfr_12_a_finish_past_the_flutes_after_roughing_is_made_with_a_w
         .collect::<Vec<_>>();
     assert_eq!(said.len(), 1, "{said:?}");
     assert!(
-        said[0].starts_with(
-            "Operation 'Op 2' has a possible collision, which must be acknowledged before the files are written: Flute length (operation 'Op 2', tool"
-        ),
+        said[0].starts_with("Flute length (operation 'Op 2', tool")
+            && said[0]
+                .ends_with("A possible collision: acknowledge it before the files are written"),
         "{said:?}"
     );
 }

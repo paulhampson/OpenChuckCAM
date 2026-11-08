@@ -613,26 +613,23 @@ pub(crate) fn export_checks_with(
                         // is acknowledged (decision record 0239 item 10).
                         let collision = warning.acknowledgement
                             == Some(openchuck_path::Acknowledgement::PossibleCollision);
+                        // In the one form, naming the operation once (decision
+                        // record 0536 sections 3 and 5); a warning to
+                        // acknowledge says why after it.
+                        let said = named(project, operation, warning);
+                        let core = said.trim_end_matches('.');
                         let text = if collision {
                             format!(
-                                "Operation '{}' has a possible collision, which must be \
-                                 acknowledged before the files are written: {}",
-                                operation.name,
-                                crate::operation::operation_notice(project, operation, warning)
+                                "{core}. A possible collision: acknowledge it before the files \
+                                 are written"
                             )
                         } else if warning.is_partial_path() {
                             format!(
-                                "Operation '{}' has a partial path, which must be acknowledged \
-                                 before the files are written: {}",
-                                operation.name,
-                                crate::operation::operation_notice(project, operation, warning)
+                                "{core}. A partial path: acknowledge it before the files are \
+                                 written"
                             )
                         } else {
-                            format!(
-                                "Operation '{}' was made with a warning: {}",
-                                operation.name,
-                                crate::operation::operation_notice(project, operation, warning)
-                            )
+                            said
                         };
                         push(CheckLevel::Warning, text);
                     }

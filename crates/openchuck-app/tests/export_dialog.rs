@@ -1494,7 +1494,9 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
     let w = warnings(&checks);
     assert!(
         w.iter()
-            .any(|t| t.contains(&format!("'{name}' has a partial path")) && t.contains(message)),
+            .any(|t| t.contains(&format!("(operation '{name}')"))
+                && t.contains(message.trim_end_matches('.'))
+                && t.ends_with("A partial path: acknowledge it before the files are written")),
         "{w:?}"
     );
     let run = std::sync::Arc::new(run);
@@ -1567,8 +1569,9 @@ fn req_gc_16_a_possible_collision_is_written_only_once_this_result_is_acknowledg
     let w = warnings(&checks);
     assert!(
         w.iter().any(
-            |t| t.contains(&format!("'{name}' has a possible collision"))
+            |t| t.starts_with(&format!("Flute length (operation '{name}'"))
                 && t.contains("the stock stands up to 3.000 mm")
+                && t.ends_with("A possible collision: acknowledge it before the files are written")
         ),
         "{w:?}"
     );
