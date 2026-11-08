@@ -600,7 +600,12 @@ fn split_units(
 pub(crate) struct PostedFiles {
     pub files: Vec<(String, String)>,
     pub reports: Vec<GcodeReport>,
+    /// Information: feeds lowered to the post's maximum, short blocks the
+    /// post slowed down (decision 0536 step 2).
     pub notes: Vec<String>,
+    /// Warnings: short blocks left in the program (Report mode), which the
+    /// controller may not keep up with.
+    pub warnings: Vec<String>,
     pub short_blocks: Vec<ShortBlockReport>,
     pub toolpath: Toolpath,
     pub file_seconds: BTreeMap<String, f64>,
@@ -660,6 +665,7 @@ pub(crate) fn post_toolpath(
             files: Vec::new(),
             reports: Vec::new(),
             notes: Vec::new(),
+            warnings: Vec::new(),
             short_blocks: Vec::new(),
             toolpath: Toolpath::default(),
             file_seconds: BTreeMap::new(),
@@ -725,6 +731,7 @@ pub(crate) fn post_toolpath(
     let mut files = Vec::new();
     let mut reports = Vec::new();
     let mut notes = Vec::new();
+    let mut warnings = Vec::new();
     let mut short_blocks = Vec::new();
     let mut posted_toolpath = Toolpath::default();
     let mut file_seconds = BTreeMap::new();
@@ -947,7 +954,13 @@ pub(crate) fn post_toolpath(
         file_seconds.insert(name.clone(), output.estimated_seconds);
         for report in &output.short_blocks {
             if report.affected_windows > 0 {
-                notes.push(short_block_note(project, report));
+                // Slowed down, the goal is met at a lower feed: information.
+                // Left in the program, the controller may stutter: a warning.
+                if report.settings.mode == openchuck_types::machine::ShortBlockMode::SlowDown {
+                    notes.push(short_block_note(project, report));
+                } else {
+                    warnings.push(short_block_note(project, report));
+                }
             }
         }
         short_blocks.extend(output.short_blocks);
@@ -960,6 +973,7 @@ pub(crate) fn post_toolpath(
         files,
         reports,
         notes,
+        warnings,
         short_blocks,
         toolpath: posted_toolpath,
         file_seconds,

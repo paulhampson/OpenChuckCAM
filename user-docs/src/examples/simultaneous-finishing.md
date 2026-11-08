@@ -52,7 +52,7 @@ The project already has the setup (a 38 mm hardwood bar, gripped for 6 mm) and t
 <figcaption><b>Figure 3.</b> The finishing path follows each pin round its own centre, not round the rotary axis.</figcaption>
 </figure>
 
-The finish gives these notes. Read them before you look at the simulation.
+The finish gives these notes and two warnings. Read them before you look at the simulation.
 
 The off-axis pins
 : "the part's section does not surround the rotary axis at X 4.088 to 9.960, X 15.008 to 24.953, X 30.001 to 39.946, so the path there goes round the section's own centre: the tool moves across the axis as A turns, to stay on the surface normal". Over each pin, Y and Z change as A turns, so the machine moves on all four axes at once.
@@ -61,9 +61,9 @@ How far the tool leans
 : "A is smoothed within 10 degrees of the normal; the largest tilt used is 1.3 degrees from that". The tool is allowed to lean up to **Largest tilt** away from the normal so that A turns smoothly; here it needed only 1.3°.
 
 Surfaces it cannot see straight on
-: "surfaces hidden from the drive (such as the walls of a slot, an undercut, or sides of the section facing each other) between X 10.160 and 29.951 are finished with passes of their own after the main ones, the tool leaning from the surface normal as little as the part lets it reach them: up to 2.2 degrees (at X 10.160, A 118.471); the tool above its flutes is taken as no wider than its cutting part; the tool holder is not checked". The webs between the pins face each other, so they get passes of their own.
+: "surfaces hidden from the drive (such as the walls of a slot, an undercut, or sides of the section facing each other) between X 10.160 and 29.951 are finished with passes of their own after the main ones, the tool leaning from the surface normal as little as the part lets it reach them: up to 2.2 degrees (at X 10.160, A 118.471); the tool above its flutes is taken as no wider than its cutting part". The webs between the pins face each other, so they get passes of their own. A warning of its own goes with it: "the tool holder is not checked on the passes that finish the surfaces hidden from the drive between X 10.160 and 29.951, where the tool leans up to 2.2 degrees". Check the holder's clearance yourself where the tool leans.
 
-Inside corners
+Inside corners, a warning
 : "at X 10.000, 15.000, 25.000 and 30.000 faces across the rotary axis meet a section that does not surround the axis in an inside corner: where a corner is sharper than the tool's radius, this tool's round end (radius 1.587 mm) leaves up to about 0.66 mm across it; a flat end can finish them". A ball cannot cut a sharp inside corner; plan another operation if those corners matter.
 
 The finish also says that it drops the tool on "the STEP part's exact faces, to within 0.0001 mm", while the roughing uses the tessellation.

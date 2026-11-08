@@ -1468,7 +1468,11 @@ fn req_prj_02_cli_import_copies_and_a_moved_folder_still_validates() {
     std::fs::remove_dir_all(root.join("elsewhere")).unwrap();
     let out = run(&["validate".as_ref(), moved.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
-    assert!(!out.stderr.contains("note:"), "{}", out.stderr);
+    assert!(
+        !out.stderr.contains("is outside the project folder"),
+        "{}",
+        out.stderr
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 

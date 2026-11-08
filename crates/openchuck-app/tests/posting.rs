@@ -1032,9 +1032,11 @@ fn req_gc_17_req_gc_12_report_preserves_output_and_explains_short_blocks() {
             .iter()
             .any(|r| r.affected_windows > 0 && r.added_seconds > 0.0)
     );
+    // Left in the program (Report), a warning of the run (decision 0536
+    // step 2).
     assert!(
         reported
-            .notes
+            .warnings
             .iter()
             .any(|n| n.contains("short blocks") && n.contains("500"))
     );

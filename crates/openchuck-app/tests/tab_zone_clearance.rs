@@ -247,11 +247,12 @@ fn assert_tab_not_cut(run: &Regeneration, group: usize, what: &str) {
 fn req_op_21_req_set_09_roughing_says_when_it_cannot_cut_down_beside_a_tab() {
     let (dir, app) = build("no-room", 0.5, false);
     let run = app.regenerate().unwrap();
-    let note = run
-        .notes
+    // A warning of the operation (decision 0536 step 2; P46).
+    let warnings = run.operation_warnings(app.project());
+    let note = warnings
         .iter()
         .find(|n| n.contains("cannot cut down beside tab 1"))
-        .unwrap_or_else(|| panic!("no note in {:#?}", run.notes));
+        .unwrap_or_else(|| panic!("no warning in {warnings:#?}"));
     for want in [
         "1 Roughing",
         "X 0.000 to 4.000 mm",

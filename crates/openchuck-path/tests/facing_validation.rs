@@ -271,9 +271,18 @@ fn req_op_24_req_op_16_final_validation_runs_after_keepout_assembly_and_diagnost
         );
         assert!(path.notices.iter().any(|n| n.text.contains("held region")));
         if route < 2 {
+            // What is left uncut beside the grip is a warning too (decision
+            // record 0536 step 2).
             assert_eq!(
                 path.warnings(),
-                vec![&Notice::warning("Existing strategy warning").with_setting("tolerance")]
+                vec![
+                    &Notice::warning("Existing strategy warning").with_setting("tolerance"),
+                    &Notice::warning(
+                        "Nothing within one tool radius of the held region at the end of the \
+                         stock is cut: no part of the tool reaches over the gripped length of \
+                         the stock."
+                    )
+                ]
             );
             assert!(
                 path.notices

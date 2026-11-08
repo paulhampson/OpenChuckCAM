@@ -409,12 +409,14 @@ fn req_op_09_req_nfr_12_brep_an_edge_whose_side_cannot_be_told_is_left_out_and_s
     assert_eq!(edges.not_inside_throughout(), 1);
     let f = Fixture::new(&model);
     let out = pencil(&f, &PencilFinishing::on_brep(&model).unwrap(), &[]).unwrap();
+    // A possible corner left uncut is a warning (decision record 0536 step
+    // 2; UI-12).
     assert!(
-        out.notes()
-            .into_iter()
-            .any(|n| n.contains("1 edge of the part that may be an inside corner is not followed")),
+        out.warnings().into_iter().any(|w| w
+            .text
+            .contains("1 edge of the part that may be an inside corner is not followed")),
         "{:?}",
-        out.notes()
+        out.notices
     );
 }
 

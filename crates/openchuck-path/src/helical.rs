@@ -531,17 +531,17 @@ fn passes(
             .into_iter()
             .chain(faces::note(&turns))
             .chain(order_note)
-            .chain(faces::held_note(&found.held))
             .chain(spaced_note)
             .chain(layered)
             .chain(free.notes)
-            .chain(crate::finishing::across_axis_note(
-                region,
-                "Helical finishing",
-            ))
             .collect();
         let mut warnings = free.warnings;
         warnings.extend(spaced_warning);
+        warnings.extend(faces::held_warning(&found.held));
+        warnings.extend(crate::finishing::across_axis_warning(
+            region,
+            "Helical finishing",
+        ));
         // Every pass may be linked low when asked (decision 0521).
         crate::axial::mark_low_links_if_asked(parameters, &mut passes);
         Ok((passes, notes, warnings))

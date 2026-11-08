@@ -305,11 +305,30 @@ fn req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in(
     // The corner strips beside the walls the tool finished are rest
     // machining's, not unreachable surfaces: nothing is reported.
     assert!(path.unreached.is_empty(), "{:?}", path.unreached);
-    assert!(path.warnings().is_empty(), "{:?}", path.warnings());
+    // The warnings are the material some moves leave beyond the tolerance
+    // and the tool holder that is not checked (decision record 0536 step 2).
+    assert!(
+        path.warnings()
+            .iter()
+            .all(|w| w.text.starts_with("some moves leave up to")
+                || w.text.starts_with("the tool holder is not checked")),
+        "{:?}",
+        path.warnings()
+    );
+    // On the owner's answer to Q-E (decision 0536 step 2; P74): the passes
+    // are described in a note, and that the tool holder is not checked on
+    // them is a warning of its own, with nothing to acknowledge.
     assert!(
         path.notices
             .iter()
-            .any(|n| n.text.contains("hidden from the drive")),
+            .any(|n| !n.is_warning() && n.text.contains("hidden from the drive")),
+        "{:?}",
+        path.notices
+    );
+    assert!(
+        path.warnings().iter().any(|w| w.acknowledgement.is_none()
+            && w.text.starts_with("the tool holder is not checked")
+            && w.text.contains("hidden from the drive")),
         "{:?}",
         path.notices
     );

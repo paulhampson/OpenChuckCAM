@@ -972,13 +972,14 @@ fn req_op_09_rest_machining_says_when_no_earlier_operation_has_cut() {
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     let result = app.regenerate().unwrap();
+    // A warning of the operation, said once (decision 0536 step 2, P42).
+    let warnings = result.operation_warnings(app.project());
     assert!(
-        result
-            .notes
+        warnings
             .iter()
             .any(|n| n.contains("no earlier operation of this setup has cut")),
         "{:?}",
-        result.notes
+        warnings
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }

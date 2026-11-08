@@ -276,15 +276,28 @@ impl Builder<'_> {
             Some(f) => {
                 let at_feed = 60.0 * length / f.0;
                 if kind == MoveKind::Cutting && axis_time > at_feed * (1.0 + 1e-6) {
-                    self.notes.push(
-                        Notice::information(format!(
-                            "the machine's feed limits slow this move: the contact feed is {:.1} \
-                             mm/min, not {:.1}",
-                            60.0 * length / axis_time,
+                    let contact_feed = 60.0 * length / axis_time;
+                    // A turn of A with the contact point at the rotary axis
+                    // barely moves it: the feed there rounds to zero and says
+                    // nothing, so the note says what the move is (issue
+                    // #600). It is not a feed-limit note to summarise.
+                    let text = if contact_feed < 0.05 {
+                        format!(
+                            "A turns with the contact point at the rotary axis during this \
+                             move, so the contact point barely moves and the rotary axis's speed \
+                             limit sets the time taken ({axis_time:.3} s); the feed set is \
+                             {:.1} mm/min",
                             f.0
-                        ))
-                        .at_segment(self.segments.len()),
-                    );
+                        )
+                    } else {
+                        format!(
+                            "the machine's feed limits slow this move: the contact feed is \
+                             {contact_feed:.1} mm/min, not {:.1}",
+                            f.0
+                        )
+                    };
+                    self.notes
+                        .push(Notice::information(text).at_segment(self.segments.len()));
                 }
                 at_feed.max(axis_time)
             }
@@ -1088,6 +1101,68 @@ mod tests {
         let a_only = point(5.0, 18.0, 10.0, Point3::ORIGIN);
         let seconds = time(RotaryInFeed::Makera, &from, &a_only);
         assert!((seconds - separate).abs() < 1e-12, "{seconds}");
+    }
+
+    /// Issue #600: a turn of A with the contact point at the rotary axis
+    /// barely moves the contact point, so the feed there is about zero. The
+    /// note says it is such a turn and that the rotary axis's limit sets its
+    /// time, never "the contact feed is 0.0 mm/min", and it is not a
+    /// feed-limit note a host would summarise as one.
+    #[test]
+    fn req_op_13_req_ui_12_a_turn_at_the_rotary_axis_never_reads_as_a_feed_of_zero() {
+        let machine = MachineProfile::example_x_rotary();
+        let rotary = RotaryMapping::of_profile(&machine);
+        let profile = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: openchuck_types::units::Millimetres(3.0),
+            flute_length: openchuck_types::units::Millimetres(8.0),
+            overall_length: openchuck_types::units::Millimetres(40.0),
+            shank_diameter: openchuck_types::units::Millimetres(3.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap();
+        // The tip on the rotary axis, turning A by 30 degrees.
+        let from = point(4.0, 0.0, 0.0, Point3::ORIGIN);
+        let to = point(4.0, 0.0, 30.0, Point3::ORIGIN);
+        let mut b = Builder {
+            rotary,
+            tool_radius: 1.5,
+            profile: &profile,
+            max_feeds: machine.max_feeds,
+            collision: &AcceptAll,
+            pose: ToolPose {
+                tip: from.tip,
+                axis: rotary.tool_axis(from.a),
+                a: from.a,
+            },
+            contact: Point3::ORIGIN,
+            segments: Vec::new(),
+            notes: Vec::new(),
+        };
+        let end = b.pose(to.tip, to.a);
+        b.push(
+            MoveKind::Cutting,
+            end,
+            Some(Point3::ORIGIN),
+            Some(FeedRate(500.0)),
+        )
+        .unwrap();
+        assert_eq!(b.notes.len(), 1, "{:?}", b.notes);
+        let text = &b.notes[0].text;
+        assert!(!text.contains(" 0.0 mm/min"), "{text}");
+        assert!(
+            !text.starts_with("the machine's feed limits slow"),
+            "{text}"
+        );
+        assert!(
+            text.contains("A turns with the contact point at the rotary axis during this move"),
+            "{text}"
+        );
+        assert!(text.contains("500.0 mm/min"), "{text}");
+        assert!(!b.notes[0].is_warning());
     }
 
     #[test]

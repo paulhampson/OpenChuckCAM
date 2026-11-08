@@ -40,7 +40,9 @@ use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::ir::MoveKind;
 use openchuck_types::machine::Clearance;
 use openchuck_types::mesh::TriangleMesh;
-use openchuck_types::tool::{RevolvedProfile, ToolShape};
+use openchuck_types::tool::{
+    ProfilePoint, ProfileSegment, RevolvedProfile, ToolProfile, ToolShape,
+};
 use openchuck_types::units::{Degrees, Millimetres};
 use support::{machine, read_binary_stl, run, tags, tool};
 
@@ -1051,11 +1053,47 @@ fn req_op_04_req_op_21_indexed_finishing_faces_the_ends_beside_a_short_tab() {
     }
     let cut = deepest(&job.left(&path, &[tab_surfaces(0.1)], 3.0)[0]);
     assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
-    // The note says the passes ran on past both ends of the part.
+    // A note says the passes ran on past both ends of the part. It is
+    // information, on the owner's answer (decision 0536 step 2, Q-A; P48).
     assert!(
         path.notices
             .iter()
-            .any(|n| n.text.contains("past both ends")),
+            .any(|n| !n.is_warning() && n.text.contains("past both ends")),
+        "{:?}",
+        path.notices
+    );
+}
+
+#[test]
+fn req_op_09_req_ui_12_rest_machining_with_a_tool_that_is_not_convex_warns_of_the_walls() {
+    // A concave custom profile: rest machining places no rings at walls and
+    // does not check what the tool cannot reach, so uncut areas go
+    // unreported, which the user must see (decision record 0536 step 2).
+    let concave = tool(
+        ToolShape::Custom {
+            profile: ToolProfile {
+                segments: vec![
+                    ProfileSegment::Line {
+                        to: ProfilePoint::new(1.0, 0.0),
+                    },
+                    ProfileSegment::Arc {
+                        to: ProfilePoint::new(1.5875, 0.5875),
+                        centre: ProfilePoint::new(1.5875, 0.0),
+                    },
+                ],
+            },
+        },
+        DIAMETER,
+    );
+    let job = Job {
+        profile: concave.profile().unwrap(),
+        ..Job::shaft(ToolShape::FlatEnd)
+    };
+    let path = job.path(&RestMachining, &[]);
+    let text = "this tool's profile is not convex, so rest machining places no rings at walls \
+                and does not check what the tool cannot reach";
+    assert!(
+        path.warnings().iter().any(|w| w.text == text),
         "{:?}",
         path.notices
     );
@@ -1102,9 +1140,9 @@ fn req_set_09_req_op_04_a_face_the_held_region_keeps_the_tool_from_is_named() {
     let turns = turns_in_place(&path);
     assert!(turns.iter().all(|&x| x < 30.0), "{turns:?}");
     assert!(
-        path.notices
-            .iter()
-            .any(|n| n.text.contains("X 31.589") && n.text.contains("gripped length")),
+        path.notices.iter().any(|n| n.is_warning()
+            && n.text.contains("X 31.589")
+            && n.text.contains("gripped length")),
         "{:?}",
         path.notices
     );
@@ -1197,6 +1235,15 @@ fn messages(path: &GeneratedPath) -> String {
         .join("\n")
 }
 
+/// The warnings of `path`, one a line.
+fn warnings(path: &GeneratedPath) -> String {
+    path.warnings()
+        .iter()
+        .map(|n| n.text.clone())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
 fn req_op_04_req_op_09_a_free_end_is_faced_in_layers_down_to_the_axis() {
     // Decision record 0344: with Face free ends on (the default), a Stepdown
@@ -1272,7 +1319,17 @@ fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
         .filter(|t| (t - x).abs() < 1e-6)
         .count();
     assert_eq!(turns, 6);
-    let text = messages(&path);
+    // On the owner's answer to Q-C (decision 0536 step 2; P50): how the end
+    // is faced is information, and that the real blank must match the
+    // setup's own stock is a warning of its own.
+    let note = path
+        .notices
+        .iter()
+        .find(|n| n.text.contains("X 0.000 has nothing beyond it"))
+        .unwrap_or_else(|| panic!("{:?}", path.notices));
+    assert!(!note.is_warning(), "{note:?}");
+    assert!(!note.text.contains("the real blank"), "{}", note.text);
+    let text = warnings(&path);
     assert!(
         text.contains("X 0.000")
             && text.contains("the setup's own stock")
@@ -1664,6 +1721,14 @@ fn req_op_04_a_region_of_faces_across_the_axis_gets_the_facing_note() {
             "{}: {text}",
             strategy.name()
         );
+        // The selection cut in an unexpected way is a warning (decision
+        // record 0536 step 2; UI-12).
+        assert!(
+            path.warnings().iter().any(|w| w.text.contains(note)),
+            "{}: {:?}",
+            strategy.name(),
+            path.warnings()
+        );
         let round = MeshSurface::new(&TriangleMesh {
             vertices: bar.vertices.clone(),
             triangles: bar
@@ -1696,6 +1761,13 @@ fn req_op_04_a_free_end_flush_with_the_stock_says_there_is_nothing_past_it() {
         &RestMachining,
     ] {
         let path = job.path(strategy, &[("stepdown", 2.0)]);
+        // Information, on the owner's answer to Q-B (decision 0536 step 2;
+        // P49): there is nothing to face.
+        assert!(
+            !warnings(&path).contains("the stock ends"),
+            "{}",
+            warnings(&path)
+        );
         let text = messages(&path);
         assert!(
             text.contains(

@@ -624,11 +624,12 @@ impl Strategy for RestMachining {
         let unreached = if walls.modelled() {
             walls.unreached(input, &samples, map.spacing(), context)?
         } else {
-            notes.push(
+            // Uncut areas go unreported, so the user must see it (decision
+            // record 0536 step 2).
+            warnings.push(Notice::warning(
                 "this tool's profile is not convex, so rest machining places no rings at walls \
-                 and does not check what the tool cannot reach"
-                    .to_owned(),
-            );
+                 and does not check what the tool cannot reach",
+            ));
             Vec::new()
         };
         warnings.extend(unreached_warning(
@@ -637,7 +638,7 @@ impl Strategy for RestMachining {
         ));
         notes.extend(faces::note(&turns));
         notes.extend(order_note);
-        notes.extend(faces::held_note(&found.held));
+        warnings.extend(faces::held_warning(&found.held));
         notes.extend(free.notes);
         // Every pass may be linked low when asked (decision 0521).
         crate::axial::mark_low_links_if_asked(parameters, &mut passes);

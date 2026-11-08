@@ -661,7 +661,7 @@ pub(crate) fn notices(
 /// (SET-09; decision record 0161): a pass is cut into the runs of points
 /// that, with the moves between them, stay clear, and a run of one point
 /// from a longer pass is dropped. A pass with rapid points (a drilled hole)
-/// is kept whole or dropped whole. A note says what was left out; if nothing
+/// is kept whole or dropped whole. A warning says what was left out; if nothing
 /// is left of passes that cut, the operation is refused.
 fn keep_clear(
     passes: Vec<Pass>,
@@ -756,13 +756,15 @@ fn keep_clear(
         )));
     }
     if cut_short {
-        notes.push(Notice::information(format!(
+        // What is left uncut beside the grip is a warning (decision record
+        // 0536 step 2), and so is a hole not drilled.
+        notes.push(Notice::warning(format!(
             "Nothing within one tool radius of {names} is cut: no part of the tool reaches \
              over the gripped length of the stock."
         )));
     }
     if holes > 0 {
-        notes.push(Notice::information(format!(
+        notes.push(Notice::warning(format!(
             "{holes} {} not drilled: the tool would reach over {names}.",
             if holes == 1 { "hole is" } else { "holes are" }
         )));
@@ -950,12 +952,18 @@ mod tests {
                 vec![0.0, 10.0]
             ]
         );
-        assert_eq!(notes.len(), 2);
-        assert_eq!(notes[0].text, "first");
+        // What is left uncut beside the grip is a warning (decision record
+        // 0536 step 2; UI-12).
         assert_eq!(
-            notes[1].text,
-            "Nothing within one tool radius of the held region at the start of the stock is \
-             cut: no part of the tool reaches over the gripped length of the stock."
+            notes,
+            vec![
+                Notice::information("first"),
+                Notice::warning(
+                    "Nothing within one tool radius of the held region at the start of the \
+                     stock is cut: no part of the tool reaches over the gripped length of the \
+                     stock."
+                )
+            ]
         );
         // A move that jumps over the whole keep-out is not kept either.
         let (passes, _) = keep_clear(
@@ -995,9 +1003,11 @@ mod tests {
         let (passes, notes) =
             keep_clear(vec![hole, clear.clone()], Vec::new(), &KEEP_OUT, MID).unwrap();
         assert_eq!(passes, vec![clear]);
+        // A hole not drilled is a warning (decision record 0536 step 2;
+        // UI-12).
         assert_eq!(
             notes,
-            vec![Notice::information(
+            vec![Notice::warning(
                 "1 hole is not drilled: the tool would reach over the held region at the start \
                  of the stock."
             )]
@@ -1038,11 +1048,12 @@ mod tests {
         )
         .unwrap();
         assert!(
-            notes[0].text.starts_with(
-                "Nothing within one tool radius of the held regions at both ends of the stock"
-            ),
-            "{}",
-            notes[0].text
+            notes[0].is_warning()
+                && notes[0].text.starts_with(
+                    "Nothing within one tool radius of the held regions at both ends of the stock"
+                ),
+            "{:?}",
+            notes[0]
         );
         let error = check_clear(&path(&[(MoveKind::LeadIn, 38.0)]), &both, MID).unwrap_err();
         assert_eq!(

@@ -709,6 +709,61 @@ fn req_op_08_a_chain_through_the_rotary_axis_is_refused() {
 }
 
 #[test]
+fn req_op_08_req_ui_12_a_chain_that_cannot_be_carved_is_a_warning() {
+    // A ring round the cylinder and a chain that runs straight out along
+    // the tool axis: carving cuts the ring and leaves the other, and a
+    // selected chain left uncut is a warning (decision record 0536 step 2).
+    #[derive(Debug)]
+    struct RingAndSpoke;
+    impl CurveSource for RingAndSpoke {
+        fn chains(&self, _: &dyn SurfaceSource) -> openchuck_path::Result<Vec<EdgeChain>> {
+            let ring = (0..72)
+                .map(|i| {
+                    let a = f64::from(i) * 5.0_f64.to_radians();
+                    Point3::new(5.0, RADIUS * a.cos(), RADIUS * a.sin())
+                })
+                .collect();
+            Ok(vec![
+                EdgeChain {
+                    points: ring,
+                    closed: true,
+                },
+                EdgeChain {
+                    points: vec![
+                        Point3::new(10.0, RADIUS, 0.0),
+                        Point3::new(10.0, RADIUS + 1.0, 0.0),
+                    ],
+                    closed: false,
+                },
+            ])
+        }
+    }
+    let f = cylinder();
+    let strategy = EdgeFollowing::with_source(std::sync::Arc::new(RingAndSpoke));
+    let v = values(&[
+        (p::MODE, text("carve")),
+        (p::DEPTH, num(0.2)),
+        (p::CARVE_WIDTH, num(2.0)),
+    ]);
+    let path = run(|ctx| generate(&strategy, &f.input(), &v, ctx)).unwrap();
+    let left = "edge following: 1 chain run along the tool axis and cannot be carved, so it is \
+                not cut";
+    assert!(
+        path.warnings().iter().any(|w| w.text == left),
+        "{:?}",
+        path.notices
+    );
+    assert!(
+        path.notices
+            .iter()
+            .filter(|n| !n.is_warning())
+            .all(|n| n.text != left),
+        "{:?}",
+        path.notices
+    );
+}
+
+#[test]
 fn req_nfr_06_req_op_08_edge_following_is_identical_at_1_2_and_n_threads() {
     let f = half_pipe();
     let v = values(&[

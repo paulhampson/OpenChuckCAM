@@ -454,6 +454,41 @@ enum LibraryAction {
     },
 }
 
+/// Prints a run's messages on standard error, each at its own level
+/// (decision 0536 section 5): each operation's warnings and the run's own as
+/// `warning:`, and its information as `note:`, with one feed-limit line per
+/// operation in place of the per-move notes (decision record 0430), as the
+/// Results tab shows them.
+fn print_run(project: &openchuck_app::project::Project, run: &openchuck_app::Regeneration) {
+    for line in run_lines(project, run) {
+        eprintln!("{line}");
+    }
+}
+
+/// The lines [`print_run`] prints: the warnings, then the information as the
+/// Results tab shows it (decision 0536 section 5).
+fn run_lines(
+    project: &openchuck_app::project::Project,
+    run: &openchuck_app::Regeneration,
+) -> Vec<String> {
+    let mut lines: Vec<String> = run
+        .operation_warnings(project)
+        .into_iter()
+        .chain(run.warnings.iter().cloned())
+        .map(|w| format!("warning: {w}"))
+        .collect();
+    let information = openchuck_app::note_groups::information(run, project);
+    lines.extend(information.summaries.iter().map(|s| format!("note: {s}")));
+    // Notes about consecutive moves with the same wording are one line, as
+    // in the Results tab (issue 255; decision record 0218).
+    lines.extend(
+        openchuck_app::note_groups::group_notes(&information.notes)
+            .into_iter()
+            .map(|g| format!("note: {}", g.text)),
+    );
+    lines
+}
+
 fn main() -> ExitCode {
     match run(Cli::parse()) {
         Ok(()) => ExitCode::SUCCESS,
@@ -588,9 +623,7 @@ fn run(cli: Cli) -> Result<()> {
                     eprintln!("warning: tool '{}': {warning}", report.name);
                 }
             }
-            for note in app.regenerate()?.notes {
-                eprintln!("warning: {note}");
-            }
+            print_run(app.project(), &app.regenerate()?);
             println!("{}: valid", project.display());
         }
         Action::Resave { project } => {
@@ -621,9 +654,7 @@ fn run(cli: Cli) -> Result<()> {
             }
             app.set_post(post.as_deref().map(PostSelection::parse));
             let result = app.regenerate()?;
-            for note in &result.notes {
-                eprintln!("warning: {note}");
-            }
+            print_run(app.project(), &result);
             if let Some((settings, sources)) = result.effective_short_blocks {
                 eprintln!(
                     "short-block settings: {} ({}), {:.3} ms ({}), {} {} ({})",
@@ -776,9 +807,7 @@ fn run(cli: Cli) -> Result<()> {
             let start = std::time::Instant::now();
             let result = app.simulate()?;
             let seconds = start.elapsed().as_secs_f64();
-            for note in &result.notes {
-                eprintln!("warning: {note}");
-            }
+            print_run(app.project(), &result);
             let report = result
                 .simulation
                 .context("the pipeline returned no simulation report")?;
@@ -2349,6 +2378,34 @@ fn confirm_tool_numbers(app: &mut Application, choice: Option<NumberChoice>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_ui_12_the_command_line_groups_notes_about_consecutive_moves_as_results_does() {
+        // Decision 0536 section 5: the command line prints a run's messages as
+        // the Results tab shows them, so notes about consecutive moves with the
+        // same wording are one line (issue 255; decision record 0218), not one
+        // line per move.
+        let turn = |m: usize| {
+            format!(
+                "operation 'Finish': move {m}: A turns with the contact point at the rotary \
+                 axis during this move, so the contact point barely moves and the rotary axis's \
+                 speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min"
+            )
+        };
+        let run = openchuck_app::Regeneration {
+            notes: (10..=13).map(turn).collect(),
+            ..openchuck_app::Regeneration::default()
+        };
+        let lines = run_lines(&openchuck_app::project::Project::new("p"), &run);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(lines[0].starts_with("note: "), "{}", lines[0]);
+        assert!(
+            lines[0].contains("moves 10 to 13 (4 moves): A turns")
+                && lines[0].contains("during these moves,"),
+            "{}",
+            lines[0]
+        );
+    }
 
     #[test]
     fn req_imp_03_terminal_answers_to_the_unit_question() {

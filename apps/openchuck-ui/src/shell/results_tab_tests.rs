@@ -35,7 +35,12 @@ fn exact(rig: &Rig, text: &str) -> usize {
 
 fn two_warnings() -> Arc<Regeneration> {
     Arc::new(Regeneration {
-        notes: vec!["alpha: a note".to_owned(), "bravo: another note".to_owned()],
+        // The run's warnings: its notes are information, which the label
+        // does not count (decision 0536 section 1).
+        warnings: vec![
+            "alpha: a warning".to_owned(),
+            "bravo: another warning".to_owned(),
+        ],
         ..Regeneration::default()
     })
 }

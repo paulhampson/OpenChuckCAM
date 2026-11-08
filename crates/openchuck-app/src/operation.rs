@@ -209,7 +209,7 @@ pub struct OperationPath {
     /// What the user must see before using the path: it was made, but does
     /// not meet a limit the operation sets, such as swarf cutting into the
     /// finished surface deeper than the tolerance (NFR-12; decision record
-    /// 0175). Each is in `notes` too.
+    /// 0175). They are not repeated in `notes` (decision 0536 section 5).
     pub warnings: Vec<openchuck_path::Notice>,
     /// The areas of the part the strategy could not reach, with the surface
     /// points in each (OP-20; decision record 0515): what the viewport marks
@@ -918,9 +918,9 @@ fn generate_unnamed(
     ) {
         check_travel_along(operation, machine, &path.group)?;
     }
-    // A set the operation's options leave limiting nothing is a warning,
-    // said first in the notes as well (decision 0176), as the library does
-    // for its own warnings.
+    // A set the operation's options leave limiting nothing is a warning
+    // (decision 0176). A warning is said once, as a warning, and not repeated
+    // among the notes (decision 0536 section 5).
     let mut warnings = brep_limits
         .as_ref()
         .map(|l| l.warnings.clone())
@@ -937,13 +937,12 @@ fn generate_unnamed(
                     .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision)
             }),
     );
-    // Notes about the values come first, then the notes about moves.
-    let mut notes: Vec<String> = warnings
-        .iter()
-        .map(openchuck_path::Notice::sentence)
-        .collect();
-    notes.extend(resolved.notes);
-    notes.extend(leave_notes);
+    // Notes about the values come first, then the notes about moves. They
+    // are information: the goal is met (decision 0536 section 1).
+    let mut notes: Vec<String> = resolved.notes;
+    // A stock to leave other than the operation's is a warning (decision
+    // 0536 step 2, the owner's answer to question Q-G; P76).
+    warnings.extend(leave_notes.into_iter().map(openchuck_path::Notice::warning));
     // On a STEP part, the surface the tool was dropped on (decision 0209
     // item 4.4, OI-830; NFR-12).
     if placed.brep.is_some()
@@ -955,27 +954,55 @@ fn generate_unnamed(
             contact_leave,
         )
     {
-        notes.push(note);
+        // Its variant that says Exact STEP surface contact does not apply is
+        // a warning; the rest describes where the tool was dropped,
+        // information (decision 0536 step 2, the owner's answer to question
+        // Q-G; P76).
+        if note.contains("does not apply") {
+            warnings.push(openchuck_path::Notice::warning(note));
+        } else {
+            notes.push(note);
+        }
     }
-    notes.extend(reach_notes);
+    // A selection that reaches a region never machined leaves it uncut: a
+    // warning (decision 0536 step 2, the owner's answer to question Q-G;
+    // P76).
+    warnings.extend(reach_notes.into_iter().map(openchuck_path::Notice::warning));
     // The registry's strategy: a B-rep edge source uses the crease angle and
-    // the shortest chain, so the warning that they are not used does not apply.
-    notes.extend(registry_strategy.parameter_warnings(&profile, &parameters));
+    // the shortest chain, so the warning that they are not used does not
+    // apply. A setting the operation ignores is a warning (P53), except edge
+    // following's, which are redundant settings with the goal met:
+    // information (decision 0536 step 2, the owner's answer to question Q-D;
+    // P54 to P57).
+    let ignored = registry_strategy.parameter_warnings(&profile, &parameters);
+    if operation.strategy == edge_following::NAME {
+        notes.extend(ignored);
+    } else {
+        warnings.extend(ignored.into_iter().map(openchuck_path::Notice::warning));
+    }
     // Rest machining and pencil clean-up work on what earlier operations
     // left (OP-09, SIM-06); against the setup's own stock the whole part has
-    // material left, which is rarely what was meant.
+    // material left, which is rarely what was meant: a warning (decision
+    // 0536 step 2, path inventory P42).
     if carried.is_none() && strategy.needs_earlier_operations() {
-        notes.push(format!(
+        warnings.push(openchuck_path::Notice::warning(format!(
             "{} cleans up material that earlier operations left, and no earlier operation of \
              this setup has cut: the setup's own stock is taken, so all of the part counts as \
              having material left",
             strategy.label()
-        ));
+        )));
     }
+    // The path's information; its warnings go with the warnings below. A
+    // note about one move names it; a note about the whole path names none
+    // (#622).
     notes.extend(
         path.notices
             .iter()
-            .map(|n| format!("move {}: {}", n.segment.unwrap_or(0), n.sentence())),
+            .filter(|n| !n.is_warning())
+            .map(|n| match n.segment {
+                Some(segment) => format!("move {segment}: {}", n.sentence()),
+                None => n.sentence(),
+            }),
     );
     let facing = facing_setup
         .as_ref()
@@ -2629,8 +2656,15 @@ mod tests {
             "{}",
             warning.text
         );
+        // Said once, as a warning: not repeated as a note, and no note
+        // claims a move it is not about (decision 0536 section 5; #622).
         assert!(
-            path.notes.iter().any(|n| n.contains(&warning.text)),
+            !path.notes.iter().any(|n| n.contains(&warning.text)),
+            "{:?}",
+            path.notes
+        );
+        assert!(
+            !path.notes.iter().any(|n| n.starts_with("move 0:")),
             "{:?}",
             path.notes
         );
@@ -2843,7 +2877,9 @@ mod tests {
             warning.text
         );
         assert_eq!(warning.setting, None);
-        assert_eq!(path.notes.first(), Some(&warning.text));
+        // A warning is said once, not repeated as a note (decision 0536
+        // section 5).
+        assert!(!path.notes.contains(&warning.text), "{:?}", path.notes);
         // Limit A alone stops the pass at the strip as before.
         let mut f = swarf_limits_fixture(&[]);
         f.select_as(
@@ -3241,13 +3277,14 @@ mod tests {
                         .unwrap_or_else(|e| panic!("{strategy} {file} {what}: {e}"));
                     if strategy == roughing::NAME && leave.is_some() {
                         // Roughing leaves the largest amount wherever it cuts
-                        // (decision 0058), and says so.
+                        // (decision 0058), and warns so (decision 0536 step 2,
+                        // question Q-G).
                         assert!(
-                            path.notes
+                            path.warnings
                                 .iter()
-                                .any(|n| n.contains("roughing leaves 0.25 mm")),
+                                .any(|w| w.text.contains("roughing leaves 0.25 mm")),
                             "{file}: {:?}",
-                            path.notes
+                            path.warnings
                         );
                         continue;
                     }
@@ -3517,6 +3554,46 @@ mod tests {
         }
     }
 
+    /// Exact STEP surface contact asked for but not applied, because a stock
+    /// to leave grows a flat end into a shape with no exact drop, is a
+    /// warning; the note on where the tool was dropped is otherwise
+    /// information (decision 0536 step 2, the owner's answer to question Q-G;
+    /// P76).
+    #[test]
+    fn req_ui_12_req_op_27_exact_contact_that_does_not_apply_is_a_warning() {
+        let mut f = bar_fixture_with(openchuck_path::axial::NAME, "bar.step", ToolShape::FlatEnd);
+        f.set(exact_contact(true).0, exact_contact(true).1);
+        f.set(names::STOCK_TO_LEAVE, Value::Number(0.2));
+        let path = f.run().unwrap();
+        let said = "Exact STEP surface contact does not apply";
+        assert!(
+            path.warnings.iter().any(|w| w.text.contains(said)),
+            "warnings {:?} notes {:?}",
+            path.warnings,
+            path.notes
+        );
+        assert!(
+            !path.notes.iter().any(|n| n.contains(said)),
+            "{:?}",
+            path.notes
+        );
+        // Without the stock to leave the note says where the tool was dropped,
+        // as information.
+        let mut f = bar_fixture_with(openchuck_path::axial::NAME, "bar.step", ToolShape::FlatEnd);
+        f.set(exact_contact(true).0, exact_contact(true).1);
+        let path = f.run().unwrap();
+        assert!(
+            path.notes.iter().any(|n| n.contains("exact faces")),
+            "{:?}",
+            path.notes
+        );
+        assert!(
+            !path.warnings.iter().any(|w| w.text.contains("exact faces")),
+            "{:?}",
+            path.warnings
+        );
+    }
+
     #[test]
     fn req_op_27_req_nfr_07_req_nfr_12_exact_contact_says_where_a_tool_cannot_take_it() {
         // A bull nose has no exact drop (OI-1350): with the setting on it
@@ -3592,12 +3669,14 @@ mod tests {
         for leave_on_set in [false, true] {
             let (on, off) = (flat(leave_on_set, true), flat(leave_on_set, false));
             assert_eq!(on.group.segments, off.group.segments, "set: {leave_on_set}");
+            // A warning: it says Exact STEP surface contact does not apply
+            // (decision 0536 step 2, question Q-G).
             assert!(
-                on.notes.iter().any(|n| n.contains("tessellation")
-                    && n.contains("stock to leave")
-                    && !n.contains("exact faces, to within")),
+                on.warnings.iter().any(|w| w.text.contains("tessellation")
+                    && w.text.contains("stock to leave")
+                    && !w.text.contains("exact faces, to within")),
                 "set: {leave_on_set}: {:?}",
-                on.notes
+                on.warnings
             );
         }
     }
@@ -3819,6 +3898,78 @@ mod tests {
         );
         let operation = f.project.operation(f.operation).unwrap();
         assert!(crate::step_sets::refusals(&f.project, &registry, operation).is_empty());
+    }
+
+    /// Rest machining with no earlier operation in its setup takes the
+    /// setup's own stock, so all of the part counts as having material left:
+    /// rarely what was meant, so a warning, said once and not as a note
+    /// (decision 0536 step 2, path inventory P42).
+    #[test]
+    fn req_ui_12_req_op_09_rest_machining_with_no_earlier_operation_is_a_warning() {
+        let f = bar_fixture(openchuck_path::rest::NAME, "bar.stl");
+        let path = f.run().unwrap();
+        let said = "cleans up material that earlier operations left";
+        assert!(
+            path.warnings.iter().any(|w| w.text.contains(said)),
+            "{:?}",
+            path.warnings
+        );
+        assert!(
+            !path.notes.iter().any(|n| n.contains(said)),
+            "{:?}",
+            path.notes
+        );
+    }
+
+    /// A setting the operation's tool cannot use is a warning, not a note
+    /// (decision 0536 step 2, path inventory P53): a scallop height with a
+    /// flat end mill, which only a ball or bull-nose end can work out.
+    #[test]
+    fn req_ui_12_req_op_04_an_ignored_scallop_height_is_a_warning() {
+        let mut f = bar_fixture_with(openchuck_path::helical::NAME, "bar.stl", ToolShape::FlatEnd);
+        let mut operation = f.project.operation(f.operation).unwrap().clone();
+        operation
+            .parameters
+            .insert("scallop".to_owned(), Value::Number(0.1));
+        f.project.replace(Item::Operation(operation)).unwrap();
+        let path = f.run().unwrap();
+        let said = "the scallop height of 0.1 mm is ignored";
+        assert!(
+            path.warnings.iter().any(|w| w.text.contains(said)),
+            "{:?}",
+            path.warnings
+        );
+        assert!(
+            !path.notes.iter().any(|n| n.contains(said)),
+            "{:?}",
+            path.notes
+        );
+    }
+
+    #[test]
+    fn req_ui_12_req_op_08_an_edge_following_setting_it_does_not_use_is_information() {
+        // The owner's answer to question Q-D (decision 0536 step 2; path
+        // inventory P54 to P57): a setting edge following does not use is
+        // redundant and the goal is met, so it is information.
+        let f = fixture(
+            edge_following::NAME,
+            &[
+                ("depth", Value::Number(0.2)),
+                (edge_following::parameter::CARVE_WIDTH, Value::Number(1.0)),
+            ],
+        );
+        let path = f.run().unwrap();
+        let said = "the carve width is used only in carve mode";
+        assert!(
+            path.notes.iter().any(|n| n.contains(said)),
+            "{:?}",
+            path.notes
+        );
+        assert!(
+            !path.warnings.iter().any(|w| w.text.contains(said)),
+            "{:?}",
+            path.warnings
+        );
     }
 
     #[test]

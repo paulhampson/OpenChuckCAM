@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- MSGREVIEW (decision 0536 step 2; issue #567; UI-12): each line of the Results tab takes its message's level. An operation's warning is one Warning line in the form of decision 0522, not also a "move 0" note; the run's own warnings are Warning lines; the notes are Information. A rapid that removes material is listed once.
 - MSGREVIEW (issue #611; decision 0539, accepted; UI-25): when Apply of the workholding section is refused, only the finding that refuses (a tab outside the end zones) is shown as an error and marks its tab as failing. A warning found with it (an automatic tab with no room, tabs that overlap, a tab shorter than a tool) stays a warning, in amber with the Warning mark, on its own row. Test `req_ui_25_a_refused_apply_keeps_each_finding_at_its_own_level`.
 
 - ICON (OI-2106; decision 0542, accepted): OpenChuckCAM has its own icon, a chuck seen end-on inside an A-axis arrow, white on a near-black tile. The window and the taskbar show it instead of the toolkit's default icon, and the Windows program file carries it, so Explorer shows it too. `cargo xtask icon` makes the files from `assets/icon/icon.svg`.

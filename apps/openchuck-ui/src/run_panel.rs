@@ -114,44 +114,42 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
     // stay in the run's notes; only an operation that has such a line has
     // its feed-limit notes left out, so an unread note is never hidden
     // (NFR-12).
-    let mut summarised = Vec::new();
-    for (id, limit) in &run.feed_limits {
-        let operation = name(*id);
-        out.push(line(Severity::Info, limit.describe_for(&operation)));
-        // The notes carry the name the operation had when the run was made,
-        // which the run's own project snapshot still holds.
-        let made_as = run
-            .project
-            .operation(*id)
-            .map_or(operation, |o| o.name.clone());
-        // The notes carry only the name, so the notes of a name that two
-        // operations of the run share cannot be told apart: none are hidden
-        // (NFR-12), and each operation still has its own line, by id.
-        let shared = run
-            .project
-            .operations()
-            .iter()
-            .filter(|o| o.name == made_as)
-            .count()
-            > 1;
-        if !shared {
-            summarised.push(format!("operation '{made_as}': "));
-        }
+    let information = openchuck_app::note_groups::information(run, project);
+    for summary in information.summaries {
+        out.push(line(Severity::Info, summary));
     }
-    let shown: Vec<String> = run
-        .notes
+    // Each operation's warnings, once, in the form of decision 0522; then
+    // the run's own warnings (decision 0536 section 5). A rapid that removes
+    // material is listed by the simulation below when the run simulated, so
+    // it is not said twice.
+    for text in run.operation_warnings(project) {
+        out.push(line(Severity::Warning, text));
+    }
+    let simulated = run.simulation.is_some();
+    let warnings: Vec<String> = run
+        .warnings
         .iter()
-        .filter(|n| {
-            !(openchuck_app::note_groups::is_feed_limit_note(n)
-                && summarised.iter().any(|p| n.starts_with(p.as_str())))
-        })
+        .filter(|w| !(simulated && w.contains("is a rapid that removes")))
         .cloned()
         .collect();
-    // Repeated notes about consecutive moves are one line each (issue 255;
-    // decision record 0218).
-    for group in openchuck_app::note_groups::group_notes(&shown) {
+    for group in openchuck_app::note_groups::group_notes(&warnings) {
         out.push(ResultLine {
             severity: Severity::Warning,
+            text: group.text,
+            moves: if group.notes.len() > 1 {
+                group.notes
+            } else {
+                Vec::new()
+            },
+        });
+    }
+    let shown = information.notes;
+    // Repeated notes about consecutive moves are one line each (issue 255;
+    // decision record 0218).
+    // The notes are information: the goal was met (decision 0536 step 2).
+    for group in openchuck_app::note_groups::group_notes(&shown) {
+        out.push(ResultLine {
+            severity: Severity::Info,
             text: group.text,
             moves: if group.notes.len() > 1 {
                 group.notes
@@ -1254,7 +1252,42 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(lines[0].text.contains("moves 2 to 4 (3 moves)"));
         assert_eq!(lines[0].moves, notes);
-        assert_eq!(lines[0].severity, Severity::Warning);
+        // A note is information: the goal was met (decision 0536 step 2).
+        assert_eq!(lines[0].severity, Severity::Info);
+    }
+
+    /// Each Results line takes its message's own level (decision 0536
+    /// section 5): an operation's warning is one Warning line in the form of
+    /// decision 0522, said once and not repeated as a "move 0" note; the
+    /// run's own warnings are Warning lines; the notes are Information.
+    #[test]
+    fn req_ui_12_each_results_line_takes_its_own_level() {
+        let (dir, app, operation, _) = crate::testing::cube_project("results-levels");
+        let mut run = app.regenerate().unwrap();
+        let name = app.project().operation(operation).unwrap().name.clone();
+        let said = "the boundary limits nothing";
+        run.groups[0]
+            .warnings
+            .push(openchuck_app::path::Notice::warning(said.to_owned()));
+        run.notes = vec![format!("operation '{name}': helical finishing cut 3 rings")];
+        run.warnings = vec!["Setup 'Setup 1': 1.0% of the part's surface is enclosed".to_owned()];
+        let lines = result_lines(&run, app.project());
+        let level = |t: &str| {
+            let found: Vec<_> = lines.iter().filter(|l| l.text.contains(t)).collect();
+            assert_eq!(found.len(), 1, "{t}: {lines:?}");
+            found[0].severity
+        };
+        assert_eq!(level(said), Severity::Warning);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.text == format!("Operation '{name}': {said}")),
+            "{lines:?}"
+        );
+        assert_eq!(level("cut 3 rings"), Severity::Info);
+        assert_eq!(level("is enclosed"), Severity::Warning);
+        drop(app);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     fn feed_note(operation: &str, effective: f64, target: f64) -> String {
@@ -1318,18 +1351,33 @@ mod tests {
         let (mut run, project, name) = limited_run("three", 3);
         let rapid =
             format!("operation '{name}': move 9 is a rapid that removes 0.100 mm3 of material");
-        run.notes.push(rapid.clone());
-        // A feed-limit note of an operation with no summary stays a warning too.
+        // A rapid that removes material is a warning of the run (decision
+        // 0536 step 2).
+        run.warnings.push(rapid.clone());
+        // A feed-limit note of an operation with no summary is its own line,
+        // never merged into another operation's summary.
         let unsummarised = feed_note("Other", 500.0, 600.0);
         run.notes.push(unsummarised.clone());
         let lines = result_lines(&run, &project);
-        assert_eq!(lines[0].severity, Severity::Info);
         let warnings: Vec<&str> = lines
             .iter()
             .filter(|l| l.severity == Severity::Warning)
             .map(|l| l.text.as_str())
             .collect();
-        assert_eq!(warnings, [rapid.as_str(), unsummarised.as_str()]);
+        assert_eq!(warnings, [rapid.as_str()]);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.severity == Severity::Info && l.text == unsummarised),
+            "{lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .filter(|l| l.text.contains(&format!("during '{name}'")))
+                .all(|l| !l.text.contains("Other")),
+            "{lines:?}"
+        );
     }
 
     #[test]
@@ -1397,7 +1445,7 @@ mod tests {
         assert_eq!(summaries, 2, "{lines:?}");
         let kept: usize = lines
             .iter()
-            .filter(|l| l.severity == Severity::Warning)
+            .filter(|l| l.severity == Severity::Info && !l.text.contains("limited by"))
             .map(|l| l.moves.len().max(1))
             .sum();
         assert_eq!(kept, 5, "every per-move note stays: {lines:?}");
@@ -1408,6 +1456,7 @@ mod tests {
         let (run, project, _) = limited_run("copy", 2);
         let mut run = run;
         run.notes.push("operation 'X': a note".to_owned());
+        run.warnings.push("operation 'X': a warning".to_owned());
         let lines = result_lines(&run, &project);
         let text = results_text(
             &lines,
@@ -1416,7 +1465,8 @@ mod tests {
         );
         assert!(text.starts_with("1 operation(s), 5 moves, 0.1 s to generate\n"));
         assert!(text.contains(&lines[0].text));
-        assert!(text.contains("Warning: operation 'X': a note\n"));
+        assert!(text.contains("Warning: operation 'X': a warning\n"));
+        assert!(text.contains("\noperation 'X': a note\n"));
         assert!(text.ends_with("\nBuild\nv1\n"));
     }
 
@@ -1471,13 +1521,14 @@ mod tests {
         }
 
         /// A run whose notes are `notes` (each its own warning line).
-        fn with_notes(tag: &str, notes: &[&str]) -> Self {
+        /// The window over a run whose own warnings are `warnings`.
+        fn with_warnings(tag: &str, warnings: &[&str]) -> Self {
             let (dir, app, _, _) = crate::testing::cube_project(&format!("results-frames-{tag}"));
             let ctx = egui::Context::default();
             crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
             let mut panel = RunPanel::default();
             panel.record_run(Arc::new(Regeneration {
-                notes: notes.iter().map(|n| (*n).to_owned()).collect(),
+                warnings: warnings.iter().map(|n| (*n).to_owned()).collect(),
                 ..Regeneration::default()
             }));
             Self::with(ctx, panel, app, dir)
@@ -1625,8 +1676,8 @@ mod tests {
         assert!(reached, "Tab reaches the plain text box");
     }
 
-    const WARNING_A: &str = "alpha: a note about one move";
-    const WARNING_B: &str = "bravo: a note about another thing";
+    const WARNING_A: &str = "alpha: a warning about one move";
+    const WARNING_B: &str = "bravo: a warning about another thing";
 
     #[test]
     fn req_ui_12_the_label_count_is_warnings_and_errors_with_a_group_once() {
@@ -1648,8 +1699,9 @@ mod tests {
             })
             .collect();
         notes.push(WARNING_B.to_owned());
+        // The run's warnings are counted; its notes, information, are not.
         panel.record_run(Arc::new(Regeneration {
-            notes,
+            warnings: notes,
             ..Regeneration::default()
         }));
         assert_eq!(panel.results_count(), 2, "a group is one line");
@@ -1673,7 +1725,7 @@ mod tests {
 
     #[test]
     fn req_ui_12_the_chips_filter_the_lines_and_keep_unfiltered_counts() {
-        let mut frames = Frames::with_notes("chips", &[WARNING_A, WARNING_B]);
+        let mut frames = Frames::with_warnings("chips", &[WARNING_A, WARNING_B]);
         assert!(
             frames.shows("Warnings 2") && frames.shows("Errors 0") && frames.shows("Information 0")
         );
@@ -1694,7 +1746,7 @@ mod tests {
 
     #[test]
     fn req_ui_12_req_nfr_12_copy_all_holds_every_line_whatever_the_filter() {
-        let mut frames = Frames::with_notes("chips-copy", &[WARNING_A, WARNING_B]);
+        let mut frames = Frames::with_warnings("chips-copy", &[WARNING_A, WARNING_B]);
         let at = frames.centre_of("Warnings 2");
         frames.click(at);
         let at = frames.centre_of("Copy all");
@@ -1825,7 +1877,7 @@ mod tests {
     #[test]
     fn req_ui_16_req_ui_12_the_tab_is_usable_in_a_short_dock() {
         // The dock is at least 120 pt high and the tab strip takes some of it.
-        let mut frames = Frames::with_notes("short", &[WARNING_A, WARNING_B]);
+        let mut frames = Frames::with_warnings("short", &[WARNING_A, WARNING_B]);
         frames.size = egui::vec2(380.0, 90.0);
         for _ in 0..3 {
             frames.frame(Vec::new());

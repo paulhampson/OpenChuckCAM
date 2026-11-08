@@ -604,17 +604,17 @@ fn req_op_10_holes_the_tool_cannot_drill_are_left_out_with_a_note() {
     let tool = drill(DIAMETER);
     let out = rig.output(&tool, &values(&[])).unwrap();
     assert_eq!(out.passes.len(), 1);
-    assert_eq!(out.notes().len(), 2, "{:?}", out.notes());
-    assert!(
-        out.notes()
-            .into_iter()
-            .any(|n| n.contains("hole 2") && n.contains("diameter"))
-    );
-    assert!(
-        out.notes()
-            .into_iter()
-            .any(|n| n.contains("hole 3") && n.contains("radial plane"))
-    );
+    // A selected hole left out is a warning, pointing at the tolerance that
+    // would let it be drilled (decision record 0536 step 2; UI-12).
+    assert!(out.notes().is_empty(), "{:?}", out.notes());
+    let warnings = out.warnings();
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.text.contains("hole 2")
+        && w.text.contains("diameter")
+        && w.setting.as_deref() == Some(openchuck_path::drill::parameter::DIAMETER_TOLERANCE)));
+    assert!(warnings.iter().any(|w| w.text.contains("hole 3")
+        && w.text.contains("radial plane")
+        && w.setting.as_deref() == Some(openchuck_path::drill::parameter::AXIS_TOLERANCE)));
     // A larger tolerance drills the 5 mm hole as a pilot.
     let v = values(&[(openchuck_path::drill::parameter::DIAMETER_TOLERANCE, 3.0)]);
     let out = rig.output(&tool, &v).unwrap();

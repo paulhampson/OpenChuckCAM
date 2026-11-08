@@ -1,6 +1,6 @@
 # 0536: Message levels, the operation reference and links to the setting (lane MSGREVIEW; issue #567)
 
-- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane MSGREVIEW on 7 Nov 2026. Build step 1 (the library type, the message constructor and its checks, library 0.50.0) is built in #595; steps 2 to 5 follow, test first. Decisions 0539 and 0540 are built (#591, #584); 0538 follows. Section 8 (the lost status lines, with the work-loss reminders as warnings in Messages) is the lane's application of the author's test, not an explicit owner answer: it stands as accepted with the record, and the build pull request for step 5 points it out so the owner can change it.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane MSGREVIEW on 7 Nov 2026. Build step 1 (the library type, the message constructor and its checks, library 0.50.0) is built in #595. Build step 2 (path notes take their levels; the Results tab and the command line follow) is built in #625, with the owner's answers of 8 Nov 2026 on the rows marked "?" (see Verification). Steps 3 to 5 follow, test first. Decisions 0538, 0539 and 0540 are built (#623, #591, #584). Section 8 (the lost status lines, with the work-loss reminders as warnings in Messages) was the lane's application of the author's test. The owner answered it on 8 Nov 2026 (relayed by the coordinator): the placements stand, except that the plain confirmations ("Saved …", "Opened …", "Added …", "Copied …") are entries in the Jobs tab only, not left out. The owner's answer of 8 Nov 2026 to question (b) amends question 1: information not about a generation or simulation run (a model's file notes, a model linked from outside the project folder, a finished export) is shown in Messages too, at the Information level (sections 1 and 5). The owner's answer of 8 Nov 2026 to question (c): the overall status badge's "Good to go" becomes "Nothing to report"; "Needs attention" and "Error to fix" stay; and to question (c2): Facing's "Facing coverage complete (verified path geometry)" becomes "Facing covered the end faces it was asked to; the simulation shows what it removed", with "check" and "check result" for "certify" and "certificate" (OI-2097, built in step 5). To question (d): the lane picks the topic names from section 3's examples and the inventory, and the owner reviews the full list in step 3's pull request. To question (e), with its clarification: a rapid that removes material is shown in Messages as a warning to acknowledge, and short blocks left in the program in Report mode stay a warning and are shown in Messages too, marking the operation, as every warning is. To question (f): the command-line help text comes into this record (step 4); the setup sheet and the log, About and crash texts stay out (OI-2099). All six questions of 8 Nov 2026, (a) to (f), are answered.
   - **The owner's answer to question 1** (7 Nov 2026, relayed by the coordinator): the levels and the author's test are accepted in principle, with option B, so information is shown in the Results tab only and Messages keeps errors and warnings. Sections 1, 2 and 5 below follow that answer.
   - **The owner's clarification** (same message): a check whose finding may be a collision becomes a warning to acknowledge. That changes what the export does, so it is [decision 0538](0538-a-possible-collision-is-a-warning-to-acknowledge.md) (proposed), accepted separately.
   - **The owner's answers to questions 2 to 7** (7 Nov 2026, relayed by the coordinator), each the recommended option:
@@ -90,7 +90,7 @@ Two findings change what a check does, not only its level, so they are kept out 
 | **Error** (a refusal) | The action cannot be done, or its output would not match what the project asks for; nothing is made. | Stops that action only (generate, apply, write, open). | Red triangle; the item's Error mark. |
 | **Warning, to acknowledge** (GC-16) | Output is made but partial: the user accepts this result before its program is written. | The export dialog asks for the tick; the result is never called complete. | Amber triangle, with "Needs acknowledging". |
 | **Warning** | Output is made, but something about it may be a problem during machining or cause unexpected behaviour (the owner's rule). | Nothing is blocked; the item keeps the Warning mark while the cause stays. | Amber triangle. |
-| **Information** | The goal is still achieved, but a compromise or decision was made to get there (the owner's rule). | Nothing is blocked; the item's mark does not change. Shown in the Results tab only, not in Messages (the owner's answer to question 1). | Blue "i" in the Results tab; not counted on its label. |
+| **Information** | The goal is still achieved, but a compromise or decision was made to get there (the owner's rule). | Nothing is blocked; the item's mark does not change. Information about a generation or simulation run is shown in the Results tab only (the owner's answer to question 1). Information not about a run (a model's file notes, a model linked from outside the project folder, a finished export) is shown in Messages too, at the Information level (the owner's answer of 8 Nov 2026 to question (b), relayed by the coordinator, amending question 1). | Blue "i"; never counted on the Results or Messages label, and the item's mark is unchanged, so it never reads as a problem. |
 | **Status** (not a message) | The state of an item or a job: stale, running, finalising, up to date. | Shown on the item's mark, its tooltip, the footer and the Jobs tab, not in Messages. | Marks of specification section 6. |
 | **Confirmation** (not a message) | A question before the user's own action that cannot be undone or loses work. | Asks once and names what is lost; the default button is the one that loses nothing. | Dialog. |
 
@@ -137,7 +137,7 @@ When an author cannot tell a warning from information, it is a warning (NFR-12 l
 
 | Place | What it shows |
 | --- | --- |
-| **Messages panel** | Errors and warnings only, errors first (specification section 9), each with its topic-led text, source link and action link. A path note promoted to a warning is listed there too. Information is not shown in Messages (the owner's answer to question 1). The messages Messages shows as information today move to the Results tab or to their item: a model linked from outside the project folder (the model's row already says so) and a finished export (its report stays in the Results tab and the export dialog). |
+| **Messages panel** | Errors and warnings, errors first (specification section 9), each with its topic-led text, source link and action link. A path note promoted to a warning is listed there too. The information of a generation or simulation run is not shown in Messages (the owner's answer to question 1). Information not about a run stays in Messages at the Information level, after the warnings, with a blue "i", not counted on the label and with no effect on the item's mark: a model's file notes, a model linked from outside the project folder, and a finished export with "Show result" (the owner's answer of 8 Nov 2026 to question (b), relayed by the coordinator, amending question 1). |
 | **Results tab** | Every level: errors, warnings and information, each line at its message's own level, with the chips Errors, Warnings and Information (specification section 9). A path warning is no longer repeated as a "move 0" note; it is one warning line in the 0522 form. Information is where a compromise is read, after each run. |
 | **Operation mark and status chip** | Error or warning only. Information leaves the mark as it is. The inspector shows a refusal at the Error level, as Messages does. |
 | **Export checks** | Blocking, to acknowledge, and warning. Information is not repeated. Each line names its operation once and links to it. |
@@ -170,13 +170,13 @@ Each pull request is a draft, test first, pushed once at release (decision 0055)
 1. The library type and the message constructor, with the checks of item 6, and the workspace minor version bump.
 2. Path notes take their levels. The Results tab and the command line follow, and the notes that describe a real problem become warnings.
 3. The lead-in for every message, and "Show setting" with the setting key for every field kind.
-4. Setup, model, post and export messages: the form, the links, and the field labels in place of internal names (the machine editor's mapping, reused; OI-360).
+4. Setup, model, post and export messages: the form, the links, and the field labels in place of internal names (the machine editor's mapping, reused; OI-360). Also the command-line help text, in the same plain words and terms as the messages and the user guide's Command line page, with no requirement numbers or internal terms (the owner's answer of 8 Nov 2026 to question (f), relayed by the coordinator), and a rapid that removes material and Report-mode short blocks in Messages (OI-373).
 5. Interface: the lost status lines (OI-2098), error dialogs that name the action that failed, recovery messages at their level, and the NFR-12 wording (OI-2097).
 6. Decisions 0538, 0539 and 0540, each as its own pull request with its own tests, once the owner accepts it. 0538 comes after step 1, because it uses the library type. 0539 and 0540 can come at any time.
 
 ### 8. The lost status lines (the owner's answer to question 7)
 
-The status line of the interface shell is never drawn (OI-2098). Each text it holds is placed by the author's test of section 2. Information is shown in the Results tab only (question 1), and a reminder that loses work if it is missed is not information.
+The status line of the interface shell is never drawn (OI-2098). Each text it holds is placed by the author's test of section 2. A run's information is shown in the Results tab only (question 1), and a reminder that loses work if it is missed is not information.
 
 | Text today | Where | Test | Level and place |
 | --- | --- | --- | --- |
@@ -184,7 +184,7 @@ The status line of the interface shell is never drawn (OI-2098). Each text it ho
 | "Tool numbers changed. Undo with Ctrl Z; save the project to keep them." | `export_panel.rs:690` | the program just written uses the new numbers; unsaved, the project reopens with the old ones and the next program differs from the tool table (a machining problem) | **Warning** in Messages, on the tools, with the actions "Save" and "Undo", until saved or undone |
 | "Open or create a project before importing a model." | `shell.rs:2067` | the command did nothing | **Error dialog**: a command the user gave failed outright (specification section 9) |
 | "The selected geometry changed; select it again." | `shell/pending.rs:44` | the pick was dropped, so nothing was made | **Error** in Messages on the selection set, with "Reselect", until it is picked again, as for the other selection-set problems |
-| "Saved …", "Opened …", "Added …", "Copied n models into the project folder" | `shell.rs:556-557, 597, 820, 2047` | no compromise and no consequence | **Not a message**: left out. The title bar shows the save state, and the tree shows what was added |
+| "Saved …", "Opened …", "Added …", "Copied n models into the project folder" | `shell.rs:556-557, 597, 820, 2047` | no compromise and no consequence | **Not a message**: a finished entry in the **Jobs** tab only, never in Messages and never counted (the owner's answer of 8 Nov 2026, relayed by the coordinator; the lane had proposed leaving them out). The title bar still shows the save state, and the tree what was added |
 | Tool library and machine library lines ("Removed …", "Imported into …") | their windows | shown in the window's own line already | unchanged |
 
 The shell's unused status field is removed with them. The recovery notices in Messages stay warnings (losing recovery data is unexpected behaviour), except a checkpoint that could not be written, which is an error because the action failed.
@@ -212,7 +212,7 @@ The author's test of section 2 names 0538.
   - the changelogs.
 - Message texts change in the interface and on the command line. No project file, cache key or G-code changes.
 - OI-360 (internal names in library errors) is taken up by build step 4 and closes when it is done.
-- OI-373 (Results lines belong in Messages) is not closed, and the owner's answer to question 1 narrows it: warnings and errors reach Messages, while information belongs in the Results tab by design. The information rows Messages shows today move out of it (section 5).
+- OI-373 (Results lines belong in Messages) is not closed, and the owner's answers narrow it: warnings and errors reach Messages, while a run's information belongs in the Results tab by design (question 1), and information not about a run stays in Messages (question (b), 8 Nov 2026). What is left is the run's warnings that reach only the Results tab and the export checks: a rapid that removes material reaches Messages as a warning to acknowledge, and short blocks left in the program in Report mode as a warning, each marking its operation (question (e) and its clarification, 8 Nov 2026). Step 4 closes it.
 - Decisions 0538, 0539 and 0540 change what the export, workholding Apply and the command line do. Each has its own test plan and is accepted on its own.
 
 ## Open items
@@ -222,8 +222,50 @@ The author's test of section 2 names 0538.
 | OI-2094 | The owner's answers to this record: the level policy, the one form, the links and the mechanism. Closed on 7 Nov 2026: answered (questions 1 to 7) and the record accepted. |
 | OI-2095 | Workholding Apply refuses on findings that generation only warns of (an automatic tab with no room, tabs that overlap): decision 0539. |
 | OI-2096 | The command line writes G-code before it reports failed checks, and leaves the files when it exits with an error: decision 0540. |
-| OI-2097 | NFR-12 wording to remove: "verified path geometry", "certify", "certificate", "Good to go", "No overcut". |
+| OI-2097 | NFR-12 wording to remove: "verified path geometry", "certify", "certificate", "Good to go", "No overcut". The owner's answers of 8 Nov 2026 (relayed by the coordinator): (c) the overall status badge's "Good to go" becomes "Nothing to report", and "Needs attention" and "Error to fix" stay; (c2) "Facing coverage complete (verified path geometry)" becomes "Facing covered the end faces it was asked to; the simulation shows what it removed", and "certify" and "certificate" in the Facing check's texts become "check" and "check result". Built in step 5. |
 | OI-2098 | The shell's status line is never drawn, so its confirmations and refusals reach nobody. Answered (question 7, A): section 8; built in step 5. |
-| OI-2099 | Outside this record unless the owner says otherwise: the command-line help text, the setup sheet (it shows no warnings; GC-12 does not ask for them), and the log, About and crash texts, which keep the log crate's levels. |
+| OI-2099 | Outside this record (the owner's answer of 8 Nov 2026 to question (f), relayed by the coordinator): the setup sheet (it shows no warnings; GC-12 does not ask for them), and the log, About and crash texts, which keep the log crate's levels. The command-line help text comes in, in step 4. |
 | OI-2100 | Decision 0538: the owner's acceptance of the rule that a possible collision is a warning to acknowledge, its "?" rows answered on 7 Nov 2026 (questions 8 to 10). Closed on 7 Nov 2026: decision 0538 accepted. |
 | OI-2101 | Decision 0538's tests in the verification plan: the GC-16 entry gains the collision acknowledgements, when 0538 is built. |
+
+## Verification
+
+### Build step 2
+
+Built by lane MSGREVIEW on `claude/lane-msgreview-step2`, from `main` at `77479c85`, with `main` at `3b99ea23` (decision 0538) merged in. Run in the session's Linux container with `cargo nextest run`, uninstrumented.
+
+What changed:
+
+- **Path notes that describe a problem are warnings**, with their wording unchanged: the rows marked for it in the [path inventory](../message-review/path.md) (P41, P46, P47, P52, P53, P59, P61, P63 to P66, P71), and in the application P42 (rest machining with no earlier operation). P53 and P54 to P57 come from `parameter_warnings`.
+- **The run's messages keep their level.** An operation's notes and `Regeneration::notes` are information only. A warning is no longer copied into the notes, so it appears once, in the form of decision 0522, and never as a "move 0" note. The prefix "move N:" is written only when the message has a move (#622). The run's own warnings (a rapid that removes material, enclosed material, short blocks in Report mode) are in `Regeneration::warnings`.
+- **Results tab** (section 5): each line takes its message's level. The feed-limit summary replaces the per-move lines (decision 0430), and the summarising moved to `note_groups::information`, so the interface and the command line share it.
+- **Command line:** `validate`, `regenerate` and `simulate` print each warning as `warning:` and each note as `note:`, with the same feed-limit summary.
+- **Issue #600:** a move that turns A with the contact point at the rotary axis no longer reads "the contact feed is 0.0 mm/min". Its note says the axis's speed limit sets how long the move takes.
+
+The owner's answers on the rows marked "?" (8 Nov 2026, relayed by the coordinator, one question at a time). Until each answer came, the row was a warning, on the coordinator's ruling (NFR-12: nothing that may be a problem is shown less). Each answer is its own commit:
+
+- **Q-A, P48:** indexed finishing's passes run on past the part's ends. Information: it stays a note.
+- **Q-B, P49:** the stock ends at the part's end, so there is nothing to face. Information.
+- **Q-C, P50:** how a free end is faced down to the rotary axis is information. That it is faced from the setup's own stock, which the real blank must match, is a warning of its own.
+- **Q-D, P54 to P57:** edge following says a setting is not used. Information. P53, an ignored scallop height, stays a warning.
+- **Q-E, P74:** simultaneous finishing's passes over surfaces hidden from the drive are information. That the tool holder is not checked on them is a warning of its own, with nothing to acknowledge.
+- **Q-F, P75j:** swarf's "the shank, the holder and other faces were not checked". Information: it stays in swarf's per-face description.
+- **Q-G, P76:** the application's notes. The stock to leave applied differently and the reach limit are warnings. The contact note is information, except its "Exact STEP surface contact does not apply" variant, which is a warning.
+
+The [path inventory](../message-review/path.md) records each answer on its row.
+
+Not done in this step: P75c (swarf's tool end reaching past the rulings) stays a sentence in swarf's per-face description. Whether it should be said at all when the tool is lifted clear is issue #624.
+
+Tests, each named by requirement:
+
+- **Levels:** `operation::tests::req_ui_12_req_op_09_rest_machining_with_no_earlier_operation_is_a_warning`, `req_ui_12_req_op_04_an_ignored_scallop_height_is_a_warning` and `req_ui_12_req_op_27_exact_contact_that_does_not_apply_is_a_warning`. The swarf tests check that the warning is not also in the notes and that no line starts "move 0:". Each promoted path row's own test reads it from the warnings.
+- **Results tab:** `run_panel::tests::req_ui_12_each_results_line_takes_its_own_level`.
+- **Command line:** `e2e::req_ui_12_cli_prints_each_run_message_at_its_level` uses the cone example. It prints one `note:` feed-limit summary, no per-move feed lines and no `warning:`. `tests::req_ui_12_the_command_line_groups_notes_about_consecutive_moves_as_results_does` checks that notes about consecutive moves with the same wording are one `note:` line, as in the Results tab. On the baluster example, `regenerate` printed 72 separate turn-at-the-axis notes (#600) before this change, and prints one line after it.
+- **Issue #600:** `req_op_13_req_ui_12_a_turn_at_the_rotary_axis_never_reads_as_a_feed_of_zero`.
+- **Tests that read a moved message**, now reading it from the warnings: rest machining, Report-mode short blocks, enclosed material, the selection's stock to leave, the held region beside a tab, and exact contact on a flat end with stock to leave. The tests of P48, P49, P50, P54 to P57 and P74 check each owner answer, including `req_ui_12_req_op_08_an_edge_following_setting_it_does_not_use_is_information`.
+- **Suites:** before `main` was merged, `openchuck-path`, `openchuck-app`, `openchuck-ui`, `openchuck-cli`, `openchuck-sim` and `xtask` together ran 2,687 tests: 2,678 passed and 9 failed, all of them tests that read a moved message. Those 9 were updated. After merging `main` (decision 0538), the same crates without `openchuck-sim` ran 2,620 tests, all passing (3 skipped). `cargo clippy --workspace --all-targets` is clean, and `cargo xtask records`, `trace`, `deps` (with `messages`) and `licences` pass.
+
+Not verified here:
+
+- The STEP kernel tests (`kernel-tests`) cannot be built in this container. Their reads of the moved messages were checked by hand (the pencil test reads its corner warning from the warnings), and CI's STEP kernel jobs are the check.
+- The Results tab's colours in the running application; the interface unit tests cover the levels.

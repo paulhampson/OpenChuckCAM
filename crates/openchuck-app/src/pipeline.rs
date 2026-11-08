@@ -111,8 +111,18 @@ pub struct Regeneration {
     pub groups: Vec<GroupInfo>,
     /// Generated G-code files as (file name, contents), in output order.
     pub gcode: Vec<(String, String)>,
-    /// Notes about the toolpaths, each naming its operation, in order.
+    /// Information about the toolpaths, each naming its operation, in order:
+    /// the goal was met, with a compromise or a decision the user may want to
+    /// know (decision 0536 section 1). Shown in the Results tab, and as
+    /// `note:` on the command line. An operation's warnings are in its
+    /// group (`groups[].warnings`), not here.
     pub notes: Vec<String>,
+    /// The run's own warnings, not one operation's: material no tool can
+    /// reach, a rapid that removes material, short blocks left in the
+    /// program. Each may be a problem during machining (decision 0536
+    /// section 1). Shown in the Results tab, and as `warning:` on the command
+    /// line.
+    pub warnings: Vec<String>,
     /// What the machine's feed limits did to each operation's feed, by
     /// operation, in machining order; only operations they slowed appear
     /// (issue 432). Read from the same notes as `notes`, which are unchanged
@@ -163,6 +173,36 @@ pub struct Regeneration {
     /// colours read the stock, the cell size and the part from here, so they
     /// match the run even if the project has been edited since.
     pub project: Arc<Project>,
+}
+
+impl Regeneration {
+    /// Each operation's warnings in this run, in machining order, each said
+    /// once: in the form of decision 0522 (`<Topic> (operation '<name>',
+    /// tool '<tool>'): ...`) where the warning has one, else after
+    /// `Operation '<name>': ` (decision 0536 section 5). The operation is
+    /// named as it is in `project`, or as it was in the run if it has since
+    /// been removed.
+    pub fn operation_warnings(&self, project: &Project) -> Vec<String> {
+        let mut out = Vec::new();
+        for group in &self.groups {
+            let Some(operation) = project
+                .operation(group.operation)
+                .or_else(|| self.project.operation(group.operation))
+            else {
+                continue;
+            };
+            for warning in &group.warnings {
+                let sentence = warning.sentence();
+                let text = crate::operation::warning_text(project, operation, &sentence);
+                out.push(if text == sentence {
+                    format!("Operation '{}': {sentence}", operation.name)
+                } else {
+                    text
+                });
+            }
+        }
+        out
+    }
 }
 
 /// How an operation's playback checkpoints are spaced while the pipeline
@@ -438,7 +478,7 @@ pub(crate) fn regenerate(
                 .map(|s| s.last_rapid_cuts())
                 .unwrap_or_default();
             for cut in cuts {
-                regeneration.notes.push(format!(
+                regeneration.warnings.push(format!(
                     "operation '{}': move {} is a rapid that removes {:.3} mm3 of material",
                     operation.name, cut.segment, cut.volume
                 ));
@@ -529,7 +569,7 @@ pub(crate) fn regenerate(
             // Material no tool can reach is a warning, once per setup
             // (SIM-05, NFR-12; issue 478).
             if let Some(summary) = finished.reach.as_ref().and_then(|r| r.enclosed.as_ref()) {
-                regeneration.notes.push(summary.warning(&finished.setup));
+                regeneration.warnings.push(summary.warning(&finished.setup));
             }
             report.setups.push(finished);
             own.finish();
@@ -554,6 +594,7 @@ pub(crate) fn regenerate(
         regeneration.gcode = posted.files;
         regeneration.reports = posted.reports;
         regeneration.notes.extend(posted.notes);
+        regeneration.warnings.extend(posted.warnings);
         regeneration.short_blocks = posted.short_blocks;
         regeneration.effective_short_blocks = posted.settings;
         regeneration.posted_toolpath = Some(posted.toolpath);

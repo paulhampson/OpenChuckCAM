@@ -194,6 +194,8 @@ pub(crate) fn free_ends(
         Some((lo, _)) => lo >= e.face - tolerance,
         None => false,
     }) {
+        // Information: there is nothing to face (decision 0536 step 2, the
+        // owner's answer to question Q-B; P49).
         out.notes.push(format!(
             "the stock ends at the part's end at X {:.3}: there is no stock past this end to \
              face. If the real blank is longer, set the stock's length to match it",
@@ -357,19 +359,21 @@ pub(crate) fn free_ends(
             });
         }
         let (from, to) = (end.x - radius, end.x + radius);
-        let source = if stock.left_by_earlier_operations() {
-            String::new()
-        } else {
-            format!(
-                ", from {top:.3} mm, the top of the setup's own stock with no earlier \
-                 operation in this setup: the real blank must match it"
-            )
-        };
+        // How the end is faced is information; that it is faced from the
+        // setup's own stock, which the real blank must match, is a warning of
+        // its own (decision 0536 step 2, the owner's answer to question Q-C;
+        // P50).
         out.notes.push(format!(
             "the end face at X {face:.3} has nothing beyond it: the tool goes down beside it \
              in {layers} layers of {stepdown} mm to the rotary axis, turning once round the \
-             axis in each{source}"
+             axis in each"
         ));
+        if !stock.left_by_earlier_operations() {
+            out.warnings.push(Notice::warning(format!(
+                "the end face at X {face:.3} is faced from {top:.3} mm, the top of the setup's \
+                 own stock with no earlier operation in this setup: the real blank must match it"
+            )));
+        }
         rings.push((end.x, face, end.far, from.min(to), from.max(to)));
         // Stock past the ring that no held region past it grips: a cheap test
         // of whether there is any, not of whether it is joined to the rest
@@ -591,10 +595,10 @@ fn push_run(out: &mut Vec<Pass>, points: Vec<CutPoint>) {
 /// tool pointing at the axis, so it reaches such a face only with the side
 /// of the tool. "Wholly" is 99% of the region's area on faces whose normal
 /// is within 10 degrees of the axis.
-pub(crate) fn across_axis_note(
+pub(crate) fn across_axis_warning(
     region: Option<&crate::region::RegionConstraint<'_>>,
     strategy: &str,
-) -> Option<String> {
+) -> Option<Notice> {
     let mesh = region?.region?.tessellation();
     let cos = 10.0_f64.to_radians().cos();
     let (mut across, mut total) = (0.0, 0.0);
@@ -618,11 +622,11 @@ pub(crate) fn across_axis_note(
         }
     }
     (total > 0.0 && across >= 0.99 * total).then(|| {
-        format!(
+        Notice::warning(format!(
             "the selected faces lie across the rotary axis. {strategy} cuts with the tool \
              pointing at the axis, so it reaches such a face only with the side of the tool, in \
              one turn where the part lies on both sides of it. To face the end of the part or \
              the stock, use Facing with Shape End"
-        )
+        ))
     })
 }
