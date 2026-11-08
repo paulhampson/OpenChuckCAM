@@ -950,14 +950,21 @@ fn run(
         } else {
             "the tool above its flutes is taken as no wider than its cutting part"
         };
-        // The holder is not checked: a warning until the owner answers
-        // (decision 0536 step 2, interim, question Q-E; path inventory P74).
-        hidden_warning = Some(Notice::warning(format!(
+        // The passes are information, and that the holder is not checked on
+        // them is a warning of its own, with nothing to acknowledge (decision
+        // 0536 step 2, the owner's answer to question Q-E; path inventory
+        // P74).
+        notes.push(format!(
             "surfaces hidden from the drive (such as the walls of a slot, an undercut, or sides \
              of the section facing each other) between X {:.3} and {:.3} are finished with \
              passes of their own after the main ones, the tool leaning from the surface normal \
              as little as the part lets it reach them: up to {:.1} degrees (at X {x:.3}, \
-             A {a:.3}); {shank}; the tool holder is not checked",
+             A {a:.3}); {shank}",
+            hidden_x.0, hidden_x.1, findings.lean
+        ));
+        hidden_warning = Some(Notice::warning(format!(
+            "the tool holder is not checked on the passes that finish the surfaces hidden from \
+             the drive between X {:.3} and {:.3}, where the tool leans up to {:.1} degrees",
             hidden_x.0, hidden_x.1, findings.lean
         )));
     }
