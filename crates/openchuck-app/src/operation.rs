@@ -934,7 +934,9 @@ fn generate_unnamed(
     // Notes about the values come first, then the notes about moves. They
     // are information: the goal is met (decision 0536 section 1).
     let mut notes: Vec<String> = resolved.notes;
-    notes.extend(leave_notes);
+    // A stock to leave other than the operation's: a warning until the owner
+    // answers (decision 0536 step 2, interim, question Q-G; P76).
+    warnings.extend(leave_notes.into_iter().map(openchuck_path::Notice::warning));
     // On a STEP part, the surface the tool was dropped on (decision 0209
     // item 4.4, OI-830; NFR-12).
     if placed.brep.is_some()
@@ -948,10 +950,20 @@ fn generate_unnamed(
     {
         notes.push(note);
     }
-    notes.extend(reach_notes);
+    // A selection that reaches a region never machined leaves it uncut: a
+    // warning until the owner answers (decision 0536 step 2, interim,
+    // question Q-G; P76).
+    warnings.extend(reach_notes.into_iter().map(openchuck_path::Notice::warning));
     // The registry's strategy: a B-rep edge source uses the crease angle and
-    // the shortest chain, so the warning that they are not used does not apply.
-    notes.extend(registry_strategy.parameter_warnings(&profile, &parameters));
+    // the shortest chain, so the warning that they are not used does not
+    // apply. A setting the operation ignores is a warning (P53; P54 to P57
+    // until the owner answers, question Q-D).
+    warnings.extend(
+        registry_strategy
+            .parameter_warnings(&profile, &parameters)
+            .into_iter()
+            .map(openchuck_path::Notice::warning),
+    );
     // Rest machining and pencil clean-up work on what earlier operations
     // left (OP-09, SIM-06); against the setup's own stock the whole part has
     // material left, which is rarely what was meant: a warning (decision
@@ -3838,6 +3850,31 @@ mod tests {
         let f = bar_fixture(openchuck_path::rest::NAME, "bar.stl");
         let path = f.run().unwrap();
         let said = "cleans up material that earlier operations left";
+        assert!(
+            path.warnings.iter().any(|w| w.text.contains(said)),
+            "{:?}",
+            path.warnings
+        );
+        assert!(
+            !path.notes.iter().any(|n| n.contains(said)),
+            "{:?}",
+            path.notes
+        );
+    }
+
+    /// A setting the operation's tool cannot use is a warning, not a note
+    /// (decision 0536 step 2, path inventory P53): a scallop height with a
+    /// flat end mill, which only a ball or bull-nose end can work out.
+    #[test]
+    fn req_ui_12_req_op_04_an_ignored_scallop_height_is_a_warning() {
+        let mut f = bar_fixture_with(openchuck_path::helical::NAME, "bar.stl", ToolShape::FlatEnd);
+        let mut operation = f.project.operation(f.operation).unwrap().clone();
+        operation
+            .parameters
+            .insert("scallop".to_owned(), Value::Number(0.1));
+        f.project.replace(Item::Operation(operation)).unwrap();
+        let path = f.run().unwrap();
+        let said = "the scallop height of 0.1 mm is ignored";
         assert!(
             path.warnings.iter().any(|w| w.text.contains(said)),
             "{:?}",

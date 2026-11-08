@@ -310,12 +310,15 @@ fn req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in(
     assert!(
         path.warnings()
             .iter()
-            .all(|w| w.text.starts_with("some moves leave up to")),
+            .all(|w| w.text.starts_with("some moves leave up to")
+                || w.text.contains("hidden from the drive")),
         "{:?}",
         path.warnings()
     );
+    // It says the tool holder is not checked: a warning until the owner
+    // answers (decision 0536 step 2, interim; P74).
     assert!(
-        path.notices
+        path.warnings()
             .iter()
             .any(|n| n.text.contains("hidden from the drive")),
         "{:?}",

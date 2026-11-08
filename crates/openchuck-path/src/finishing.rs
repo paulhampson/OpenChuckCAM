@@ -194,11 +194,13 @@ pub(crate) fn free_ends(
         Some((lo, _)) => lo >= e.face - tolerance,
         None => false,
     }) {
-        out.notes.push(format!(
+        // A warning until the owner answers: it may hide a stock length set
+        // wrong (decision 0536 step 2, interim, question Q-B; P49).
+        out.warnings.push(Notice::warning(format!(
             "the stock ends at the part's end at X {:.3}: there is no stock past this end to \
              face. If the real blank is longer, set the stock's length to match it",
             e.face
-        ));
+        )));
     }
     let ends: Vec<&FreeEnd> = ends
         .iter()
@@ -365,11 +367,19 @@ pub(crate) fn free_ends(
                  operation in this setup: the real blank must match it"
             )
         };
-        out.notes.push(format!(
+        let text = format!(
             "the end face at X {face:.3} has nothing beyond it: the tool goes down beside it \
              in {layers} layers of {stepdown} mm to the rotary axis, turning once round the \
              axis in each{source}"
-        ));
+        );
+        // Said as the real blank must match the setup's own stock, it is a
+        // warning until the owner answers (decision 0536 step 2, interim,
+        // question Q-C; P50); otherwise information.
+        if source.is_empty() {
+            out.notes.push(text);
+        } else {
+            out.warnings.push(Notice::warning(text));
+        }
         rings.push((end.x, face, end.far, from.min(to), from.max(to)));
         // Stock past the ring that no held region past it grips: a cheap test
         // of whether there is any, not of whether it is joined to the rest

@@ -1053,9 +1053,10 @@ fn req_op_04_req_op_21_indexed_finishing_faces_the_ends_beside_a_short_tab() {
     }
     let cut = deepest(&job.left(&path, &[tab_surfaces(0.1)], 3.0)[0]);
     assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
-    // The note says the passes ran on past both ends of the part.
+    // A warning says the passes ran on past both ends of the part: until
+    // the owner answers, a warning (decision 0536 step 2, interim; P48).
     assert!(
-        path.notices
+        path.warnings()
             .iter()
             .any(|n| n.text.contains("past both ends")),
         "{:?}",
@@ -1234,6 +1235,15 @@ fn messages(path: &GeneratedPath) -> String {
         .join("\n")
 }
 
+/// The warnings of `path`, one a line.
+fn warnings(path: &GeneratedPath) -> String {
+    path.warnings()
+        .iter()
+        .map(|n| n.text.clone())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
 fn req_op_04_req_op_09_a_free_end_is_faced_in_layers_down_to_the_axis() {
     // Decision record 0344: with Face free ends on (the default), a Stepdown
@@ -1309,7 +1319,9 @@ fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
         .filter(|t| (t - x).abs() < 1e-6)
         .count();
     assert_eq!(turns, 6);
-    let text = messages(&path);
+    // The variant that says the real blank must match the setup's stock is
+    // a warning until the owner answers (decision 0536 step 2, interim; P50).
+    let text = warnings(&path);
     assert!(
         text.contains("X 0.000")
             && text.contains("the setup's own stock")
@@ -1732,7 +1744,9 @@ fn req_op_04_a_free_end_flush_with_the_stock_says_there_is_nothing_past_it() {
         &RestMachining,
     ] {
         let path = job.path(strategy, &[("stepdown", 2.0)]);
-        let text = messages(&path);
+        // A warning until the owner answers (decision 0536 step 2, interim;
+        // P49).
+        let text = warnings(&path);
         assert!(
             text.contains(
                 "the stock ends at the part's end at X 30.000: there is no stock past this \

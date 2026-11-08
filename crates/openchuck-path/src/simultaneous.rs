@@ -943,20 +943,23 @@ fn run(
     }
     notes.extend(ring_note);
     notes.extend(faces::note(&turned));
+    let mut hidden_warning = None;
     if let Some((x, a)) = findings.lean_at {
         let shank = if plan.body.is_some() {
             "the shank, wider than the cutting part, is kept clear of the part, as on every pass"
         } else {
             "the tool above its flutes is taken as no wider than its cutting part"
         };
-        notes.push(format!(
+        // The holder is not checked: a warning until the owner answers
+        // (decision 0536 step 2, interim, question Q-E; path inventory P74).
+        hidden_warning = Some(Notice::warning(format!(
             "surfaces hidden from the drive (such as the walls of a slot, an undercut, or sides \
              of the section facing each other) between X {:.3} and {:.3} are finished with \
              passes of their own after the main ones, the tool leaning from the surface normal \
              as little as the part lets it reach them: up to {:.1} degrees (at X {x:.3}, \
              A {a:.3}); {shank}; the tool holder is not checked",
             hidden_x.0, hidden_x.1, findings.lean
-        ));
+        )));
     }
     let shank_breaks = places(std::mem::take(&mut findings.shank_breaks));
     let mut warnings: Vec<Notice> = unreached_warning(
@@ -969,6 +972,7 @@ fn run(
     .chain(under_warning(findings.under))
     .chain(faces::held_warning(&held))
     .chain(faces::corner_warning(&corners, input.tool.cutting_radius()))
+    .chain(hidden_warning)
     .collect();
     if let Some((settings, outcome)) = &spaced {
         notes.push(outcome.note(settings));

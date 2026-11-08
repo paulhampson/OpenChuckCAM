@@ -18,6 +18,7 @@ use openchuck_types::units::Degrees;
 use crate::adaptive::{self, Counting, Family, Interval, Pose, Track};
 use crate::axial::{AlongX, parameter as axial_parameter};
 use crate::error::{PathError, Result};
+use crate::notice::Notice;
 use crate::params::{
     MAX_ANGLES, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names,
 };
@@ -212,7 +213,12 @@ impl Strategy for IndexedFinishing {
 /// The passes made, with their notes.
 fn output(made: Made) -> Result<StrategyOutput> {
     let (x0, x1) = made.range;
-    let mut warnings = Vec::new();
+    // The passes running on past the ends: a warning until the owner answers
+    // (decision 0536 step 2, interim, question Q-A; P48).
+    let mut warnings: Vec<Notice> = beyond_note(&made.passes, x0, x1)
+        .map(Notice::warning)
+        .into_iter()
+        .collect();
     let mut spaced = None;
     if let Some((settings, outcome)) = &made.spaced {
         spaced = Some(outcome.note(settings));
@@ -223,13 +229,7 @@ fn output(made: Made) -> Result<StrategyOutput> {
         ));
     }
     Ok(StrategyOutput {
-        notices: crate::strategy::notices(
-            warnings,
-            beyond_note(&made.passes, x0, x1)
-                .into_iter()
-                .chain(spaced)
-                .chain(made.layered),
-        ),
+        notices: crate::strategy::notices(warnings, spaced.into_iter().chain(made.layered)),
         passes: made.passes,
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
