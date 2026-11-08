@@ -156,6 +156,12 @@ enum Action {
         /// place; the warning says where). It acknowledges this run only.
         #[arg(long)]
         acknowledge_partial_path: bool,
+        /// Write the files of this run even though they hold possible
+        /// collisions of the tool, its shank or its holder (such as stock
+        /// past the flutes or a tab shorter than the tool; the warnings say
+        /// where). It acknowledges this run only; read each warning first.
+        #[arg(long)]
+        acknowledge_collision_warnings: bool,
     },
     /// Regenerate and simulate material removal for every operation, then
     /// compare the stock left with each setup's part (SIM-03, SIM-05 to
@@ -600,6 +606,7 @@ fn run(cli: Cli) -> Result<()> {
             grouping,
             setup_sheet,
             acknowledge_partial_path,
+            acknowledge_collision_warnings,
         } => {
             let mut app = open_project(&project, threads, create)?;
             if setup_sheet && out.is_none() {
@@ -706,6 +713,24 @@ fn run(cli: Cli) -> Result<()> {
                         .map(|n| format!("'{n}'"))
                         .collect::<Vec<_>>()
                         .join(", ")
+                );
+            }
+            // Possible collisions are written only when this run is
+            // acknowledged (decision record 0538). A flag asks nothing, so the
+            // command line still runs unattended (GC-16).
+            let collisions = openchuck_app::collision_warnings(app.project(), &result);
+            if out.is_some() && !collisions.is_empty() {
+                if !acknowledge_collision_warnings {
+                    anyhow::bail!(
+                        "{} Pass --acknowledge-collision-warnings to write them.",
+                        openchuck_app::collision_refusal(&collisions)
+                    );
+                }
+                eprintln!(
+                    "warning: writing with {} possible collision{} acknowledged for this run: \
+                     check each before running the program",
+                    collisions.len(),
+                    if collisions.len() == 1 { "" } else { "s" }
                 );
             }
             if let Some(out) = &out {

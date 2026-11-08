@@ -1529,6 +1529,92 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Decision 0538: a possible collision is a warning to acknowledge. The
+/// export lists it, writing waits for the tick of this result, the files are
+/// the same bytes once ticked (GC-07), and a collision is never called a
+/// partial path; an ordinary warning asks for no tick.
+#[test]
+fn req_gc_16_a_possible_collision_is_written_only_once_this_result_is_acknowledged() {
+    let (dir, mut app) = project("collision", false);
+    let plain = std::sync::Arc::new(post(&mut app, OutputGrouping::Setup));
+    let mut run = post(&mut app, OutputGrouping::Setup);
+    let message = "Flute length: the stock stands up to 3.000 mm above the tool's tip";
+    run.groups[0].warnings.push(
+        openchuck_path::Notice::warning(message.to_owned())
+            .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision),
+    );
+    let name = app
+        .project()
+        .operation(run.groups[0].operation)
+        .unwrap()
+        .name
+        .clone();
+    // Listed in the checks, which still allow writing, and not partial.
+    let checks = app.export_checks(Some(&run), None, None);
+    assert!(checks.can_write(), "{:?}", blockers(&checks));
+    let w = warnings(&checks);
+    assert!(
+        w.iter().any(
+            |t| t.contains(&format!("'{name}' has a possible collision"))
+                && t.contains("the stock stands up to 3.000 mm")
+        ),
+        "{w:?}"
+    );
+    assert!(openchuck_app::partial_operations(app.project(), &run).is_empty());
+    let found = openchuck_app::collision_warnings(app.project(), &run);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].contains(&format!("operation '{name}'")),
+        "{found:?}"
+    );
+    // Writing waits for the tick.
+    let run = std::sync::Arc::new(run);
+    let out = folder("collision-out");
+    let mut plan = app.prepare_output(&out, &run).unwrap();
+    assert_eq!(plan.collisions(), found.as_slice());
+    assert!(!plan.collisions_acknowledged());
+    let refused = app.write_output(&plan, false);
+    assert!(refused.written.is_empty());
+    let reason = &refused.failed.as_ref().unwrap().reason;
+    assert!(
+        reason.contains("possible collision") && reason.contains(&name),
+        "{reason}"
+    );
+    assert!(!out.exists(), "nothing is written");
+    plan.acknowledge_collisions();
+    let report = app.write_output(&plan, false);
+    assert!(report.is_complete(), "{report:?}");
+    // The same bytes as a run with no warning (GC-07).
+    let plain_out = folder("collision-plain-out");
+    let plain_plan = app.prepare_output(&plain_out, &plain).unwrap();
+    assert!(app.write_output(&plain_plan, false).is_complete());
+    for path in plan.paths() {
+        let file = path.file_name().unwrap();
+        if file.to_string_lossy().ends_with(".pdf") || file.to_string_lossy().ends_with(".html") {
+            continue;
+        }
+        assert_eq!(
+            std::fs::read(path).unwrap(),
+            std::fs::read(plain_out.join(file)).unwrap(),
+            "{}",
+            path.display()
+        );
+    }
+    // A plan made again starts unacknowledged.
+    std::fs::remove_dir_all(&out).unwrap();
+    let again = app.prepare_output(&out, &run).unwrap();
+    assert!(!again.collisions_acknowledged());
+    assert!(app.write_output(&again, false).failed.is_some());
+    // An ordinary warning asks for no tick.
+    let mut ordinary = post(&mut app, OutputGrouping::Setup);
+    ordinary.groups[0]
+        .warnings
+        .push(openchuck_path::Notice::warning("a warning".to_owned()));
+    assert!(openchuck_app::collision_warnings(app.project(), &ordinary).is_empty());
+    std::fs::remove_dir_all(&plain_out).ok();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// Issue 379: naming from the run's kept split gives the same files as the
 /// one-step `output_files`, for every template, and the program text the split
 /// holds is the run's own (GC-07: only names change).

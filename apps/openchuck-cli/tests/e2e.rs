@@ -1337,3 +1337,71 @@ fn req_gc_15_cli_prints_the_export_warnings() {
     assert!(std::fs::read_dir(&out).unwrap().next().is_some());
     std::fs::remove_dir_all(root).ok();
 }
+
+/// A possible collision (decision record 0538) is written from the command
+/// line only with `--acknowledge-collision-warnings`, which acknowledges that
+/// run alone: without it nothing is written and the refusal names the
+/// operation and the flag. A flag asks nothing, so the command line still
+/// runs unattended (GC-16).
+#[test]
+fn req_gc_16_cli_writes_a_possible_collision_only_when_acknowledged() {
+    let root = scratch("collision");
+    let project = &write_projects(&root, &["cone".to_owned()]).unwrap()[0];
+    cli_ok(&["resave".as_ref(), project.as_os_str()]);
+    // Flutes far shorter than the stock stands above the tool: the flute
+    // check warns of a possible collision of the shank with the stock.
+    let tools = project.join("tools");
+    let file = std::fs::read_dir(&tools)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("flute_length = 8.0"), "{text}");
+    std::fs::write(
+        &file,
+        text.replace("flute_length = 8.0", "flute_length = 1.6"),
+    )
+    .unwrap();
+    let out = root.join("out");
+    let args = |acknowledge: bool| {
+        let mut a: Vec<OsString> = [
+            "regenerate",
+            &project.to_string_lossy(),
+            "--post",
+            "linuxcnc",
+            "--tool-numbers",
+            "keep",
+            "--out",
+            &out.to_string_lossy(),
+        ]
+        .iter()
+        .map(OsString::from)
+        .collect();
+        if acknowledge {
+            a.push("--acknowledge-collision-warnings".into());
+        }
+        a
+    };
+    let refused = cli(&args(false));
+    assert_ne!(refused.code, Some(0), "{}", refused.stdout);
+    assert!(
+        refused.stderr.contains("possible collision")
+            && refused.stderr.contains("'Finish'")
+            && refused.stderr.contains("--acknowledge-collision-warnings"),
+        "{}",
+        refused.stderr
+    );
+    assert!(!out.exists(), "nothing is written");
+    let written = cli_ok(&args(true));
+    assert!(
+        written
+            .stderr
+            .contains("possible collision acknowledged for this run"),
+        "{}",
+        written.stderr
+    );
+    assert!(std::fs::read_dir(&out).unwrap().next().is_some());
+    std::fs::remove_dir_all(root).ok();
+}
