@@ -98,6 +98,8 @@ mod helical_faces;
 mod helical_rings;
 #[path = "indexed.rs"]
 mod indexed;
+#[path = "lead_follows.rs"]
+mod lead_follows;
 #[path = "pass_order.rs"]
 mod pass_order;
 #[path = "pathing.rs"]

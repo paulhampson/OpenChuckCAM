@@ -707,7 +707,7 @@ pub(crate) fn assemble_limited(
                 }
             }
         }
-        entry.exit(&mut b, common, input, i, points)?;
+        entry.exit(&mut b, common, input, stock, i, points, pass_rapids)?;
     }
 
     leave(

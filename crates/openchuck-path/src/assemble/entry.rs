@@ -41,6 +41,11 @@ use crate::params::{CommonParameters, EntryParameters, EntryStyle};
 use crate::rotary::AxisPosition;
 use crate::strategy::{CutPoint, StrategyInput};
 
+// The lead on a pass that turns A (decision 0544); a child module, so it
+// shares this module's checks.
+#[path = "lead.rs"]
+mod lead;
+
 /// The most segments one entry may take.
 const MAX_SEGMENTS: usize = 100_000;
 
@@ -138,23 +143,34 @@ impl Entry {
         }
         match self.style {
             EntryStyle::Plunge => plunge(b, stock, common, head),
-            EntryStyle::Lead => self.lead_in(b, input, stock, common, pass, head, points),
+            EntryStyle::Lead => match self.turning_lead_in(b, points, rapids) {
+                Some(sign) => {
+                    self.turning_lead_in_moves(b, input, stock, common, pass, points, rapids, sign)
+                }
+                None => self.lead_in(b, input, stock, common, pass, head, points),
+            },
             EntryStyle::Ramp => self.ramp(b, input, stock, common, pass, head, points, rapids),
             EntryStyle::Helix => self.helix(b, input, stock, common, pass, head, points),
         }
     }
 
     /// Moves from the pass's last point; only the `lead` style has one.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn exit(
         &self,
         b: &mut Builder<'_>,
         common: &CommonParameters,
         input: &StrategyInput<'_>,
+        stock: View<'_>,
         pass: usize,
         points: &[CutPoint],
+        rapids: &[usize],
     ) -> Result<()> {
         if self.style != EntryStyle::Lead {
             return Ok(());
+        }
+        if let Some(done) = self.turning_lead_out(b, input, stock, common, pass, points, rapids) {
+            return done;
         }
         let Some(last) = points.last() else {
             return Ok(());
@@ -225,6 +241,7 @@ impl Entry {
         // decision 0204).
         let Some(d) = direction_at_start(b, points) else {
             b.straight_plunges.push(pass);
+            lead::note_single_point(b, pass);
             return plunge(b, stock, common, head);
         };
         let r = self.lead_radius;
@@ -912,6 +929,9 @@ impl Entry {
         points: &[CutPoint],
         rapids: &[usize],
     ) -> Result<Option<CutPoint>> {
+        if let Some(start) = self.turning_lead_start(b, points, rapids) {
+            return Ok(Some(start));
+        }
         Ok(self
             .ring_plan(b, input, stock, common, pass, points, rapids)?
             .and_then(|plan| plan.start())

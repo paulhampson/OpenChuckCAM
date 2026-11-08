@@ -621,9 +621,17 @@ fn req_op_11_req_op_14_req_op_15_clear_pass_transitions_without_a_reset_preserve
             legacy.group.segments.windows(2).any(|pair| {
                 let from = fixture.rotary.to_axis(pair[0].end.tip, pair[0].end.a);
                 let to = fixture.rotary.to_axis(pair[1].end.tip, pair[1].end.a);
+                // A lead-out on these passes, which turn A, rises from the
+                // last point in the plane of the cut (decision 0544), so
+                // the link leaves from above the clearance.
+                let above = if style == "lead" {
+                    from.height >= fixture.clearance.radius.0 - 1e-9
+                } else {
+                    (from.height - fixture.clearance.radius.0).abs() < 1e-9
+                };
                 pair[0].kind == final_kind
                     && pair[1].kind == MoveKind::Rapid
-                    && (from.height - fixture.clearance.radius.0).abs() < 1e-9
+                    && above
                     && (from.height - to.height).abs() < 1e-9
                     && (from.along - to.along).abs() > 1.0
             }),
