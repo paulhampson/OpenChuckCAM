@@ -106,6 +106,19 @@ impl Entry {
         })
     }
 
+    /// Whether the pass starts by turning A with its tip on the rotary axis.
+    pub(super) fn starts_on_axis(
+        &self,
+        b: &Builder<'_>,
+        points: &[CutPoint],
+        rapids: &[usize],
+    ) -> bool {
+        matches!(
+            first_end(b, points, rapids, self.tolerance),
+            End::Turning { .. }
+        ) && self.on_axis(b, points.first())
+    }
+
     /// Whether this pass's lead-in is the lead of a pass that turns A.
     pub(super) fn turning_lead_in(
         &self,
@@ -413,7 +426,12 @@ impl Entry {
             return None;
         };
         if self.on_axis(b, points.last()) {
-            return None;
+            // A pass that also starts there was named by its entry's note,
+            // which says it has no lead-out.
+            if !self.starts_on_axis(b, points, rapids) {
+                note_axis_end(b, pass);
+            }
+            return Some(Ok(()));
         }
         Some((|| {
             let lead = self.arc_out(b, points, sign);
@@ -431,19 +449,62 @@ impl Entry {
 /// Notes that pass `pass` is a single point, entered by a plunge (0544
 /// item 4): one note names every such pass.
 pub(super) fn note_single_point(b: &mut Builder<'_>, pass: usize) {
+    note_passes(
+        b,
+        pass,
+        (
+            "pass ",
+            " is a single point, so it has no cut to lead into: it is entered by a straight \
+             plunge and has no lead-out",
+        ),
+        (
+            "passes ",
+            " are single points, so they have no cut to lead into: each is entered by a \
+             straight plunge and has no lead-out",
+        ),
+    );
+}
+
+/// Notes that pass `pass` starts by turning A with its tip on the rotary
+/// axis, entered by a plunge (decision 0543 point 2, the owner's answer,
+/// relayed).
+pub(super) fn note_axis_start(b: &mut Builder<'_>, pass: usize) {
+    note_passes(
+        b,
+        pass,
+        (
+            "pass ",
+            " starts on the rotary axis, where a lead arc has no plane to follow, so it is \
+             entered by a straight plunge and has no lead-out",
+        ),
+        (
+            "passes ",
+            " start on the rotary axis, where a lead arc has no plane to follow, so each is \
+             entered by a straight plunge and has no lead-out",
+        ),
+    );
+}
+
+/// Notes that pass `pass` ends by turning A with its tip on the rotary
+/// axis, where it has no lead-out.
+fn note_axis_end(b: &mut Builder<'_>, pass: usize) {
+    note_passes(
+        b,
+        pass,
+        ("pass ", " ends on the rotary axis, so it has no lead-out"),
+        (
+            "passes ",
+            " end on the rotary axis, so they have no lead-out",
+        ),
+    );
+}
+
+/// Adds pass `pass` to the one "Lead entry" note worded by `one` (for one
+/// pass) and `many` (for several), each a text before and after the list.
+fn note_passes(b: &mut Builder<'_>, pass: usize, one: (&str, &str), many: (&str, &str)) {
     use crate::notice::{Notice, topic};
-    const ONE: (&str, &str) = (
-        "pass ",
-        " is a single point, so it has no cut to lead into: it is entered by a straight \
-         plunge and has no lead-out",
-    );
-    const MANY: (&str, &str) = (
-        "passes ",
-        " are single points, so they have no cut to lead into: each is entered by a straight \
-         plunge and has no lead-out",
-    );
     let listed = |text: &str| {
-        [ONE, MANY].iter().find_map(|(head, tail)| {
+        [one, many].iter().find_map(|(head, tail)| {
             text.strip_prefix(head)
                 .and_then(|rest| rest.strip_suffix(tail))
                 .map(|list| list.split(", ").map(str::to_owned).collect::<Vec<_>>())
@@ -458,7 +519,7 @@ pub(super) fn note_single_point(b: &mut Builder<'_>, pass: usize) {
         .and_then(|n| listed(&n.text))
         .unwrap_or_default();
     passes.push((pass + 1).to_string());
-    let (head, tail) = if passes.len() == 1 { ONE } else { MANY };
+    let (head, tail) = if passes.len() == 1 { one } else { many };
     let text = format!("{head}{}{tail}", passes.join(", "));
     match found.and_then(|i| b.notes.get_mut(i)) {
         Some(note) => note.text = text,

@@ -708,12 +708,96 @@ fn req_op_11_a_turning_pass_with_its_tip_on_the_rotary_axis_is_plunged_with_a_no
     assert_eq!(kinds.iter().filter(|k| **k == MoveKind::Plunge).count(), 1);
     assert!(!kinds.contains(&MoveKind::LeadIn));
     assert!(!kinds.contains(&MoveKind::LeadOut));
+    // One note says so, in its own words (not "a single point"), and no
+    // second note for its end.
+    let lead: Vec<&str> = path
+        .notices
+        .iter()
+        .filter(|n| n.topic.as_deref() == Some("Lead entry"))
+        .map(|n| n.text.as_str())
+        .collect();
+    assert_eq!(lead.len(), 1, "{lead:?}");
+    assert!(
+        lead[0].starts_with("pass 1 starts on the rotary axis, where a lead arc has no plane"),
+        "{lead:?}"
+    );
+}
+
+#[test]
+fn req_op_11_a_turning_pass_that_ends_on_the_rotary_axis_has_no_lead_out_and_a_note() {
+    // A cut that spirals in to the axis: it starts off the axis and gets its
+    // lead-in, and ends on it, with no lead-out.
+    let f = cylinder();
+    let s = Inward;
+    let path = make(&f, &s, &lead_values(), &[]).unwrap();
+    let kinds: Vec<MoveKind> = path.group.segments.iter().map(|s| s.kind).collect();
+    assert!(kinds.contains(&MoveKind::LeadIn));
+    assert!(!kinds.contains(&MoveKind::LeadOut));
     assert!(
         path.notices
             .iter()
             .any(|n| n.topic.as_deref() == Some("Lead entry")
-                && n.text.starts_with("pass 1 is a single point")),
+                && n.text == "pass 1 ends on the rotary axis, so it has no lead-out"),
         "{:?}",
         path.notices
     );
+}
+
+/// One pass at X 60, beyond the test cylinder, that turns A from 0 to 180
+/// degrees at 5 mm from the axis, then on to 360 while the tip comes in to
+/// the axis. Not a product strategy.
+#[derive(Debug)]
+struct Inward;
+
+impl Strategy for Inward {
+    fn name(&self) -> &str {
+        "test_inward"
+    }
+
+    fn label(&self) -> &str {
+        "Inward (test)"
+    }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+
+    fn schema(&self) -> ParameterSchema {
+        ParameterSchema::with_common(Vec::new())
+    }
+
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        _p: &Parameters,
+        _context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let points = (0..=180)
+            .map(|j| {
+                let a = f64::from(j) * 2.0;
+                let height = if a <= 180.0 {
+                    5.0
+                } else {
+                    5.0 * (360.0 - a) / 180.0
+                };
+                let tip = input.rotary.to_model(
+                    openchuck_path::rotary::AxisPosition {
+                        along: 60.0,
+                        across: 0.0,
+                        height,
+                    },
+                    Degrees(a),
+                );
+                CutPoint {
+                    tip,
+                    a: Degrees(a),
+                    contact: tip,
+                }
+            })
+            .collect();
+        Ok(vec![Pass {
+            points,
+            ..Pass::default()
+        }])
+    }
 }

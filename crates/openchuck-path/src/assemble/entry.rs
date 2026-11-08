@@ -147,6 +147,10 @@ impl Entry {
                 Some(sign) => {
                     self.turning_lead_in_moves(b, input, stock, common, pass, points, rapids, sign)
                 }
+                None if self.starts_on_axis(b, points, rapids) => {
+                    lead::note_axis_start(b, pass);
+                    plunge(b, stock, common, head)
+                }
                 None => self.lead_in(b, input, stock, common, pass, head, points),
             },
             EntryStyle::Ramp => self.ramp(b, input, stock, common, pass, head, points, rapids),
