@@ -1,12 +1,12 @@
 # 0546: Extend past the stock carries a ring or spiral pass on in its own motion, not along X (OP-24, OP-04, OP-11, OP-12, OP-14, OP-15, GC-07, NFR-06, NFR-07, NFR-12; issue #644; lane RINGSTEP)
 
-- **Status:** proposed by lane RINGSTEP on 8 Nov 2026. Not yet accepted: the owner accepts the record when they have read it in full (decision 0049). The owner's answers were relayed by the coordinator (session_01CFw3bzew7zizFQ91L5tvT7) on 8 Nov 2026, each the recommended option: Q1 option 1 (continue the pass at its own spacing out to the extended end, with no corner; the longer run-out is accepted, and is stated in the note and in the user guide) and Q2 option 1 (saved helical finishing operations with Extend on get the new run-out, with a changelog and release-notes line). The build follows these answers. The number is provisional: the Merge Manager assigns the final number at release.
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full, with its drawing. Proposed by lane RINGSTEP the same day. The owner's answers were relayed by the coordinator (session_01CFw3bzew7zizFQ91L5tvT7) on 8 Nov 2026, each the recommended option: Q1 option 1 (continue the pass at its own spacing out to the extended end, with no corner; the longer run-out is accepted, and is stated in the note and in the user guide) and Q2 option 1 (saved helical finishing operations with Extend on get the new run-out, with a changelog and release-notes line). The number is provisional: the Merge Manager assigns the final number at release.
 - **Date:** 8 Nov 2026.
 - **Issue:** #644, "Extend past the stock on ring and spiral passes: the run-out goes along X, across the direction of cut, then turns 90° into the cut at depth" (item 8 of the #638 survey).
-- **What it amends, if accepted:** [0212](0212-roughing-direction-and-extend-past-the-stock.md) part B, design item 3 ("Helical, axial and indexed finishing: … past the end of the part the pass runs on at the height of its last point, flat, until the tool clears the stock end") and "As built" item 4 (the straight run-out along X), **for helical finishing only**. Axial and indexed finishing, whose cut runs along X, keep the run-out along X.
-- **Builds on:** [0390](0390-helical-finishing-in-rings.md) item 5 ("Extend past the stock (0212) adds rings out to the extended ends", which the code does not do: see Context), [0545](0545-blended-steps-between-rings.md) (blended steps between rings, proposed with this record), [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md), [0345](0345-finishing-layers.md), [0521](0521-low-links-for-helical-rest-and-simultaneous-finishing.md).
+- **What it amends:** [0212](0212-roughing-direction-and-extend-past-the-stock.md) part B, design item 3 ("Helical, axial and indexed finishing: … past the end of the part the pass runs on at the height of its last point, flat, until the tool clears the stock end") and "As built" item 4 (the straight run-out along X), **for helical finishing only**. Axial and indexed finishing, whose cut runs along X, keep the run-out along X.
+- **Builds on:** [0390](0390-helical-finishing-in-rings.md) item 5 ("Extend past the stock (0212) adds rings out to the extended ends", which the code does not do: see Context), [0545](0545-blended-steps-between-rings.md) (blended steps between rings, accepted the same day), [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md), [0345](0345-finishing-layers.md), [0521](0521-low-links-for-helical-rest-and-simultaneous-finishing.md).
 - **Related:** #639 and #640 (entries and leaves that follow the toolpath, lane RAMPENTRY, its proposed records 0543 and 0544): the run-out is cut before the entry and after the leave, so they meet the pass where this record leaves it. Lane RAMPENTRY reads a run-in that continues the helix as a spiral (its ramp then runs round the axis before the first point) and an added ring as a ring.
-- **Open items:** new OI-2113 (acceptance of the record; the owner's answers Q1 and Q2 were given on 8 Nov 2026, relayed). It also records, and if accepted closes, an unrecorded divergence: 0390 item 5 says the rings go out to the extended ends; as built they do not.
+- **Open items:** OI-2113 (acceptance of the record), new, closed on 8 Nov 2026 with the owner's acceptance. It also records, and with its acceptance closes, an unrecorded divergence: 0390 item 5 says the rings go out to the extended ends; as built before this record they did not.
 
 ## Context
 
@@ -21,7 +21,7 @@ That suits axial passes, whose cut runs along X. On a ring or spiral pass, X is 
 
 Rest machining and simultaneous finishing do not extend past the stock (0212 part B, item 3), so they are not affected. Rotary roughing and round Facing widen their range to the extended end (0212 "As built" item 4), so their rings or spiral already continue in their own motion, and are not affected.
 
-## Decision (proposed; the owner's answers Q1 and Q2 relayed on 8 Nov 2026)
+## Decision (accepted; the owner's answers Q1 and Q2 relayed on 8 Nov 2026)
 
 ### Q1: the shape of the run-out
 
@@ -60,7 +60,7 @@ The option not chosen: keep today's line for an operation saved without a new ma
 ## Consequences
 
 - **Code** (lane RINGSTEP): `crates/openchuck-path/src/extend.rs` (a run-out that continues a helix or adds rings, beside the existing `run_out` and `line`, which axial finishing keeps); `helical.rs` (the call site, the ring places past the part and the note). Lane RAMPENTRY's entry code is not touched: the pass it receives now starts and ends past the stock in its own motion.
-- **Documents** (proposed here, edited in the build pull request after acceptance; the requirements and architecture are unchanged): 0212's "As built" gains a pointer to this record for helical finishing; the verification plan's OP-24 row adds "on a ring or spiral pass the run-out continues the pass's own motion and clears the stock past the part all round"; the UI specification is unchanged (no new control under the recommended options).
+- **Documents** (edited in the build pull request; the requirements and architecture are unchanged): 0212's "As built" gains a pointer to this record for helical finishing; the verification plan's OP-24 row adds "on a ring or spiral pass the run-out continues the pass's own motion and clears the stock past the part all round"; the UI specification is unchanged (no new control under the recommended options).
 
 ## Verification
 
