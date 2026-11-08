@@ -15,7 +15,6 @@
 
 [message_new]
 "apps/openchuck-ui/src/shell/checkpoints.rs" = 1
-"crates/openchuck-app/src/overview.rs" = 25
 
 [claims]
 "apps/openchuck-ui/src/results_panel.rs" = 1

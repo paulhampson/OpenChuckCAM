@@ -1468,10 +1468,17 @@ fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_b
     let status = &overview.items[&ItemRef::Operation(op)];
     assert_eq!(status.state, ItemState::Error, "{status:?}");
     assert!(status.cause.ends_with(said), "{}", status.cause);
+    // In the one form (decision record 0536 section 3): its topic, the
+    // operation, then the refusal.
     let message = overview
         .messages
         .iter()
-        .find(|m| m.text == said)
+        .find(|m| {
+            m.text.split_once("): ").is_some_and(|(lead, rest)| {
+                lead.starts_with("Selection set (operation '")
+                    && rest.to_lowercase() == said.to_lowercase()
+            })
+        })
         .expect("the refusal is in Messages");
     assert_eq!(message.severity, Severity::Error);
     assert_eq!(message.source, Some(ItemRef::Operation(op)));
@@ -2345,10 +2352,17 @@ fn req_op_11_req_nfr_07_back_and_forth_ramp_on_a_step_part_says_what_to_change_b
     let status = &overview.items[&ItemRef::Operation(op)];
     assert_eq!(status.state, ItemState::Error, "{status:?}");
     assert!(status.cause.ends_with(said), "{}", status.cause);
+    // In the one form (decision record 0536 section 3): its topic, the
+    // operation, then the refusal.
     let message = overview
         .messages
         .iter()
-        .find(|m| m.text == said)
+        .find(|m| {
+            m.text.split_once("): ").is_some_and(|(lead, rest)| {
+                lead.starts_with("Ramp entry (operation '")
+                    && rest.to_lowercase() == said.to_lowercase()
+            })
+        })
         .expect("the refusal is in Messages");
     assert_eq!(message.severity, Severity::Error);
     assert_eq!(

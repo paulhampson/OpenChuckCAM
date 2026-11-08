@@ -249,7 +249,7 @@ fn req_ui_12_req_ui_16_a_message_link_keeps_clear_of_its_wrapped_sentence() {
     let rects = rig.text_rects();
     let sentence = rects
         .iter()
-        .find(|(t, _)| t.starts_with("STL holds triangles only"))
+        .find(|(t, _)| t.starts_with("Model notes (model 'cube.stl'): STL holds triangles only"))
         .expect("the STL message is shown");
     let link = rects
         .iter()

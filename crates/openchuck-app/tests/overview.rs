@@ -749,7 +749,9 @@ fn req_ui_11_req_ui_12_a_mesh_finding_warns_on_the_model() {
         .find(|m| m.source == Some(ItemRef::Model(f.model)) && m.severity == Severity::Warning)
         .unwrap();
     assert!(
-        message.text.starts_with("The mesh check found"),
+        message
+            .text
+            .starts_with("Mesh check (model 'defect_hole.stl'): "),
         "{}",
         message.text
     );
@@ -868,6 +870,103 @@ fn req_ui_12_each_source_gives_one_message_and_fixing_it_removes_the_message() {
         o.status(ItemRef::Operation(op)).unwrap().state,
         ItemState::Error
     );
+}
+
+/// Whether `text` takes the one form of decision record 0536 section 3: a
+/// topic, its items in brackets, then a colon.
+fn leads_with_a_topic(text: &str) -> bool {
+    let topics = openchuck_app::lead_in::topic::ALL.iter().chain(
+        [
+            openchuck_path::topic::SELECTION_SET,
+            openchuck_path::topic::HELD_REGION,
+        ]
+        .iter(),
+    );
+    topics.into_iter().any(|topic| {
+        text.strip_prefix(topic)
+            .is_some_and(|rest| rest.starts_with(": ") || rest.starts_with(" ("))
+    })
+}
+
+#[test]
+fn req_ui_12_every_message_of_a_setup_and_a_model_leads_with_its_topic_and_item() {
+    // Decision record 0536 section 3 and build step 4: the setup, model and
+    // export messages take the one form, naming the setup or the model as
+    // it is named now.
+    let mut f = fixture("one-form", "cube_ascii.stl");
+    let op = f.add_operation("Ring", "one_ring");
+    f.app.regenerate().unwrap();
+    // A seeded file change, a setup check and a generation error, as above.
+    let file = f.dir.join("models/cube_ascii.stl");
+    let mut changed = std::fs::read(&file).unwrap();
+    changed.extend_from_slice(b"\n");
+    std::fs::write(&file, &changed).unwrap();
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(400.0),
+        length: Millimetres(14.0),
+        x_start: Millimetres(-7.0),
+    });
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let mut operation = f.app.project().operation(op).unwrap().clone();
+    operation.tool = None;
+    f.app
+        .execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    assert!(f.app.regenerate().is_err());
+    let o = f.overview();
+    assert!(o.messages.len() >= 3, "{:?}", o.messages);
+    for m in &o.messages {
+        assert!(
+            leads_with_a_topic(&m.text),
+            "not in the one form: {}",
+            m.text
+        );
+    }
+    let model = o
+        .messages
+        .iter()
+        .find(|m| m.source == Some(ItemRef::Model(f.model)))
+        .unwrap();
+    assert!(
+        model
+            .text
+            .starts_with("Model file (model 'cube_ascii.stl'): "),
+        "{}",
+        model.text
+    );
+    let clearance = o
+        .messages
+        .iter()
+        .find(|m| m.text.starts_with("Clearance (setup 'Setup 1'): "))
+        .unwrap_or_else(|| panic!("{:?}", o.messages));
+    assert_eq!(
+        clearance.source,
+        Some(ItemRef::SetupPart(f.setup, SetupPart::WorkOffset))
+    );
+
+    // With no machine, the setup says so in the same form.
+    f.app.execute(Command::SetMachine(None)).unwrap();
+    let o = f.overview();
+    let machine = o
+        .messages
+        .iter()
+        .find(|m| m.source == Some(ItemRef::SetupPart(f.setup, SetupPart::Machine)))
+        .unwrap();
+    assert!(
+        machine
+            .text
+            .starts_with("Machine profile (setup 'Setup 1'): "),
+        "{}",
+        machine.text
+    );
+    for m in &o.messages {
+        assert!(
+            leads_with_a_topic(&m.text),
+            "not in the one form: {}",
+            m.text
+        );
+    }
 }
 
 #[test]
@@ -1168,7 +1267,7 @@ fn req_ui_11_req_ui_12_jobs_show_on_items_and_failures_are_messages() {
     let failed = o
         .messages
         .iter()
-        .find(|m| m.text.starts_with("Building the view failed"))
+        .find(|m| m.text.starts_with("View: building the view failed"))
         .unwrap();
     assert_eq!(failed.severity, Severity::Error);
     assert!(failed.text.contains("could not be placed"));
@@ -1188,7 +1287,7 @@ fn req_ui_12_a_posting_failure_after_the_operations_offers_to_generate() {
     let message = o
         .messages
         .iter()
-        .find(|m| m.text.starts_with("Generating failed"))
+        .find(|m| m.text.starts_with("Generation: "))
         .unwrap();
     assert_eq!(message.source, None);
     assert_eq!(message.action, Some(MessageAction::Generate));
@@ -2199,7 +2298,7 @@ fn req_set_06_req_nfr_12_a_tool_too_long_for_the_safe_z_warns_on_the_z1() {
     let first = spindle(&f);
     assert_eq!(first.len(), 1, "{first:?}");
     for words in [
-        "Tool 1 (4 mm ball)",
+        "Tool length (tool '4 mm ball', setup 'Setup 1'): tool 1 may",
         "13.900 mm",
         "26.100 mm",
         "on your machine",

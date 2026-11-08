@@ -1406,7 +1406,8 @@ fn req_prj_02_cli_import_copies_and_a_moved_folder_still_validates() {
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert!(
         out.stderr.contains(
-            "note: 'linked.stl' is outside the project folder, so the folder is not self-contained"
+            "note: Linked model (model 'linked.stl'): the file is outside the project folder, so \
+             the folder is not self-contained"
         ),
         "{}",
         out.stderr

@@ -133,6 +133,76 @@ pub mod topic {
     pub const WORKHOLDING: &str = "Workholding";
     /// What the 3D view cannot draw yet.
     pub const VIEW: &str = "View";
+    /// A finished or failed export, in Messages.
+    pub const EXPORT: &str = "Export";
+    /// A generation that was refused or failed.
+    pub const GENERATION: &str = "Generation";
+    /// A strategy that needs a STEP part, on a mesh part.
+    pub const STEP_PART: &str = "STEP part";
+    /// A ramp entry that cannot be used on this part or with this tool.
+    pub const RAMP_ENTRY: &str = "Ramp entry";
+    /// Material no tool on the machine can reach, enclosed by the part.
+    pub const ENCLOSED_MATERIAL: &str = "Enclosed material";
+    /// A setup with no machine profile, or a profile's own values.
+    pub const MACHINE_PROFILE: &str = "Machine profile";
+    /// A tool too long for the safe Z or the Z travel.
+    pub const TOOL_LENGTH: &str = "Tool length";
+    /// The Makera Z1 copy's old placeholder axis height.
+    pub const AXIS_HEIGHT: &str = "Axis height";
+    /// A setup's stock.
+    pub const STOCK: &str = "Stock";
+    /// A setup's clearance (the safe cylinder).
+    pub const CLEARANCE: &str = "Clearance";
+    /// A position outside the machine's travel.
+    pub const TRAVEL: &str = "Travel";
+    /// A tab's position, or two tabs over each other.
+    pub const TAB_POSITION: &str = "Tab position";
+    /// A model linked from outside the project folder.
+    pub const LINKED_MODEL: &str = "Linked model";
+    /// A model's file: missing, unreadable or changed.
+    pub const MODEL_FILE: &str = "Model file";
+    /// What the mesh check found in a model.
+    pub const MESH_CHECK: &str = "Mesh check";
+    /// A model whose units are in doubt.
+    pub const UNITS: &str = "Units";
+    /// What reading a model's file noted.
+    pub const MODEL_NOTES: &str = "Model notes";
+    /// A model that cannot be imported.
+    pub const IMPORT: &str = "Import";
+    /// The project's checks, when they fail to run.
+    pub const PROJECT_CHECKS: &str = "Project checks";
+
+    /// Every topic above, for a check that a message takes one.
+    pub const ALL: &[&str] = &[
+        TAB_LENGTH,
+        TAB_CLEARANCE,
+        STOCK_TO_LEAVE,
+        EXACT_CONTACT,
+        CUTTING_DATA,
+        IGNORED_SETTING,
+        EARLIER_OPERATIONS,
+        WORKHOLDING,
+        VIEW,
+        EXPORT,
+        GENERATION,
+        STEP_PART,
+        RAMP_ENTRY,
+        ENCLOSED_MATERIAL,
+        MACHINE_PROFILE,
+        TOOL_LENGTH,
+        AXIS_HEIGHT,
+        STOCK,
+        CLEARANCE,
+        TRAVEL,
+        TAB_POSITION,
+        LINKED_MODEL,
+        MODEL_FILE,
+        MESH_CHECK,
+        UNITS,
+        MODEL_NOTES,
+        IMPORT,
+        PROJECT_CHECKS,
+    ];
 }
 
 /// The topics whose messages name the tool too, because the tool's size,

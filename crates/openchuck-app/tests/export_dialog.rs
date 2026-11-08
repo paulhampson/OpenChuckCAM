@@ -1684,7 +1684,7 @@ fn setup_collision_needs_acknowledging(app: &mut Application, fragment: &str) {
     assert!(
         found
             .iter()
-            .any(|f| f.starts_with("Setup 'Setup 1': ") && f.contains(fragment)),
+            .any(|f| f.contains("setup 'Setup 1'): ") && f.contains(fragment)),
         "{found:?}"
     );
     assert!(openchuck_app::partial_operations(app.project(), &run).is_empty());
@@ -1692,9 +1692,9 @@ fn setup_collision_needs_acknowledging(app: &mut Application, fragment: &str) {
     assert!(checks.can_write(), "{:?}", blockers(&checks));
     let w = warnings(&checks);
     assert!(
-        w.iter().any(|t| t.starts_with(
-            "Setup 'Setup 1' has a possible collision, which must be acknowledged before the files are written: "
-        ) && t.contains(fragment)),
+        w.iter().any(|t| t.contains("setup 'Setup 1'): ")
+            && t.contains(fragment)
+            && t.ends_with(". A possible collision: acknowledge it before the files are written")),
         "{w:?}"
     );
     // Writing waits for the tick, then writes the run's own bytes.
@@ -1705,7 +1705,7 @@ fn setup_collision_needs_acknowledging(app: &mut Application, fragment: &str) {
     assert!(refused.written.is_empty());
     let reason = &refused.failed.as_ref().unwrap().reason;
     assert!(
-        reason.contains("possible collision") && reason.contains("Setup 'Setup 1'"),
+        reason.contains("possible collision") && reason.contains("setup 'Setup 1'"),
         "{reason}"
     );
     assert!(!out.exists(), "nothing is written");

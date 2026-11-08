@@ -173,7 +173,7 @@ impl EnclosedSummary {
     }
 
     /// The warning the run gives for setup `setup` (SIM-05, NFR-12; issue
-    /// 478): how much, where (shares of the part's length only), why, and
+    /// 478), in the one form "Enclosed material (setup '<name>'): ...": how much, where (shares of the part's length only), why, and
     /// what to do.
     #[must_use]
     pub fn warning(&self, setup: &str) -> String {
@@ -187,8 +187,8 @@ impl EnclosedSummary {
         } else {
             format!("{:.2} mm to {:.2} mm", self.least, self.most)
         };
-        format!(
-            "Setup '{setup}': {:.1}% of the part's surface (about {:.0} mm²) {ENCLOSED_WORDS}, \
+        let text = format!(
+            "{:.1}% of the part's surface (about {:.0} mm²) {ENCLOSED_WORDS}, \
              between {:.0}% and {:.0}% of the part's length from its start{facing}. No tool on \
              this machine can reach it, so {amount} of material is left there (for example in \
              a bore along the rotary axis). Remove it another way, such as by drilling or \
@@ -198,6 +198,12 @@ impl EnclosedSummary {
             self.from * 100.0,
             self.to * 100.0,
             openchuck_types::notice::VERIFY_GCODE_NOTICE,
+        );
+        // In the one form (decision record 0536 section 3).
+        crate::lead_in::in_form(
+            crate::lead_in::topic::ENCLOSED_MATERIAL,
+            &crate::lead_in::Context::setup(setup),
+            &text,
         )
     }
 }
@@ -495,7 +501,9 @@ mod tests {
         // of the search; shares and ranges only, no coordinates; and the
         // G-code is the user's to verify (NFR-12).
         let bore = summary(0.95, true).warning("Setup 1");
-        assert!(bore.starts_with("Setup 'Setup 1': 28.7% of the part's surface (about 1234 mm²) "));
+        assert!(bore.starts_with(
+            "Enclosed material (setup 'Setup 1'): 28.7% of the part's surface (about 1234 mm²) "
+        ));
         assert!(bore.contains(ENCLOSED_WORDS));
         assert!(bore.contains("between 10% and 100% of the part's length from its start, on surfaces facing the rotary axis."));
         assert!(bore.contains("so 0.12 mm to 3.0 mm or more of material is left there"));

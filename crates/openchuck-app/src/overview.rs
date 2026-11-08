@@ -37,6 +37,7 @@ use openchuck_types::setup::{PartExtent, SetupWarning, SetupWarningKind};
 
 use crate::cache::{Key, StatusKey, status_keys};
 use crate::jobs::{JobLog, JobOutcome};
+use crate::lead_in::{Context, topic};
 use crate::requirements::Requirement;
 use crate::{AppError, Application, JobHandle, SelectionSummary};
 
@@ -472,6 +473,19 @@ impl Message {
             views: Vec::new(),
             to_acknowledge: false,
         }
+    }
+
+    /// A message whose text is already in the one form, made with
+    /// [`crate::lead_in::in_form`] where the same text is also used
+    /// elsewhere (a setup's export check, the Results tab).
+    pub(crate) fn formed(
+        severity: Severity,
+        text: String,
+        source: Option<(ItemRef, String)>,
+        action: Option<MessageAction>,
+    ) -> Self {
+        debug_assert!(text.contains(": "), "not in the one form: {text}");
+        Self::new(severity, text, source, action)
     }
 
     /// A message in the one form `<Topic> (<context>): <text>` (decision
@@ -1449,6 +1463,61 @@ fn old_z1_axis_height_text() -> String {
     )
 }
 
+/// `text` as the clause after a message's lead-in (decision record 0536
+/// section 3): its first letter in lower case, unless the first word is a
+/// name in capitals ("STEP") or a quoted name.
+fn clause(text: &str) -> String {
+    let text = text.trim();
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(first), Some(second)) if first.is_uppercase() && !second.is_uppercase() => first
+            .to_lowercase()
+            .chain(text[first.len_utf8()..].chars())
+            .collect(),
+        _ => text.to_owned(),
+    }
+}
+
+/// A setup warning in the one form: "Clearance (setup '<name>'): ...",
+/// the same in Messages and in the export checks.
+pub(crate) fn setup_warning_in_form(setup: &str, warning: &SetupWarning) -> String {
+    crate::lead_in::in_form(
+        setup_topic(&warning.kind),
+        &Context::setup(setup),
+        &setup_warning_text(warning),
+    )
+}
+
+/// A tool too long for the safe Z or the Z travel, in the one form: "Tool
+/// length (tool '<name>', setup '<name>'): ...", the same in Messages and in
+/// the export checks.
+pub(crate) fn tool_length_text(
+    setup: &str,
+    tool: &openchuck_project::ToolSnapshot,
+    found: &crate::setup::SpindleHeight,
+) -> String {
+    crate::lead_in::in_form(
+        topic::TOOL_LENGTH,
+        &Context::setup(setup).and_tool(&tool.name),
+        &crate::setup::spindle_height_text(tool.controller.number, found),
+    )
+}
+
+/// The topic of a setup warning (decision record 0536 section 3).
+fn setup_topic(kind: &SetupWarningKind) -> &'static str {
+    match kind {
+        SetupWarningKind::ClearanceInsideStock { .. }
+        | SetupWarningKind::ClearanceInsidePart { .. }
+        | SetupWarningKind::ClearanceBelowMinimum { .. } => topic::CLEARANCE,
+        SetupWarningKind::OutsideTravel { .. } => topic::TRAVEL,
+        SetupWarningKind::TabOutsideEndZones { .. }
+        | SetupWarningKind::AutoTabNoRoom { .. }
+        | SetupWarningKind::TabsOverlap { .. } => topic::TAB_POSITION,
+        SetupWarningKind::HeldRegionCoversPart { .. } => openchuck_path::topic::HELD_REGION,
+        _ => topic::STOCK,
+    }
+}
+
 fn sentence(text: &str) -> String {
     let text = text.trim();
     let mut chars = text.chars();
@@ -1783,13 +1852,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     // newest kind of news first within a severity (decision record 0117).
     let mut messages: Vec<Message> = Vec::new();
     for (index, report) in record.output_reports.iter().enumerate().rev() {
-        messages.push(Message::new(
+        messages.push(Message::about(
             if report.failed.is_some() {
                 Severity::Error
             } else {
                 Severity::Info
             },
-            report.text(),
+            topic::EXPORT,
+            &Context::default(),
+            &report.body(),
             None,
             Some(MessageAction::ReviewExport(index)),
         ));
@@ -1798,13 +1869,19 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     let mut blocked_sets = Vec::new();
 
     // Jobs that failed (other than generation, which is recorded below).
-    for name in ["build scene", "project checks", "import model"] {
+    for (name, job_topic) in [
+        ("build scene", topic::VIEW),
+        ("project checks", topic::PROJECT_CHECKS),
+        ("import model", topic::IMPORT),
+    ] {
         if let Some(entry) = jobs.latest_failure(name)
             && let Some(JobOutcome::Failed(e)) = &entry.outcome
         {
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                format!("{} failed: {e}", entry.label),
+                job_topic,
+                &Context::default(),
+                &format!("{} failed: {e}", clause(&entry.label)),
                 None,
                 None,
             ));
@@ -1914,9 +1991,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             && *key_then == key.map(|k| k.chained)
         {
             status = ItemStatus::new(ItemState::Error, sentence(message));
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                message.clone(),
+                topic::GENERATION,
+                &Context::operation(&o.name),
+                &clause(message),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
             ));
@@ -1962,7 +2041,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 } else {
                     Vec::new()
                 };
-                let message = Message::new(
+                let message = Message::formed(
                     Severity::Warning,
                     crate::operation::operation_notice(project, o, warning),
                     Some((item, label.clone())),
@@ -1983,9 +2062,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         // before anything is generated (decision record 0174).
         if let Some(reason) = crate::operation::brep_only(project, &app.strategies, o) {
             status = ItemStatus::new(ItemState::Error, sentence(&reason));
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                sentence(&reason),
+                topic::STEP_PART,
+                &Context::operation(&o.name),
+                &clause(&reason),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
             ));
@@ -2001,9 +2082,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 .iter()
                 .any(|m| m.source == Some(item) && m.text.contains(&reason))
             {
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    reason,
+                    topic::RAMP_ENTRY,
+                    &Context::operation(&o.name),
+                    &clause(&reason),
                     Some((item, label.clone())),
                     Some(MessageAction::Show(item)),
                 ));
@@ -2026,18 +2109,22 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             {
                 continue;
             }
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                refusal.text,
+                openchuck_path::topic::SELECTION_SET,
+                &Context::operation(&o.name),
+                &clause(&refusal.text),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
             ));
         }
         if let Some((_, notes)) = checks.and_then(|c| c.reach.get(&o.id)) {
             for note in notes {
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Warning,
-                    note.clone(),
+                    openchuck_path::topic::HELD_REGION,
+                    &Context::operation(&o.name),
+                    &clause(note),
                     Some((item, label.clone())),
                     Some(MessageAction::EditWorkholding(o.setup)),
                 ));
@@ -2050,9 +2137,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         message,
     }) = &record.failure
     {
-        messages.push(Message::new(
+        messages.push(Message::about(
             Severity::Error,
-            format!("Generating failed: {message}"),
+            topic::GENERATION,
+            &Context::default(),
+            &clause(message),
             None,
             Some(MessageAction::Generate),
         ));
@@ -2069,9 +2158,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     format!("{problem}. Reselect it in the view"),
                 ),
             );
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                format!("The selection set '{}' cannot be used: {problem}", s.name),
+                openchuck_path::topic::SELECTION_SET,
+                &Context::default(),
+                &format!("the selection set '{}' cannot be used: {problem}", s.name),
                 Some((item, s.name.clone())),
                 Some(MessageAction::Reselect(s.id)),
             ));
@@ -2116,7 +2207,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     )
                 });
             if current {
-                messages.push(Message::new(
+                messages.push(Message::formed(
                     Severity::Warning,
                     text.clone(),
                     Some((setup, s.name.clone())),
@@ -2126,22 +2217,27 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         }
         match project.machine() {
             None => {
-                let text = "The project has no machine profile, so the setup is not checked. Choose one in the setup's machine section.";
+                let text = crate::lead_in::in_form(
+                    topic::MACHINE_PROFILE,
+                    &Context::setup(&s.name),
+                    "the project has no machine profile, so the setup is not checked. Choose one \
+                     in the setup's machine section.",
+                );
                 raise(
                     &mut items,
                     at(SetupPart::Machine),
                     ItemStatus::new(ItemState::Warning, "no machine profile is chosen"),
                 );
-                messages.push(Message::new(
+                messages.push(Message::formed(
                     Severity::Warning,
-                    text,
+                    text.clone(),
                     Some((at(SetupPart::Machine), s.name.clone())),
                     Some(MessageAction::ReviewSetup(s.id)),
                 ));
                 setup_checks.push(SetupCheck {
                     setup: s.id,
                     passed: false,
-                    text: sentence(text),
+                    text: sentence(&text),
                     action: Some(MessageAction::ReviewSetup(s.id)),
                 });
             }
@@ -2194,11 +2290,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     if let Some(found) =
                         crate::setup::spindle_height(m, safe_z, minimum, &snapshot.tool)
                     {
-                        let text = crate::setup::spindle_height_text(
-                            snapshot.controller.number,
-                            &snapshot.name,
-                            &found,
-                        );
+                        let text = tool_length_text(&s.name, snapshot, &found);
                         // A tool that may meet the workholding is a
                         // possible collision; one past the top of the travel
                         // is a travel limit (decision record 0538).
@@ -2217,7 +2309,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                                 )
                             },
                         );
-                        let message = Message::new(
+                        let message = Message::formed(
                             Severity::Warning,
                             text.clone(),
                             Some((at(SetupPart::Machine), s.name.clone())),
@@ -2239,7 +2331,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 if crate::setup::has_old_z1_axis_height(project.machine_id(), m) {
                     // The copy is the project's own (SET-01); it is not
                     // changed, only named (decision record 0317).
-                    let text = old_z1_axis_height_text();
+                    let text = crate::lead_in::in_form(
+                        topic::AXIS_HEIGHT,
+                        &Context::setup(&s.name),
+                        &clause(&old_z1_axis_height_text()),
+                    );
                     raise(
                         &mut items,
                         at(SetupPart::Machine),
@@ -2248,7 +2344,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             "the Makera Z1 copy has the old placeholder axis height",
                         ),
                     );
-                    messages.push(Message::new(
+                    messages.push(Message::formed(
                         Severity::Warning,
                         text.clone(),
                         Some((at(SetupPart::Machine), s.name.clone())),
@@ -2274,7 +2370,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             for w in &found.warnings {
                 let part = part_of(&w.kind);
                 let target = part.map_or(setup, at);
-                let text = sentence(&setup_warning_text(w));
+                let text = sentence(&setup_warning_in_form(&s.name, w));
                 // A possible collision must be acknowledged before the
                 // program is written (decision record 0538).
                 let collision = crate::setup::is_possible_collision(&w.kind);
@@ -2292,7 +2388,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 } else {
                     MessageAction::ReviewSetup(s.id)
                 };
-                let message = Message::new(
+                let message = Message::formed(
                     Severity::Warning,
                     text.clone(),
                     Some((target, s.name.clone())),
@@ -2311,13 +2407,17 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 });
             }
             for note in &found.notes {
-                let text = sentence(note);
+                let text = sentence(&crate::lead_in::in_form(
+                    topic::WORKHOLDING,
+                    &Context::setup(&s.name),
+                    &clause(note),
+                ));
                 raise(
                     &mut items,
                     at(SetupPart::Workholding),
                     ItemStatus::new(ItemState::Warning, text.clone()),
                 );
-                messages.push(Message::new(
+                messages.push(Message::formed(
                     Severity::Warning,
                     text.clone(),
                     Some((at(SetupPart::Workholding), s.name.clone())),
@@ -2332,16 +2432,18 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             }
             if let Some(reason) = &found.unbuildable {
                 let text = format!(
-                    "The stored workholding cannot be built, so operations of this setup cannot be generated: {reason}"
+                    "the stored workholding cannot be built, so operations of this setup cannot be generated: {reason}"
                 );
                 raise(
                     &mut items,
                     at(SetupPart::Workholding),
                     ItemStatus::new(ItemState::Error, sentence(reason)),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    text,
+                    topic::WORKHOLDING,
+                    &Context::setup(&s.name),
+                    &text,
                     Some((at(SetupPart::Workholding), s.name.clone())),
                     Some(MessageAction::EditWorkholding(s.id)),
                 ));
@@ -2374,8 +2476,9 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     for m in project.models() {
         let item = ItemRef::Model(m.id);
         let name = m.label();
+        let model = Context::model(m.display_name());
         if m.path.is_outside_project() {
-            messages.push(Message::new(
+            messages.push(Message::formed(
                 Severity::Info,
                 crate::model::linked_note(m),
                 Some((item, name.clone())),
@@ -2392,9 +2495,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     item,
                     ItemStatus::new(ItemState::Error, "the file is missing"),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    format!("'{name}' is missing. Put the file back, or remove the model and import it again"),
+                    topic::MODEL_FILE,
+                    &model,
+                    "the file is missing. Put the file back, or remove the model and import it again",
                     Some((item, name.clone())),
                     Some(MessageAction::Show(item)),
                 ));
@@ -2405,9 +2510,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     item,
                     ItemStatus::new(ItemState::Error, format!("the file cannot be read: {e}")),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    format!("'{name}' cannot be read: {e}"),
+                    topic::MODEL_FILE,
+                    &model,
+                    &format!("the file cannot be read: {e}"),
                     Some((item, name.clone())),
                     Some(MessageAction::Show(item)),
                 ));
@@ -2421,9 +2528,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                         "the file has changed since it was added",
                     ),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Warning,
-                    format!("'{name}' has changed since it was added. The toolpaths will use the file as it is now"),
+                    topic::MODEL_FILE,
+                    &model,
+                    "the file has changed since it was added. The toolpaths will use the file as it is now",
                     Some((item, name.clone())),
                     Some(MessageAction::Show(item)),
                 ));
@@ -2441,9 +2550,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             format!("mesh check: {}", f.problems.join("; ")),
                         ),
                     );
-                    messages.push(Message::new(
+                    messages.push(Message::about(
                         Severity::Warning,
-                        format!("The mesh check found: {}", f.problems.join("; ")),
+                        topic::MESH_CHECK,
+                        &model,
+                        &clause(&f.problems.join("; ")),
                         Some((item, name.clone())),
                         Some(MessageAction::Show(item)),
                     ));
@@ -2454,9 +2565,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                         item,
                         ItemStatus::new(ItemState::Warning, q.clone()),
                     );
-                    messages.push(Message::new(
+                    messages.push(Message::about(
                         Severity::Warning,
-                        q.clone(),
+                        topic::UNITS,
+                        &model,
+                        &clause(q),
                         Some((item, name.clone())),
                         Some(MessageAction::Show(item)),
                     ));
@@ -2467,9 +2580,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     .iter()
                     .filter(|n| !n.contains("has changed since it was added"))
                 {
-                    messages.push(Message::new(
+                    messages.push(Message::about(
                         Severity::Info,
-                        note.clone(),
+                        topic::MODEL_NOTES,
+                        &model,
+                        &clause(note),
                         Some((item, name.clone())),
                         None,
                     ));
@@ -2481,9 +2596,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     item,
                     ItemStatus::new(ItemState::Error, format!("it cannot be read: {e}")),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    format!("'{name}' cannot be imported: {e}"),
+                    topic::IMPORT,
+                    &model,
+                    &format!("the model cannot be imported: {e}"),
                     Some((item, name.clone())),
                     Some(MessageAction::Show(item)),
                 ));

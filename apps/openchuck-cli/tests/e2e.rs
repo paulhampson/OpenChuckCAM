@@ -1504,7 +1504,7 @@ fn req_gc_16_cli_writes_a_setup_collision_only_when_acknowledged() {
     assert_ne!(refused.code, Some(0), "{}", refused.stdout);
     assert!(
         refused.stderr.contains("possible collision")
-            && refused.stderr.contains("Setup 'Setup 1'")
+            && refused.stderr.contains("setup 'Setup 1'")
             && refused.stderr.contains("--acknowledge-collision-warnings"),
         "{}",
         refused.stderr

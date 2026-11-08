@@ -164,20 +164,16 @@ pub fn collision_warnings(project: &Project, run: &Regeneration) -> Vec<String> 
         }
         out.extend(rapid_cuts(run, operation));
     }
-    out.extend(
-        setup_collisions(run)
-            .into_iter()
-            .map(|(setup, text)| format!("Setup '{setup}': {text}")),
-    );
+    out.extend(setup_collisions(run));
     out
 }
 
-/// The possible collisions of the run's setups (decision record 0538), as
-/// (setup name, the check's text): a safe cylinder that does not enclose the
+/// The possible collisions of the run's setups (decision record 0538), each
+/// in the one form naming its setup: a safe cylinder that does not enclose the
 /// stock or the part, or is inside the minimum clearance, and a tool that may
 /// be too long to clear the workholding. Read from the project the run was
 /// made from and the part bounds it measured, so they are this result's.
-fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
+fn setup_collisions(run: &Regeneration) -> Vec<String> {
     let project = &run.project;
     let Some(machine) = project.machine() else {
         return Vec::new();
@@ -200,7 +196,7 @@ fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
             found
                 .iter()
                 .filter(|w| crate::setup::is_possible_collision(&w.kind))
-                .map(|w| (setup.name.clone(), crate::overview::setup_warning_text(w))),
+                .map(|w| crate::overview::setup_warning_in_form(&setup.name, w)),
         );
         // The tools of the setup's operations in this run, in the tool
         // list's order, as the setup check names them.
@@ -220,13 +216,10 @@ fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
             )
             .filter(|h| h.below_minimum.is_some())
             {
-                out.push((
-                    setup.name.clone(),
-                    crate::setup::spindle_height_text(
-                        snapshot.controller.number,
-                        &snapshot.name,
-                        &height,
-                    ),
+                out.push(crate::overview::tool_length_text(
+                    &setup.name,
+                    snapshot,
+                    &height,
                 ));
             }
         }
@@ -644,12 +637,12 @@ pub(crate) fn export_checks_with(
                     );
                 }
             }
-            for (setup, text) in setup_collisions(run) {
+            for text in setup_collisions(run) {
                 push(
                     CheckLevel::Warning,
                     format!(
-                        "Setup '{setup}' has a possible collision, which must be acknowledged \
-                         before the files are written: {text}"
+                        "{}. A possible collision: acknowledge it before the files are written",
+                        text.trim_end_matches('.')
                     ),
                 );
             }
