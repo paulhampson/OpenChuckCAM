@@ -429,7 +429,7 @@ fn req_op_04_req_op_15_indexed_passes_are_added_beside_the_positions_at_their_ow
     let (before, after) = (left(&p, &off, (2.0, 10.0)), left(&p, &on, (2.0, 10.0)));
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}: {:?}", on.notices);
-    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
+    assert!(other_warnings(&on).is_empty(), "{:?}", on.warnings());
     let (angles, turns) = cutting_angles(&on);
     assert_eq!(angles, vec![0, 90_000, 180_000, 270_000]);
     assert!(!turns, "no cutting move turns A");
@@ -443,8 +443,8 @@ fn req_op_04_req_nfr_12_what_a_vertical_tool_at_one_a_cannot_reach_is_said() {
     // and the warning says so; the result must be acknowledged.
     let p = cylinder();
     let on = generated(&p, &IndexedFinishing, &[positions(2)]);
-    assert_eq!(on.warnings().len(), 1, "{:?}", on.notices);
-    let warning = &on.warnings()[0];
+    assert_eq!(other_warnings(&on).len(), 1, "{:?}", on.notices);
+    let warning = other_warnings(&on)[0];
     assert!(warning.acknowledgement.is_some());
     assert!(
         warning.text.contains("cannot reach there"),
@@ -854,4 +854,14 @@ fn req_op_04_req_op_24_flat_facing_spaces_its_lines_by_the_material_left() {
     assert!(cutting(&on) > cutting(&fixed));
     assert!(has_note(&on, "pass"), "{:?}", on.notices);
     assert!(on.warnings().is_empty(), "{:?}", on.warnings());
+}
+
+/// The warnings other than indexed finishing's note that its passes run on
+/// past the part's ends, a warning until the owner answers (decision 0536
+/// step 2, interim, question Q-A; P48).
+fn other_warnings(path: &openchuck_path::GeneratedPath) -> Vec<&openchuck_path::Notice> {
+    path.warnings()
+        .into_iter()
+        .filter(|w| !w.text.contains("run on past both ends"))
+        .collect()
 }

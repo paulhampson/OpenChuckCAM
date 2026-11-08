@@ -807,7 +807,10 @@ fn set_leave(app: &mut Application, op: OperationId, leave: f64) {
 fn program(app: &Application) -> (Vec<ToolpathGroup>, Vec<(String, String)>, Vec<String>) {
     let r = app.regenerate().unwrap();
     assert!(!r.gcode.is_empty());
-    (r.toolpath.groups, r.gcode, r.notes)
+    // The operation's warnings: a stock to leave other than the operation's
+    // is one until the owner answers (decision 0536 step 2, interim, Q-G).
+    let warnings = r.operation_warnings(app.project());
+    (r.toolpath.groups, r.gcode, warnings)
 }
 
 fn leave_notes(notes: &[String]) -> Vec<&String> {
@@ -825,7 +828,7 @@ fn req_op_11_req_op_03_a_larger_selection_stock_to_leave_raises_roughing_over_th
     app.edit_selection(top, SelectionEdit::StockToLeave(Some(0.8)))
         .unwrap();
     let (raised, gcode, notes) = program(&app);
-    // The note names the value used, the selection that set it and the
+    // The warning names the value used, the selection that set it and the
     // operation's own value.
     let said = leave_notes(&notes);
     assert_eq!(said.len(), 1, "{notes:?}");

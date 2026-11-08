@@ -3275,13 +3275,14 @@ mod tests {
                         .unwrap_or_else(|e| panic!("{strategy} {file} {what}: {e}"));
                     if strategy == roughing::NAME && leave.is_some() {
                         // Roughing leaves the largest amount wherever it cuts
-                        // (decision 0058), and says so.
+                        // (decision 0058), and warns so (decision 0536 step 2,
+                        // interim, question Q-G).
                         assert!(
-                            path.notes
+                            path.warnings
                                 .iter()
-                                .any(|n| n.contains("roughing leaves 0.25 mm")),
+                                .any(|w| w.text.contains("roughing leaves 0.25 mm")),
                             "{file}: {:?}",
-                            path.notes
+                            path.warnings
                         );
                         continue;
                     }
@@ -3666,12 +3667,14 @@ mod tests {
         for leave_on_set in [false, true] {
             let (on, off) = (flat(leave_on_set, true), flat(leave_on_set, false));
             assert_eq!(on.group.segments, off.group.segments, "set: {leave_on_set}");
+            // A warning: it says Exact STEP surface contact does not apply
+            // (decision 0536 step 2, interim, question Q-G).
             assert!(
-                on.notes.iter().any(|n| n.contains("tessellation")
-                    && n.contains("stock to leave")
-                    && !n.contains("exact faces, to within")),
+                on.warnings.iter().any(|w| w.text.contains("tessellation")
+                    && w.text.contains("stock to leave")
+                    && !w.text.contains("exact faces, to within")),
                 "set: {leave_on_set}: {:?}",
-                on.notes
+                on.warnings
             );
         }
     }
