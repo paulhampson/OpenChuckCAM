@@ -1380,13 +1380,13 @@ mod tests {
                 .any(|l| l.severity == Severity::Info && l.text == unsummarised),
             "{lines:?}"
         );
-        assert!(
-            lines
-                .iter()
-                .filter(|l| l.text.contains(&format!("during '{name}'")))
-                .all(|l| !l.text.contains("Other")),
-            "{lines:?}"
-        );
+        let summaries: Vec<&str> = lines
+            .iter()
+            .map(|l| l.text.as_str())
+            .filter(|t| t.starts_with(&format!("Feed limit (operation '{name}'): ")))
+            .collect();
+        assert!(!summaries.is_empty(), "{lines:?}");
+        assert!(summaries.iter().all(|t| !t.contains("Other")), "{lines:?}");
     }
 
     #[test]
