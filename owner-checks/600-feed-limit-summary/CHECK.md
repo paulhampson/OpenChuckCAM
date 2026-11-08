@@ -20,6 +20,7 @@ Use a nightly or release-candidate build made from commit `1f3675d52` or later (
 3. Open the **Results** tab in the lower dock. Read the lines about the machine's feed limits.
 4. Click **Finish** in the project panel and read the line under its feed field in the Inspector ("Last run: ...").
 5. Optional, for the program itself: **File > Post and export...** with the Makera Z1 post, and in the **Preview** use **Find** for `A41760`. Read the F words of the last five rings.
+6. In the same **Preview**, read the head of the program (its first lines), for the safety notice of [decision 0533](../../docs/decisions/0533-safety-notice-post-option.md) (#570).
 
 ## Expected result
 
@@ -36,6 +37,14 @@ Use a nightly or release-candidate build made from commit `1f3675d52` or later (
 - No line anywhere says "the contact feed is 0.0 mm/min" or "as low as 0 mm/min".
 - These lines are information (no warning mark on **Rough** or **Finish** because of them).
 - Step 5: the last five rings are written `A41760.000 F551.3`, `A42120.000 F488.5`, `A42480.000 F425.7`, `A42840.000 F362.8` and `A43200.000 F362.8`; no block has `F0`.
+- Step 6: the program starts with these lines (the notice is the third and fourth):
+
+  ```text
+  (Baluster - Setup 1)
+  (OpenChuckCAM <the version of your build>)
+  (This program has not been run on your machine. Check it before you run it.)
+  (Simulate it and air cut it first. You are responsible for what the machine does.)
+  ```
 
 **Old behaviour (not fixed):** the command line printed 17,426 warnings, one per slowed move, such as `warning: operation 'Finish': move 19077: the machine's feed limits slow this move: the contact feed is 0.0 mm/min, not 500.0` (72 of them read 0.0 mm/min). Results said the Finish move "was reduced to 0.0 mm/min", and the Inspector "slowed 7890 moves to as low as 0 mm/min".
 
@@ -54,4 +63,4 @@ Run with the command-line tool (`openchuck-cli regenerate project --post makera-
 | Before the fix: `9dae85d30` (0.50.0), the parent of the fix's merge commit `1f3675d52` | 17,438 lines on standard error, 17,426 of them `warning: operation '...': move N: the machine's feed limits slow this move: ...`; 72 read `the contact feed is 0.0 mm/min, not 500.0` (Finish, moves 19077 to 19148). |
 | `main` at `1f3675d52` (0.50.0) | 17 lines on standard error: the two `note:` summary lines and the `note:` for moves 19077 to 19148 quoted above; no per-move line, no "0.0 mm/min". |
 
-The two programs are byte-identical (`cmp`), so the fix changed only the messages. The F words in step 5 are those of both programs; a search for `F0` or a negative F finds nothing. The UI's Results tab and Inspector were not run here (they need a display); they read the same summary, so their numbers should match the command line's.
+Both programs start with the two notice lines of step 6 (the safety notice is in both builds; it came with #570, before either). The two programs are byte-identical (`cmp`), so the fix changed only the messages. The F words in step 5 are those of both programs; a search for `F0` or a negative F finds nothing. The UI's Results tab and Inspector were not run here (they need a display); they read the same summary, so their numbers should match the command line's.

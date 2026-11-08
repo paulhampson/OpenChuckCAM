@@ -4,6 +4,9 @@
 
     python3 owner-checks/make_zips.py [FOLDER ...]
 
+A FOLDER is relative to owner-checks/, such as 600-feed-limit-summary or rc/636-open-no-unconfirmed-dialog
+(the release-candidate drafts).
+
 Without arguments it writes every folder's zip. A folder whose project/ is not stored (the
 model is too large) has it written first by its generate.py. The zips are deterministic: entries
 sorted, every time stamp 1980-01-01 00:00, fixed permissions, deflate at level 9, no folder
@@ -45,8 +48,9 @@ def make(folder):
 
 
 def main():
-    names = sys.argv[1:] or sorted(p.name for p in HERE.iterdir()
-                                   if p.is_dir() and (p / "generate.py").exists())
+    names = sys.argv[1:] or sorted(
+        p.relative_to(HERE).as_posix() for p in [*HERE.iterdir(), *(HERE / "rc").glob("*")]
+        if p.is_dir() and (p / "generate.py").exists())
     for name in names:
         make(HERE / name)
 
