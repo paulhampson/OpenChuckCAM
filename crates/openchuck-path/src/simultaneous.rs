@@ -1766,7 +1766,7 @@ fn split(track: &Track, zones: &[section::Zone]) -> Vec<Track> {
 /// the tabs from the held regions' inner edges, and a track there would ride
 /// past the held stock's face, where the tool's tip may not go while it cuts
 /// (decision record 0161). The faces' turns skip the bands the same way.
-fn outside_held(mut x0: f64, mut x1: f64, keep_out: &[(f64, f64)]) -> (f64, f64) {
+pub(crate) fn outside_held(mut x0: f64, mut x1: f64, keep_out: &[(f64, f64)]) -> (f64, f64) {
     loop {
         let (start, end) = (x0, x1);
         for &(a, b) in keep_out {

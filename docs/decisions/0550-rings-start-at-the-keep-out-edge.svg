@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="560" viewBox="0 0 720 560" font-family="Helvetica, Arial, sans-serif" font-size="13" role="img">
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<title>Rings beside a held region: the stub today against a whole ring at the keep-out edge</title>
+<rect x="0" y="0" width="720" height="560" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#222222"/></marker></defs>
+<text x="30.0" y="34.0" fill="#222222" text-anchor="start" font-size="14" font-weight="bold" font-style="normal">Today: rings over the whole part; the keep-out drops the first rings and cuts a step short</text>
+<rect x="70" y="60" width="150" height="150" fill="#f3d6d3" stroke="none"/>
+<line x1="220.0" y1="60.0" x2="220.0" y2="210.0" stroke="#c0392b" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="5 4"/>
+<text x="145.0" y="140.0" fill="#c0392b" text-anchor="middle" font-size="12" font-weight="normal" font-style="normal">keep-out band</text>
+<text x="145.0" y="156.0" fill="#c0392b" text-anchor="middle" font-size="11" font-weight="normal" font-style="normal">(held region + tool reach)</text>
+<text x="220.0" y="54.0" fill="#c0392b" text-anchor="middle" font-size="11" font-weight="normal" font-style="normal">band edge</text>
+<line x1="50.0" y1="230.0" x2="670.0" y2="230.0" stroke="#222222" stroke-width="1.2" stroke-linecap="round" marker-end="url(#arr)"/>
+<text x="670.0" y="248.0" fill="#222222" text-anchor="end" font-size="12" font-weight="normal" font-style="normal">X along the part</text>
+<line x1="50.0" y1="60.0" x2="50.0" y2="210.0" stroke="#222222" stroke-width="1.2" stroke-linecap="round" marker-end="url(#arr)"/>
+<text x="44.0" y="210.0" fill="#222222" text-anchor="end" font-size="12" font-weight="normal" font-style="normal">A</text>
+<line x1="150.0" y1="70.0" x2="150.0" y2="200.0" stroke="#999999" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/>
+<text x="150.0" y="54.0" fill="#999999" text-anchor="middle" font-size="11" font-weight="normal" font-style="normal">ring dropped</text>
+<line x1="150.0" y1="200.0" x2="220.0" y2="200.0" stroke="#999999" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/>
+<line x1="220.0" y1="200.0" x2="280.0" y2="200.0" stroke="#c0392b" stroke-width="4" stroke-linecap="round"/>
+<text x="228.0" y="188.0" fill="#c0392b" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">stub: along X, A held</text>
+<line x1="280.0" y1="200.0" x2="280.0" y2="70.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<line x1="280.0" y1="70.0" x2="410.0" y2="70.0" stroke="#c0392b" stroke-width="3" stroke-linecap="round"/>
+<line x1="410.0" y1="70.0" x2="410.0" y2="200.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<text x="288.0" y="120.0" fill="#1f5fbf" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">first whole ring</text>
+<text x="30.0" y="314.0" fill="#222222" text-anchor="start" font-size="14" font-weight="bold" font-style="normal">Decision 0550: rings from the band edge, with a whole ring there (as roughing does)</text>
+<rect x="70" y="340" width="150" height="150" fill="#f3d6d3" stroke="none"/>
+<line x1="220.0" y1="340.0" x2="220.0" y2="490.0" stroke="#c0392b" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="5 4"/>
+<text x="145.0" y="420.0" fill="#c0392b" text-anchor="middle" font-size="12" font-weight="normal" font-style="normal">keep-out band</text>
+<text x="145.0" y="436.0" fill="#c0392b" text-anchor="middle" font-size="11" font-weight="normal" font-style="normal">(held region + tool reach)</text>
+<text x="220.0" y="334.0" fill="#c0392b" text-anchor="middle" font-size="11" font-weight="normal" font-style="normal">band edge</text>
+<line x1="50.0" y1="510.0" x2="670.0" y2="510.0" stroke="#222222" stroke-width="1.2" stroke-linecap="round" marker-end="url(#arr)"/>
+<text x="670.0" y="528.0" fill="#222222" text-anchor="end" font-size="12" font-weight="normal" font-style="normal">X along the part</text>
+<line x1="50.0" y1="340.0" x2="50.0" y2="490.0" stroke="#222222" stroke-width="1.2" stroke-linecap="round" marker-end="url(#arr)"/>
+<text x="44.0" y="490.0" fill="#222222" text-anchor="end" font-size="12" font-weight="normal" font-style="normal">A</text>
+<line x1="220.0" y1="480.0" x2="220.0" y2="350.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<circle cx="220.0" cy="480.0" r="5" fill="#1f5fbf"/>
+<text x="228.0" y="400.0" fill="#1f5fbf" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">first whole ring, at the edge</text>
+<line x1="220.0" y1="350.0" x2="370.0" y2="350.0" stroke="#c0392b" stroke-width="3" stroke-linecap="round"/>
+<line x1="370.0" y1="350.0" x2="370.0" y2="480.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<text x="228.0" y="368.0" fill="#222222" text-anchor="start" font-size="11" font-weight="normal" font-style="normal">step (or blend) to the next ring</text>
+</svg>

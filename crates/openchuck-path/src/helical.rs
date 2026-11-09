@@ -448,7 +448,10 @@ fn passes(
         let (passes, spaced, ring_note) = if rings {
             // Rings evenly spaced from end to end, no wider apart than the
             // pitch, with each face's turn among them (decision record 0390).
-            let (xs, spacing) = ring_places((x0, x1), pitch, &turns);
+            // Over the part outside the held regions' bands, with a ring
+            // at each band's edge (decision record 0550).
+            let (span, inside) = ring_span((x0, x1), input.keep_out, &turns);
+            let (xs, spacing) = ring_places(span, pitch, &inside);
             let (passes, each) = ring_passes(
                 &fit,
                 &xs,
@@ -510,7 +513,10 @@ fn passes(
             Some(e) => {
                 let turning = if rings {
                     crate::extend::Turning::Rings {
-                        spacing: ring_places((x0, x1), pitch, &turns).1,
+                        spacing: {
+                            let (span, inside) = ring_span((x0, x1), input.keep_out, &turns);
+                            ring_places(span, pitch, &inside).1
+                        },
                         sign,
                         blend,
                     }
@@ -725,6 +731,28 @@ pub(crate) fn in_rings(parameters: &Parameters) -> bool {
         parameters.get(parameter::PASS_SHAPE),
         Some(crate::params::ParameterValue::Text(t)) if t == parameter::RINGS
     )
+}
+
+/// The X range the rings of helical finishing and rest machining cover:
+/// the part's `x0` to `x1` cut short at the held regions' keep-out bands
+/// that cover its ends, so the rings start and end on a whole ring at a
+/// band's edge, as roughing's do (decision record 0550, which amends 0390
+/// item 3 and 0420 item 1; 0161). With no band, or one that leaves nothing,
+/// the whole range, as before. With the faces across the axis (`turns`)
+/// that lie inside it.
+pub(crate) fn ring_span(
+    (x0, x1): (f64, f64),
+    keep_out: &[(f64, f64)],
+    turns: &[f64],
+) -> ((f64, f64), Vec<f64>) {
+    let (lo, hi) = crate::simultaneous::outside_held(x0, x1, keep_out);
+    let span = if hi > lo { (lo, hi) } else { (x0, x1) };
+    let inside = turns
+        .iter()
+        .copied()
+        .filter(|&t| t >= span.0 && t <= span.1)
+        .collect();
+    (span, inside)
 }
 
 /// Where the rings go between `x0` and `x1` (decision record 0390 item 3):
