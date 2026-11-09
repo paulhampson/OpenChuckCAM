@@ -41,9 +41,9 @@ Use the release candidate, or a build from `main` that holds the fix (**Help > A
 
 ## Expected result
 
-As lane RAMPENTRY's branch prints them (`claude/lane-rampentry-wip` at `dd9357f07`, 8 Nov 2026), to be checked against the merged build:
+As lane RAMPENTRY's branch prints them (`claude/lane-rampentry-wip` at `8366421e9`, 9 Nov 2026, built in a target folder of its own), to be checked against the merged build:
 
-- **1 Rough rings, ramp** generates, with the note "Ramp entry (operation 'Rough rings, ramp'): passes 31, 32, ... 86, 87 are single points with no path for a ramp to follow, so they are entered by a straight plunge, as Allow single-point plunge asks", and one note per pass that starts with a short stretch ("pass 4 starts with too short a stretch to ramp along without turning the part, so its ramp goes back and forth over the pass's own path, reversing A 5 times during the entry").
+- **1 Rough rings, ramp** generates, with one note per kind of entry: "Ramp entry (operation 'Rough rings, ramp'): 49 passes, from pass 4 to pass 83 (4, 5, 6 ... 78, 80, 83) start with too short a stretch to ramp along without turning the part, so their ramps go back and forth over each pass's own path, reversing A 445 times in all during the entries" and "Ramp entry (operation 'Rough rings, ramp'): 26 passes, from pass 31 to pass 87 (31, 32, 33 ... 54, 86, 87) are single points with no path for a ramp to follow, so they are entered by a straight plunge, as Allow single-point plunge asks".
 - **2 Rough spiral, ramp** is refused: "Ramp entry: pass 85 turns round the part with its tip 0.864 mm from the rotary axis, so at 3.00 degrees a ramp round it would take 17.6 turns, more than the 10 allowed. Raise Ramp angle, or turn on Steeper ramp near the axis, or set Entry to Plunge or Helix."
 - **3 Rough spiral, steeper** generates, with a note that the pass near the axis was ramped more steeply ("... so its ramp is steeper, up to 3.69 degrees, as Steeper ramp near the axis asks"; 5.26° when it is generated on its own).
 - **4 Finish rings, ramp** generates, with "pass 4 starts on the rotary axis, where a ramp has no path to follow, so the tool descends there while the part turns 3.64 turns".
@@ -64,6 +64,7 @@ Run with the command-line tool, Linux x86_64, release builds, 8 November 2026, e
 | --- | --- | --- | --- | --- | --- |
 | `main` at `81bade8a3` | refused (no such setting) | refused (no such setting) | refused (no such setting) | refused (no such setting) | generated, old X-Y lead |
 | `claude/lane-rampentry-wip` `dd9357f07` | 11,951 moves | refused, 17.6 turns | 6,941 moves | 19,098 moves (after 1 and 3) | (no lead change on this branch) |
+| `claude/lane-rampentry-wip` `8366421e9` | 11,951 moves, notes grouped | refused, 17.6 turns | 6,362 moves | 19,098 moves (after 1 and 3) | (no lead change on this branch) |
 | `claude/lane-rampentry-lead-wip` `f7b27bcc3` | (branch has the ramp of RAMPENTRY before the steeper-ramp option) | | refused: no parameter `ramp_angle_max` | | generated, **new lead** (A and Z together at X 0) |
 
 In the LinuxCNC program of **4** the ramp reads `G0 X9.137 ... Z40.000 A0.000`, `Z9.829`, then three short moves along X to X 9.409 (the back and forth of a short stretch), then `Z9.797 A2.500`, `Z9.779 A5.000`, ... : Z falls while A turns, at one X.
@@ -72,7 +73,7 @@ In the LinuxCNC program of **4** the ramp reads `G0 X9.137 ... Z40.000 A0.000`, 
 
 - **The lead on rings (#640)** was first recorded here as unchanged on RAMPLEAD's branch: that came from a stale build (several branches had been built in turn into one shared Cargo target folder, and the lead branch's changed library was not rebuilt, although `--version` named its commit). Rebuilt on its own (target folder of its own, `f7b27bcc3`, no uncommitted changes), **5** writes the new lead quoted under "Expected result" (program SHA-256 beginning `efcadffa65ececa8`). RAMPLEAD's own run of the same project at the same commit gives the same program, byte for byte. The other branch builds were rebuilt the same way and give the results above unchanged.
 - **With the grip**, the pass starts with a 0.5 mm cut along X before the first ring, keeps the line lead and is refused at the held region; the owner decides that case (decision 0544 L2), so this check does not expect it to generate.
-- **Plunge to remove face nubs.** On the baluster, roughing in Rings with the setting on gives a program identical to the one without it, with 1 mm and with 5 mm of stock past the free end, so no public stand-in shows it yet; this check will gain one when the lane names a public case.
-- The many per-pass "too short a stretch" notes (about fifty on **1**) and the wording "passes 1 drop ..." and "reversing A 1 times" were reported to the coordinator.
+- **Plunge to remove face nubs.** Not part of this check yet. On the baluster it rightly changes nothing (its far end tapers to a pin). The case the lane names (the public `cylinder.step`, roughing in Rings past a flat free end) changes nothing through the application at `8366421e9` either: the roughing there stays at the part's radius past the free end, so no nub forms. Reported; a check follows when an application case changes the program.
+- The per-pass notes of `dd9357f07` (about fifty on **1**, and "passes 1 drop ...", "reversing A 1 times") are grouped and worded right at `8366421e9`.
 
 The interface (the view, the settings and tooltips) cannot be run without a display here.
