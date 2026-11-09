@@ -119,6 +119,31 @@ pub mod topic {
     /// The bands End facing adds where the stock rises above the requested
     /// area (decision record 0547, question 4).
     pub const STOCK_ABOVE_THE_AREA: &str = "Stock above the area";
+
+    // The topics of a refusal to generate (decision record 0644), beside
+    // those above that a refusal shares with a warning or a note.
+
+    /// End facing's own checks: its settings, the tool, the layers.
+    pub const END_FACING: &str = "End facing";
+    /// Whether Facing covers the end faces it was asked to.
+    pub const FACING_COMPLETION: &str = "Facing completion";
+    /// The moves Facing makes, and what keeps them off the part.
+    pub const FACING_MOTION: &str = "Facing motion";
+    /// Facing of a box's sides.
+    pub const BOX_FACING: &str = "Box facing";
+    /// Facing's check of the path it made, before it is used.
+    pub const FACING_CHECK: &str = "Facing check";
+    /// How far a Facing or roughing operation reaches along the part.
+    pub const FACING_EXTENT: &str = "Facing extent";
+    /// The surface a strategy works on: the part's mesh or its faces.
+    pub const SURFACE: &str = "Surface";
+    /// A region on the unrolled surface (a boundary and its offsets).
+    pub const REGION: &str = "Region";
+    /// A helix entry of a pass.
+    pub const HELIX_ENTRY: &str = "Helix entry";
+    /// A setting of the operation that is missing or out of range, when no
+    /// label names it.
+    pub const SETTING: &str = "Setting";
 }
 
 /// How serious a [`Notice`] is (decision record 0536 section 1).
