@@ -714,9 +714,33 @@ pub fn assemble_with_entry(
     }
     if !b.steep_ramps.is_empty() {
         let text = format!(
-            "passes {} drop more steeply than the ramp angle just before their first point, so \
-             their ramps follow that drop there, as the passes themselves do",
-            list(&b.steep_ramps)
+            "{} more steeply than the ramp angle just before {} first point, so {} that \
+             drop there, as {} {}",
+            if b.steep_ramps.len() == 1 {
+                format!("pass {} drops", list(&b.steep_ramps))
+            } else {
+                format!("passes {} drop", list(&b.steep_ramps))
+            },
+            if b.steep_ramps.len() == 1 {
+                "its"
+            } else {
+                "their"
+            },
+            if b.steep_ramps.len() == 1 {
+                "its ramp follows"
+            } else {
+                "their ramps follow"
+            },
+            if b.steep_ramps.len() == 1 {
+                "the pass itself"
+            } else {
+                "the passes themselves"
+            },
+            if b.steep_ramps.len() == 1 {
+                "does"
+            } else {
+                "do"
+            }
         );
         b.notes
             .insert(0, Notice::information(text).about(topic::RAMP_ENTRY));

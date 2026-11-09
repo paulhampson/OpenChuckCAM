@@ -466,8 +466,13 @@ impl Entry {
                     crate::notice::Notice::information(format!(
                         "pass {} starts with too short a stretch to ramp along without turning \
                          the part, so its ramp goes back and forth over the pass's own path, \
-                         reversing A {reversals} times during the entry",
-                        pass + 1
+                         reversing A {} during the entry",
+                        pass + 1,
+                        if reversals == 1 {
+                            "once".to_owned()
+                        } else {
+                            format!("{reversals} times")
+                        }
                     ))
                     .about(crate::notice::topic::RAMP_ENTRY),
                 );

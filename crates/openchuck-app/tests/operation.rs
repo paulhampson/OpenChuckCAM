@@ -2479,6 +2479,8 @@ fn req_op_11_req_nfr_07_allow_single_point_plunge_decides_a_single_point_pass() 
         e.contains("is a single point") && e.contains("Turn on Allow single-point plunge"),
         "{e}"
     );
+    // In the one form of decision 0536: the topic, then the operation.
+    assert!(e.starts_with("Ramp entry (operation '"), "{e}");
     app.set_parameter(
         op,
         names::ALLOW_SINGLE_POINT_PLUNGE,
@@ -2506,6 +2508,7 @@ fn req_op_11_req_nfr_07_allow_single_point_plunge_decides_a_single_point_pass() 
             e.contains("'4 mm ball' cannot cut straight down") && e.contains("single point"),
             "{entry}: {e}"
         );
+        assert!(e.contains(" entry (operation '"), "{entry}: {e}");
     }
     std::fs::remove_dir_all(&dir).unwrap();
 }

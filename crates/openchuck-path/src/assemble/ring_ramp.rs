@@ -257,7 +257,9 @@ pub(super) fn plan_spiral(
         if let Some(d) = super::footprint_entry(b, stock, over, Degrees(a), probe_height, travel) {
             stock_top = stock_top.max(probe_height - d);
         }
-        low = low.min(base(a));
+        // Where the tool meets nothing of the part the base is the first
+        // point's height, as below.
+        low = low.min(base(a).max(head.height));
     }
     let radius = head.across.hypot(head.height);
     if stock_top <= head.height + EPS {

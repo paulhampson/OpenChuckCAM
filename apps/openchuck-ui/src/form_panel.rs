@@ -973,9 +973,7 @@ mod tests {
         let shown = run(field(None));
         assert!(!shown.iter().any(|t| t == problem), "{shown:?}");
         assert!(
-            shown
-                .iter()
-                .any(|t| t == "Back-and-forth ramp (ramp entry only)"),
+            shown.iter().any(|t| t == "Allow single-point plunge"),
             "{shown:?}"
         );
     }
