@@ -239,10 +239,7 @@ fn tab_warnings(run: &openchuck_app::Regeneration) -> Vec<String> {
     run.groups
         .iter()
         .flat_map(|g| g.warnings.iter())
-        .filter(|w| {
-            w.text
-                .starts_with(openchuck_app::workholding::TAB_LENGTH_LEAD)
-        })
+        .filter(|w| w.topic.as_deref() == Some(openchuck_app::lead_in::topic::TAB_LENGTH))
         .map(|w| w.text.clone())
         .collect()
 }

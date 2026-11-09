@@ -78,21 +78,18 @@ impl ExactContact {
 
     fn description(self) -> &'static str {
         match self {
+            // What the setting does, what it costs and that a mesh part is
+            // not affected: nothing more (issue #634, the owner's answer of
+            // 8 Nov 2026; specification section 15). The measurements behind
+            // "slower" are in decision records 0277 and 0338.
             Self::Ball => {
                 "On a STEP part, drop a ball-end tool on the part's exact surfaces instead of \
-                 its tessellation. More accurate and can be slower. Measured on one test part \
-                 (decision 0277): the deepest cut into the surfaces fell from about 0.03-0.04 mm \
-                 to about 0.004 mm, and the whole job took about the same time; other parts may \
-                 take longer. Off drops on the tessellation. No effect on a mesh part. Check the \
-                 program before running it."
+                 its tessellation. More accurate and can be slower. No effect on a mesh part."
             }
             Self::Outline => {
                 "On a STEP part, drop the tool (a ball, tapered ball or flat end) on the part's \
-                 exact surfaces instead of its tessellation. More accurate and much slower. \
-                 Measured once on one test part (decision 0338): pencil clean-up took about 31 \
-                 times as long and cut at most 0.0066 mm into the surfaces instead of 0.034 mm; \
-                 axial finishing about 7 times as long, 0.0041 mm instead of 0.041 mm. Times \
-                 differ by part. No effect on a mesh part. Check the program before running it."
+                 exact surfaces instead of its tessellation. More accurate and much slower. No \
+                 effect on a mesh part."
             }
         }
     }

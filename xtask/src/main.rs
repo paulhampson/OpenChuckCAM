@@ -46,6 +46,7 @@ mod registers;
 mod release_gate;
 mod replay;
 mod testdata;
+mod topics;
 mod trace;
 
 use std::path::{Path, PathBuf};
@@ -222,6 +223,7 @@ fn run() -> Result<bool> {
         Check::Deps => vec![
             ("deps", deps::check(&root)?),
             ("messages", messages::check(&root)?),
+            ("topics", topics::check(&root)?),
         ],
         Check::Messages => vec![("messages", messages::check(&root)?)],
         Check::Licences => vec![("licences", licences::check(&root)?)],
@@ -321,6 +323,7 @@ fn run() -> Result<bool> {
         Check::All => vec![
             ("deps", deps::check(&root)?),
             ("messages", messages::check(&root)?),
+            ("topics", topics::check(&root)?),
             ("licences", licences::check(&root)?),
             ("records", records::check(&root)?),
             ("testdata", testdata::check(&root)?),

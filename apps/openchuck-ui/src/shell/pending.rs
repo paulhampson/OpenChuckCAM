@@ -4,6 +4,7 @@
 
 use eframe::egui::{self, Id};
 
+use super::reminders::DroppedPick;
 use super::{Action, Shell};
 use crate::pending_edits::{self as edits, Mode};
 
@@ -41,7 +42,16 @@ impl Shell {
         }) {
             self.pick_intent(input, ctx);
         } else {
-            self.status = "The selected geometry changed; select it again.".to_owned();
+            // An error on what the pick was for, until a pick is made
+            // (decision record 0536 section 8).
+            self.dropped_pick = Some(match (&intent, self.selected) {
+                (super::pending_pick::Intent::Solid { setup, .. }, _) => {
+                    DroppedPick::Workholding(*setup)
+                }
+                (_, Some(super::Selection::Set(set))) => DroppedPick::Set(set),
+                _ => DroppedPick::Selection,
+            });
+            self.overview_dirty = true;
         }
     }
 

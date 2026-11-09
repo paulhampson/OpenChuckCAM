@@ -59,7 +59,7 @@ Nothing the view shows is used until you apply it: the toolpaths, the simulation
 
 4. Click **Continue to operations**, then **Generate**.
 
-With two 5 mm and 4 mm tabs, the Messages list has no warning about tabs, and the project chip reads "Good to go".
+With two 5 mm and 4 mm tabs, the Messages list has no warning about tabs, and the project chip reads "Nothing to report".
 
 ## 3. A tab shorter than the tool is wide
 
@@ -155,7 +155,7 @@ A warning about a tab is about whether the tool can cut beside it, not whether t
 "No tabs are stored. The part stays joined to the stock at the held end."
 : Not a mistake on its own: the part is held by its uncut end. Add tabs when an operation will cut the part free of the held end.
 
-"The workholding of 'Setup 1' has changes that are not applied."
+"Workholding (setup 'Setup 1'): it has changes that are not applied."
 : You changed the workholding and did not press **Apply**. The view shows the change, but generation does not use it.
 
 "Tab length (operation ...): ... shorter than the tool is wide"
