@@ -25,6 +25,9 @@ Use a nightly or release-candidate build made from commit `1f3675d52` or later (
 ## Expected result
 
 > [!NOTE]
+> Since decision 0536 step 4 (#659, on `main` from `0d640692`) the text after the topic starts in lower case and every line ends with a full stop; the quotes below are as `0d640692` prints them. Builds before that print the same sentences with a capital after the lead-in or without the last full stop; either form passes.
+
+> [!NOTE]
 > The texts below are those of the release candidate's form: since decision 0536 step 3 (#648, on `main` from `645256c3`) every line starts with a topic and the operation, such as "Feed limit (operation 'Rough'): ...". A build from `1f3675d52` up to that change prints the same sentences without the lead-in ("9536 moves during 'Rough' were limited ...", "operation 'Finish': moves 19077 to 19148 ..."); either form passes.
 
 - **Results** has one line per operation about the feed limits, and none per move. As the command-line tool prints them:
@@ -35,7 +38,7 @@ Use a nightly or release-candidate build made from commit `1f3675d52` or later (
 
 - The rings at the free end have their own note, with no "0.0 mm/min" in it:
 
-  > Rotary axis (operation 'Finish'): moves 19077 to 19148 (72 moves): A turns with the contact point at the rotary axis during these moves, so the contact point barely moves and the rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min
+  > Rotary axis (operation 'Finish'): moves 19077 to 19148 (72 moves): A turns with the contact point at the rotary axis during these moves, so the contact point barely moves and the rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min.
 
 - No line anywhere says "the contact feed is 0.0 mm/min" or "as low as 0 mm/min".
 - These lines are information (no warning mark on **Rough** or **Finish** because of them).

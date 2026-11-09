@@ -1,16 +1,19 @@
-Owner check for decision 0536 build step 4: setup and export messages in
-one form, and plain command-line help
-DRAFT: to run on the release candidate, once the fix is merged.
+Owner check for decision 0536 build step 4: setup, model and export
+messages in one form, Show setting for setups and tools, plain help
+Build: commit 0d640692 or later (Help > About OpenChuckCAM), or main.
 
 1. Open the folder "project" with File > Open project.
-2. Setup, Setup 1: the clearance message should start "Clearance (setup
-   'Setup 1'): ...", use the Inspector's labels and link to the field.
-3. Operations, Generate, File > Post and export...: the same text is a
-   possible collision to tick.
-4. Command line: no help line has a requirement number (SET-01, GC-14,
-   SIM-03 ...), a decision number or "gate 3".
-Today: "the safe cylinder (radius 30.000 mm) is inside the minimum
-clearance ..."; 20 help lines carry numbers.
+2. Messages: "Clearance (setup 'Setup 1'): the safe cylinder (radius
+   30.000 mm) is inside the minimum clearance ... before running."
+   Show setting opens the Setup step at the clearance field, marked.
+3. Generate, File > Post and export...: the same text, then "A possible
+   collision: acknowledge it before the files are written". Every line:
+   topic, lower case after it, full stop at the end.
+4. Command line: no help page names a requirement, decision or "gate";
+   regenerate --out without --acknowledge-collision-warnings writes
+   nothing and still prints "Generated G-code must be verified ...".
+Before step 4: "the safe cylinder ..." with no topic; 20 help lines with
+numbers; no notice on that refusal.
 
 Nothing in this check shows that a program is safe to run. Do not run this
 project's G-code on a machine. Generated G-code must be verified by you

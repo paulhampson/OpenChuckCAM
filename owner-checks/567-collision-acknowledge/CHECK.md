@@ -28,6 +28,9 @@ Use a nightly or release-candidate build made from commit `3b99ea23e` or later (
 
 ## Expected result
 
+> [!NOTE]
+> Since decision 0536 step 4 (#659, on `main` from `0d640692`) the text after the topic starts in lower case and every line ends with a full stop; the quotes below are as `0d640692` prints them. Builds before that print the same sentences with a capital after the lead-in or without the last full stop; either form passes.
+
 - **Step 3**: the mark is the amber Warning; its text starts **"Needs acknowledging: Tab length (operation 'Whole part', tool '6 mm ball (check 567)')"**. In Messages this warning comes first among the warnings. The other warnings ("Tab clearance (operation 'Whole part'): 1 Whole part cannot cut down beside tab 1 ...", and two "Held region (operation 'Whole part'): ..." lines) do not need acknowledging.
 - **Step 4**: the checks list the tab-length warning as a possible collision, under the text "These files hold possible collisions of the tool, its shank or its holder with the part, the stock, a tab or a held region. Read each one, here and in Messages, and check it before running the program:", and a box labelled:
 
@@ -38,7 +41,7 @@ Use a nightly or release-candidate build made from commit `3b99ea23e` or later (
 
 **Old behaviour (not fixed):** the tab-length warning was a plain warning: no "Needs acknowledging", no box, and the export (and the command line) wrote the file without asking. The command line printed none of the export's checks.
 
-**Known, not part of this check:** "the tool does not turn at a step ... at X -16.001", an X outside the stock, is issue #633. When the command line refuses for want of `--acknowledge-collision-warnings` it does not print the "Generated G-code must be verified ..." notice (it does when it writes); that is reported to the project separately.
+**Known, not part of this check:** "the tool does not turn at a step ... at X -16.001", an X outside the stock, is issue #633. Up to `81bade8a3` the command line, refusing for want of `--acknowledge-collision-warnings`, did not print the "Generated G-code must be verified ..." notice (issue #645); from `0d640692` (#659) it prints it on that refusal too.
 
 ## Report back
 

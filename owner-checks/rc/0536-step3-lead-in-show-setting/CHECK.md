@@ -35,13 +35,13 @@ Use the release candidate, or a build from `main` at commit `645256c3` or later 
 
 - Every line in Messages and Results starts with a topic and its context. As the command-line tool prints the warnings:
 
-  > Flute length (operation 'Short flutes', tool 'Short-flute ball 3.175x5 (check 0536)'): the stock stands up to 9.335 mm above the tool's tip along its axis (at X 61.000, A 0.0), more than the tool's 5.000 mm of flute, so the shank may meet the stock; the stock is a 24.000 mm diameter cylinder on the rotary axis. The path was made: check it before running it. Use a tool with longer flutes, or rough the part first in this setup, or turn on Finishing layers
+  > Flute length (operation 'Short flutes', tool 'Short-flute ball 3.175x5 (check 0536)'): the stock stands up to 9.335 mm above the tool's tip along its axis (at X 61.000, A 0.0), more than the tool's 5.000 mm of flute, so the shank may meet the stock; the stock is a 24.000 mm diameter cylinder on the rotary axis. The path was made: check it before running it. Use a tool with longer flutes, or rough the part first in this setup, or turn on Finishing layers.
 
-  > Held region (operation 'Short flutes'): Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
+  > Held region (operation 'Short flutes'): nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
 
-  > Part cut free (operation 'Free ends'): the end face at X 0.000 is faced down to the rotary axis: the tool cuts a ring 3.175 mm wide from X -3.176 to -0.001 down to the axis, and nothing in this setup holds the part on the other side of the ring (no held region at its other end, and no tab joining it to one), so the part can be cut free there and thrown while the rotary axis turns. Before running this program, check the stock and the workholding on the machine
+  > Part cut free (operation 'Free ends'): the end face at X 0.000 is faced down to the rotary axis: the tool cuts a ring 3.175 mm wide from X -3.176 to -0.001 down to the axis, and nothing in this setup holds the part on the other side of the ring (no held region at its other end, and no tab joining it to one), so the part can be cut free there and thrown while the rotary axis turns. Before running this program, check the stock and the workholding on the machine.
 
-  > Held region (operation 'Free ends'): Nothing within one tool radius of the held region at the start of the stock is cut: ...
+  > Held region (operation 'Free ends'): nothing within one tool radius of the held region at the start of the stock is cut: ...
 
   and the notes: "Feed limit (operation '...'): ...", "Shoulders (operation 'Rough'): ...", "Free ends (operation 'Free ends'): ..." (twice), "Rotary axis (operation 'Free ends'): moves 9888 to 9959 (72 moves): ...", and "Cutting data (operation '...'): stepover 1 set on the operation overrides ...".
 - No line has an internal name, a requirement number or a decision number.
