@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (MSGREVIEW, decision 0536 step 4)
+
+- **Changed (decision 0536 step 4, accepted; issue #567):** every message the overview builds takes the one form, "<Topic> (<items>): <text>": the export result, failed jobs, refusals, selection sets, enclosed material, the machine profile, the tool length, the setup checks, the workholding and the model's file, mesh check, units, notes and import. `lead_in::in_form` writes the text as a clause (`lead_in::clause`) ending with a full stop. `Message::new` is private; `Message::about` builds a message, and `Message::formed` one from a text already in the form. New topics in `lead_in::topic` (`ALL` lists them); Tab clearance names the tool. The export checks name a setup's possible collision as an operation's ("... A possible collision: acknowledge it before the files are written"); `OutputReport::body` is the report after its topic.
+- **Added:** `SettingRef::setup`, `SettingRef::setup_machine`, `SettingRef::tool` and `SettingRef::post`; `SetupField::key` and `SetupField::from_key`. Setup and tool-length warnings link to the setting their text says to change.
+- **Changed (OI-373; the owner's answer (e)):** `GroupInfo::rapid_cuts` carries the run's rapid cuts; a rapid that removes material is a warning to acknowledge in Messages, and short blocks left in the program in Report mode a warning, each marking its operation while its path is current, as "Rapid cut (operation '<name>'): ..." and "Short blocks (operation '<name>'): ..." everywhere.
+- **Changed (OI-360):** a run refused for a parameter names it by its field label; the requirement numbers are gone from the texts a user reads.
+
 ## Unreleased (MSGSTEP5, decision 0536 step 5)
 
 - **Added (MSGSTEP5; decision 0536 section 8, accepted; OI-2098):** `JobLog::record` lists what the user just did ("Saved …", "Opened …", "Added …", "Copied n models into the project folder") as a finished entry with its time, `JobOutcome::Action`; `ago` says how long ago ("just now", "3 min ago"). `MessageAction::Save` and `MessageAction::Undo`. `Application::is_recovered_unsaved` and `Application::tool_numbers_unsaved`, for the warnings of work that is lost unless saved. Adding the variants is a breaking change for an exhaustive `match` on `JobOutcome` or `MessageAction`; `openchuck-app` is not in the semver-checked library family.
