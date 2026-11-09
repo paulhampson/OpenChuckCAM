@@ -116,12 +116,12 @@ These themes go in 2026.2:
 
 The `Future` milestone (number 5) holds backlog work with no release. Triaged issues had `awaiting-triage` swapped for `Phase2` and `awaiting-planning`.
 
-Accepting any of these needs a new requirement ID (CLAUDE.md: do not edit `requirements.md` to fit; propose, agree, then record).
+Requirement IDs for these are added as part of the work on each issue (owner, 9 Nov 2026): the lane proposes the requirement, the owner agrees it, and it is recorded in the same change (CLAUDE.md: do not edit `requirements.md` to fit).
 
 ## Open points for the next planning session
 
 - OI-313 is settled by the owner's decision to close #755 (no undo in the command line). Move its row to the Closed table of `docs/open-items.md` in the next docs pull request; it is not done on this branch.
-- The suggestions accepted into a release (#744, #745, #747 to #749, #751, #753, #754, #758) still need requirement IDs before they are built.
+- The suggestions accepted into a release (#744, #745, #747 to #749, #751, #753, #754, #758) get their requirement IDs when work on each issue starts, not in planning (owner, 9 Nov 2026).
 - **Not scheduled** (not in any milestone yet):
   - the remaining sev3 bugs and housekeeping issues: #685, #682, #680, #677, #676, #662, #658, #657, #645, #632, #629, #624, #621, #618, #609, #608, #589, #582, #581, #574, #563, #461;
   - #421 STEPRAMP, #516 deviation by area, #528 tab management, #601, #368 (Discussions).
