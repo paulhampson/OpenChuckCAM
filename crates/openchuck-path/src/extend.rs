@@ -156,9 +156,10 @@ impl Extension {
             Some(crate::params::ParameterValue::Flag(true))
         );
         let (x0, x1) = input.stock.x_extent().ok_or_else(|| {
-            PathError::Strategy(format!(
-                "{label} cannot extend past the stock: the stock model gives no ends"
-            ))
+            PathError::refused(
+                crate::topic::PAST_THE_ENDS,
+                format!("{label} cannot extend past the stock: the stock model gives no ends"),
+            )
         })?;
         let mid = crate::strategy::part_middle(input);
         for (wanted, which, held) in [

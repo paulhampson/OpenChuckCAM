@@ -372,7 +372,8 @@ fn passes(
         let (x0, x1) = (bounds.min.x, bounds.max.x);
         let length = x1 - x0;
         if length.is_nan() || length <= 0.0 {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::HELICAL_FINISHING,
                 "the part has no length along the rotary axis to finish".to_owned(),
             ));
         }
@@ -1028,7 +1029,10 @@ fn adaptive_passes(
         .map(Counting::new)
         .collect();
     let Some((first, rest)) = counters.split_first() else {
-        return Err(PathError::Strategy("no surface to finish".to_owned()));
+        return Err(PathError::refused(
+            crate::topic::SURFACE,
+            "no surface to finish".to_owned(),
+        ));
     };
     let counted = StrategyInput {
         surface: first,

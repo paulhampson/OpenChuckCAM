@@ -556,7 +556,8 @@ fn run(
     let (x0, x1) = outside_held(bounds.min.x, bounds.max.x, input.keep_out);
     let length = x1 - x0;
     if length.is_nan() || length <= 0.0 {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::SIMULTANEOUS_FINISHING,
             "the part has no length along the rotary axis to finish".to_owned(),
         ));
     }
@@ -564,7 +565,8 @@ fn run(
         .into_iter()
         .fold(0.0_f64, |r, v| r.max(v.abs()));
     if !(radius.is_finite() && radius > 0.0) {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::SIMULTANEOUS_FINISHING,
             "the part has no extent round the rotary axis to finish".to_owned(),
         ));
     }
@@ -1375,7 +1377,10 @@ fn adaptive_passes(
     // geometry queries are limited (decision record 0239 item 8).
     let counters = vec![Counting::new(input.surface)];
     let Some(first) = counters.first() else {
-        return Err(PathError::Strategy("no surface to finish".to_owned()));
+        return Err(PathError::refused(
+            crate::topic::SURFACE,
+            "no surface to finish".to_owned(),
+        ));
     };
     let counted = StrategyInput {
         surface: first,
@@ -2415,15 +2420,18 @@ impl Plan<'_> {
                         // be kept within the tolerance (OP-20).
                         out.points.push(None);
                     } else if error > self.tolerance {
-                        return Err(PathError::Strategy(format!(
-                            "simultaneous finishing cannot keep the move to X {:.3}, A {:.3} \
+                        return Err(PathError::refused(
+                            crate::topic::SIMULTANEOUS_FINISHING,
+                            format!(
+                                "simultaneous finishing cannot keep the move to X {:.3}, A {:.3} \
                              within the tolerance: it would cut {error:.4} mm into the surface; \
                              the tool jumps between two surfaces there (a sharp edge, or a wall \
                              the drive meets), so a smaller largest tilt or angle step does not \
                              help: limit the operation to a region away from it, or finish that \
                              part with helical finishing",
-                            b.contact.tip.x, b.a.0
-                        )));
+                                b.contact.tip.x, b.a.0
+                            ),
+                        ));
                     }
                     if -error > self.tolerance {
                         out.under = out.under.max(-error);
