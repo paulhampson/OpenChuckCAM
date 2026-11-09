@@ -1,8 +1,8 @@
 Owner check for issue #640: a lead on a ring stays in the plane of the cut
 
 1. Open the folder "project" with File > Open project (the tutorial job
-   without its grip, plus the public cylinder.step; three operations, all
-   with Entry Lead).
+   with and without its grip, plus the public cylinder.step; four
+   operations, all with Entry Lead).
 2. Operations, Generate.
 Expected: 1 Finish rings, lead: generated; the lead-in comes down at X 0
 with A and Z moving together, nothing comes in along X; note "Lead entry
@@ -10,12 +10,14 @@ with A and Z moving together, nothing comes in along X; note "Lead entry
 plunge and has no lead-out". 2 Axial lead, through stock: refused, "...
 88 passes, the first pass 1, are entered by a straight plunge into the
 stock ... the tool 'O-flute, not centre cutting' cannot cut straight
-down ...". 3 Axial lead, through air: generated.
+down ...". 3 Axial lead, through air: generated. 4 Finish rings, lead,
+with grip: generated; the lead-in comes down at X 9.088, the held
+region's edge, turning with the part into a whole ring.
 The two "Part cut free" warnings on 1 come from having no grip; they are
-expected and not part of the check. The case with the grip waits for pull
-request #664.
+expected and not part of the check.
 Old behaviour: 1 came in as a quarter arc in the X-Y plane along X; 2
-generated, descending through the stock with a tool that cannot plunge.
+generated, descending through the stock with a tool that cannot plunge; 4
+was refused at the held region.
 
 Nothing in this check shows that a program is safe to run. Do not run this
 project's G-code on a machine. Generated G-code must be verified by you
