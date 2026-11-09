@@ -13,14 +13,14 @@ use crate::camera::{
     Camera, IDENTITY, Mat4, Projection, multiply, rigid_inverse, to_f32, transform,
 };
 use crate::scene::{
-    Colour, DOT_CORE_RADIUS, DOT_RADIUS, DOT_SPACING, DisplayMode, Hatch, HatchKind, Scene, Slot,
-    batch_lines, outline_floats, wireframe_indices,
+    Colour, DisplayMode, Hatch, HatchKind, SURFACE_HATCH_SPACING_MM, Scene, Slot, batch_lines,
+    outline_floats, wireframe_indices,
 };
 
 /// Bytes of one draw's uniforms: a 4 by 4 matrix, then six vectors of four:
 /// the colour, the eye, the line width and viewport, the dash pattern, the
 /// hatch colour, and the scale and hatch kind.
-const UNIFORM_SIZE: u64 = 192;
+const UNIFORM_SIZE: u64 = 176;
 
 /// What a frame needs besides the scene.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -615,11 +615,11 @@ impl Renderer {
                 Some(h) => match h.kind {
                     HatchKind::Single => (h.colour, [0.0; 4], 1.0),
                     HatchKind::Cross => (h.colour, [0.0; 4], 2.0),
-                    HatchKind::Dots { ring } => (h.colour, ring, 3.0),
+                    HatchKind::Surface { ring } => (h.colour, ring, 3.0),
                 },
                 None => ([0.0; 4], [0.0; 4], 0.0),
             };
-            let mut floats = Vec::with_capacity(48);
+            let mut floats = Vec::with_capacity(44);
             floats.extend(matrix.iter().flatten());
             floats.extend(u.colour);
             floats.extend(eye);
@@ -632,8 +632,7 @@ impl Renderer {
             ]);
             floats.extend(u.pattern);
             floats.extend(hatch);
-            floats.extend([per_mm, kind, 0.0, 0.0]);
-            floats.extend([DOT_SPACING, DOT_CORE_RADIUS, DOT_RADIUS, 0.0]);
+            floats.extend([per_mm, kind, SURFACE_HATCH_SPACING_MM, 0.0]);
             floats.extend(ring);
             queue.write_buffer(&u.buffer, 0, &f32_bytes(&floats));
         };

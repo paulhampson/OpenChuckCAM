@@ -316,6 +316,16 @@ impl Shell {
                                     None => ui.label(format!("{}: done", entry.label)),
                                 };
                             }
+                            // What the user did, with how long ago
+                            // (decision record 0536 section 8).
+                            Some(JobOutcome::Action) => {
+                                marks::tick(ui);
+                                ui.label(&entry.label);
+                                ui.label(
+                                    RichText::new(openchuck_app::ago(entry.started.elapsed()))
+                                        .color(DARK.muted),
+                                );
+                            }
                             None => {}
                         }
                         if let Some(took) = entry.took {

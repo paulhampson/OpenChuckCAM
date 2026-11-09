@@ -910,6 +910,105 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
+    /// The internal references a user-facing text may not hold: a decision
+    /// record, an open item or a requirement number (interface
+    /// specification section 15; issue #634).
+    fn internal_references(text: &str) -> Vec<String> {
+        let words: Vec<&str> = text
+            .split(|c: char| !(c.is_alphanumeric() || c == '-'))
+            .filter(|w| !w.is_empty())
+            .collect();
+        let mut found = Vec::new();
+        for (i, word) in words.iter().enumerate() {
+            let next_is_number = words
+                .get(i + 1)
+                .is_some_and(|n| n.chars().all(|c| c.is_ascii_digit()));
+            let lower = word.to_lowercase();
+            if (lower == "decision" || lower == "decisions") && next_is_number {
+                found.push(format!("{word} {}", words[i + 1]));
+            }
+            // "OI-2097", "OP-05", "NFR-12", "GC-07": capitals, a hyphen,
+            // digits.
+            if let Some((head, tail)) = word.split_once('-')
+                && (2..=4).contains(&head.len())
+                && head.chars().all(|c| c.is_ascii_uppercase())
+                && !tail.is_empty()
+                && tail.chars().all(|c| c.is_ascii_digit())
+            {
+                found.push((*word).to_owned());
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn req_ui_12_internal_references_are_found() {
+        assert_eq!(
+            internal_references("Measured (decision 0338): slower. See OI-2097 and OP-05."),
+            vec!["decision 0338", "OI-2097", "OP-05"]
+        );
+        assert!(internal_references("A 3-axis tool, 0.5 mm, T-slot, G-code").is_empty());
+    }
+
+    /// The Exact STEP surface contact tooltip says what the setting does,
+    /// what it costs and that a mesh part is not affected, and nothing more
+    /// (issue #634, the owner's answer of 8 Nov 2026).
+    #[test]
+    fn req_ui_12_the_exact_contact_tooltip_is_short() {
+        let registry = Registry::builtin();
+        let tooltip = |strategy: &str| {
+            registry
+                .get(strategy)
+                .unwrap()
+                .schema()
+                .parameters
+                .into_iter()
+                .find(|p| p.name == crate::contact::parameter::EXACT_CONTACT)
+                .unwrap()
+                .description
+        };
+        assert_eq!(
+            tooltip("helical_finishing"),
+            "On a STEP part, drop a ball-end tool on the part's exact surfaces instead of its \
+             tessellation. More accurate and can be slower. No effect on a mesh part."
+        );
+        assert_eq!(
+            tooltip("axial_finishing"),
+            "On a STEP part, drop the tool (a ball, tapered ball or flat end) on the part's exact \
+             surfaces instead of its tessellation. More accurate and much slower. No effect on a \
+             mesh part."
+        );
+    }
+
+    /// No strategy's description, nor any setting's label, tooltip or
+    /// choice, names a decision record, an open item or a requirement
+    /// (interface specification section 15: no internal language; issue
+    /// #634, the Exact STEP surface contact tooltip).
+    #[test]
+    fn req_ui_12_no_setting_text_names_a_decision_or_a_requirement() {
+        let registry = Registry::builtin();
+        let mut found = Vec::new();
+        for strategy in registry.iter() {
+            let mut texts = vec![
+                strategy.label().to_owned(),
+                strategy.description().to_owned(),
+            ];
+            for spec in strategy.schema().parameters {
+                texts.push(spec.label.clone());
+                texts.push(spec.description.clone());
+                if let crate::params::ParameterKind::Choice { options, .. } = &spec.kind {
+                    texts.extend(options.iter().cloned());
+                }
+            }
+            for text in texts {
+                for reference in internal_references(&text) {
+                    found.push(format!("{}: {reference}", strategy.name()));
+                }
+            }
+        }
+        assert!(found.is_empty(), "{found:#?}");
+    }
     use openchuck_types::geometry::UnitVec3;
     use openchuck_types::ir::{MoveKind, PathTags, Segment, ToolPose, ToolpathGroup};
     use openchuck_types::units::Seconds;

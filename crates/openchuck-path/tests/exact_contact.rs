@@ -119,12 +119,20 @@ fn req_op_27_exact_contact_is_offered_by_the_strategies_that_drop_on_faces() {
                 let spec = spec.unwrap_or_else(|| panic!("{name} has no setting"));
                 assert_eq!(spec.label, "Exact STEP surface contact", "{name}");
                 assert_eq!(spec.kind, ParameterKind::Flag { default: on }, "{name}");
-                // Plain words: slower, more accurate, the program is still
-                // the user's to check (NFR-12); no promised figure.
+                // Plain words: slower, more accurate, no effect on a mesh
+                // part; no promised figure. The G-code notice (NFR-12) is
+                // on the export and in the program, not in this tooltip
+                // (issue #634, the owner's answer of 8 Nov 2026).
                 let d = spec.description.to_lowercase();
-                for word in ["slower", "accurate", "tessellation", "check the program"] {
+                for word in [
+                    "slower",
+                    "accurate",
+                    "tessellation",
+                    "no effect on a mesh part",
+                ] {
                     assert!(d.contains(word), "{name}: '{word}' in {d}");
                 }
+                assert!(!d.contains("check the program"), "{name}: {d}");
                 // Next to Tolerance, in the same section of the form.
                 let order: Vec<&str> = schema.parameters.iter().map(|p| p.name.as_str()).collect();
                 let at = order.iter().position(|n| *n == names::TOLERANCE).unwrap();

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" role="img" aria-labelledby="t d" font-family="sans-serif" font-size="14">
+<title id="t">Unreachable-area hatch painted on the surface, and the footprint closing (decision 0549)</title>
+<desc id="d">Left: the same part seen twice, before and after it turns. The old dot grid stays on the same screen positions; the new hatching stays on the surface, so it narrows with the part. Right: a strip of triangles with sample points; the triangles the points lie on leave holes, closing fills each hole held by two marked neighbours within 1.5 millimetres of a sample, and stops at a crease between surfaces.</desc>
+<rect width="960" height="600" fill="#ffffff"/>
+<defs><clipPath id="a1"><rect x="40" y="90" width="170" height="110" rx="14"/></clipPath><clipPath id="a2"><rect x="250" y="90" width="110" height="110" rx="14"/></clipPath>
+<clipPath id="b1"><rect x="40" y="290" width="170" height="110" rx="14"/></clipPath><clipPath id="b2"><rect x="250" y="290" width="110" height="110" rx="14"/></clipPath></defs>
+<text x="40" y="34" font-size="18" font-weight="bold" fill="#15171a">1. The pattern: painted on the surface</text>
+<text x="40" y="62" fill="#15171a">Decision 0515: dots on a screen grid</text>
+<text x="40" y="82" fill="#444" font-size="12">The part turns; the dots stay where they were on the screen.</text>
+<rect x="40" y="90" width="170" height="110" rx="14" fill="#b7bfca" stroke="#15171a"/>
+<g clip-path="url(#a1)" fill="#0c0e12" stroke="#fff" stroke-width="1.2"><circle cx="28.0" cy="102.0" r="2.6"/><circle cx="52.0" cy="102.0" r="2.6"/><circle cx="76.0" cy="102.0" r="2.6"/><circle cx="100.0" cy="102.0" r="2.6"/><circle cx="124.0" cy="102.0" r="2.6"/><circle cx="148.0" cy="102.0" r="2.6"/><circle cx="172.0" cy="102.0" r="2.6"/><circle cx="196.0" cy="102.0" r="2.6"/><circle cx="220.0" cy="102.0" r="2.6"/><circle cx="40.0" cy="126.0" r="2.6"/><circle cx="64.0" cy="126.0" r="2.6"/><circle cx="88.0" cy="126.0" r="2.6"/><circle cx="112.0" cy="126.0" r="2.6"/><circle cx="136.0" cy="126.0" r="2.6"/><circle cx="160.0" cy="126.0" r="2.6"/><circle cx="184.0" cy="126.0" r="2.6"/><circle cx="208.0" cy="126.0" r="2.6"/><circle cx="232.0" cy="126.0" r="2.6"/><circle cx="28.0" cy="150.0" r="2.6"/><circle cx="52.0" cy="150.0" r="2.6"/><circle cx="76.0" cy="150.0" r="2.6"/><circle cx="100.0" cy="150.0" r="2.6"/><circle cx="124.0" cy="150.0" r="2.6"/><circle cx="148.0" cy="150.0" r="2.6"/><circle cx="172.0" cy="150.0" r="2.6"/><circle cx="196.0" cy="150.0" r="2.6"/><circle cx="220.0" cy="150.0" r="2.6"/><circle cx="40.0" cy="174.0" r="2.6"/><circle cx="64.0" cy="174.0" r="2.6"/><circle cx="88.0" cy="174.0" r="2.6"/><circle cx="112.0" cy="174.0" r="2.6"/><circle cx="136.0" cy="174.0" r="2.6"/><circle cx="160.0" cy="174.0" r="2.6"/><circle cx="184.0" cy="174.0" r="2.6"/><circle cx="208.0" cy="174.0" r="2.6"/><circle cx="232.0" cy="174.0" r="2.6"/><circle cx="28.0" cy="198.0" r="2.6"/><circle cx="52.0" cy="198.0" r="2.6"/><circle cx="76.0" cy="198.0" r="2.6"/><circle cx="100.0" cy="198.0" r="2.6"/><circle cx="124.0" cy="198.0" r="2.6"/><circle cx="148.0" cy="198.0" r="2.6"/><circle cx="172.0" cy="198.0" r="2.6"/><circle cx="196.0" cy="198.0" r="2.6"/><circle cx="220.0" cy="198.0" r="2.6"/><circle cx="40.0" cy="222.0" r="2.6"/><circle cx="64.0" cy="222.0" r="2.6"/><circle cx="88.0" cy="222.0" r="2.6"/><circle cx="112.0" cy="222.0" r="2.6"/><circle cx="136.0" cy="222.0" r="2.6"/><circle cx="160.0" cy="222.0" r="2.6"/><circle cx="184.0" cy="222.0" r="2.6"/><circle cx="208.0" cy="222.0" r="2.6"/><circle cx="232.0" cy="222.0" r="2.6"/></g>
+<rect x="250" y="90" width="110" height="110" rx="14" fill="#b7bfca" stroke="#15171a"/>
+<g clip-path="url(#a2)" fill="#0c0e12" stroke="#fff" stroke-width="1.2"><circle cx="238.0" cy="102.0" r="2.6"/><circle cx="262.0" cy="102.0" r="2.6"/><circle cx="286.0" cy="102.0" r="2.6"/><circle cx="310.0" cy="102.0" r="2.6"/><circle cx="334.0" cy="102.0" r="2.6"/><circle cx="358.0" cy="102.0" r="2.6"/><circle cx="382.0" cy="102.0" r="2.6"/><circle cx="250.0" cy="126.0" r="2.6"/><circle cx="274.0" cy="126.0" r="2.6"/><circle cx="298.0" cy="126.0" r="2.6"/><circle cx="322.0" cy="126.0" r="2.6"/><circle cx="346.0" cy="126.0" r="2.6"/><circle cx="370.0" cy="126.0" r="2.6"/><circle cx="238.0" cy="150.0" r="2.6"/><circle cx="262.0" cy="150.0" r="2.6"/><circle cx="286.0" cy="150.0" r="2.6"/><circle cx="310.0" cy="150.0" r="2.6"/><circle cx="334.0" cy="150.0" r="2.6"/><circle cx="358.0" cy="150.0" r="2.6"/><circle cx="382.0" cy="150.0" r="2.6"/><circle cx="250.0" cy="174.0" r="2.6"/><circle cx="274.0" cy="174.0" r="2.6"/><circle cx="298.0" cy="174.0" r="2.6"/><circle cx="322.0" cy="174.0" r="2.6"/><circle cx="346.0" cy="174.0" r="2.6"/><circle cx="370.0" cy="174.0" r="2.6"/><circle cx="238.0" cy="198.0" r="2.6"/><circle cx="262.0" cy="198.0" r="2.6"/><circle cx="286.0" cy="198.0" r="2.6"/><circle cx="310.0" cy="198.0" r="2.6"/><circle cx="334.0" cy="198.0" r="2.6"/><circle cx="358.0" cy="198.0" r="2.6"/><circle cx="382.0" cy="198.0" r="2.6"/><circle cx="250.0" cy="222.0" r="2.6"/><circle cx="274.0" cy="222.0" r="2.6"/><circle cx="298.0" cy="222.0" r="2.6"/><circle cx="322.0" cy="222.0" r="2.6"/><circle cx="346.0" cy="222.0" r="2.6"/><circle cx="370.0" cy="222.0" r="2.6"/></g>
+<text x="40" y="218" fill="#444" font-size="12">before</text><text x="250" y="218" fill="#444" font-size="12">after turning (same dot spacing)</text>
+<text x="40" y="262" fill="#15171a">Decision 0549: hatching fixed to the surface</text>
+<text x="40" y="282" fill="#444" font-size="12">1 mm lines in the model frame: they turn and foreshorten with the part.</text>
+<rect x="40" y="290" width="170" height="110" rx="14" fill="#b7bfca" stroke="#15171a"/>
+<g clip-path="url(#b1)" stroke="#fff" stroke-width="4.2"><line x1="-70.0" y1="400" x2="40.0" y2="290"/><line x1="-54.0" y1="400" x2="56.0" y2="290"/><line x1="-38.0" y1="400" x2="72.0" y2="290"/><line x1="-22.0" y1="400" x2="88.0" y2="290"/><line x1="-6.0" y1="400" x2="104.0" y2="290"/><line x1="10.0" y1="400" x2="120.0" y2="290"/><line x1="26.0" y1="400" x2="136.0" y2="290"/><line x1="42.0" y1="400" x2="152.0" y2="290"/><line x1="58.0" y1="400" x2="168.0" y2="290"/><line x1="74.0" y1="400" x2="184.0" y2="290"/><line x1="90.0" y1="400" x2="200.0" y2="290"/><line x1="106.0" y1="400" x2="216.0" y2="290"/><line x1="122.0" y1="400" x2="232.0" y2="290"/><line x1="138.0" y1="400" x2="248.0" y2="290"/><line x1="154.0" y1="400" x2="264.0" y2="290"/><line x1="170.0" y1="400" x2="280.0" y2="290"/><line x1="186.0" y1="400" x2="296.0" y2="290"/><line x1="202.0" y1="400" x2="312.0" y2="290"/><line x1="218.0" y1="400" x2="328.0" y2="290"/><line x1="234.0" y1="400" x2="344.0" y2="290"/><line x1="250.0" y1="400" x2="360.0" y2="290"/><line x1="266.0" y1="400" x2="376.0" y2="290"/><line x1="282.0" y1="400" x2="392.0" y2="290"/><line x1="298.0" y1="400" x2="408.0" y2="290"/><line x1="314.0" y1="400" x2="424.0" y2="290"/><line x1="330.0" y1="400" x2="440.0" y2="290"/></g>
+<g clip-path="url(#b1)" stroke="#0c0e12" stroke-width="1.6"><line x1="-70.0" y1="400" x2="40.0" y2="290" /><line x1="-54.0" y1="400" x2="56.0" y2="290" /><line x1="-38.0" y1="400" x2="72.0" y2="290" /><line x1="-22.0" y1="400" x2="88.0" y2="290" /><line x1="-6.0" y1="400" x2="104.0" y2="290" /><line x1="10.0" y1="400" x2="120.0" y2="290" /><line x1="26.0" y1="400" x2="136.0" y2="290" /><line x1="42.0" y1="400" x2="152.0" y2="290" /><line x1="58.0" y1="400" x2="168.0" y2="290" /><line x1="74.0" y1="400" x2="184.0" y2="290" /><line x1="90.0" y1="400" x2="200.0" y2="290" /><line x1="106.0" y1="400" x2="216.0" y2="290" /><line x1="122.0" y1="400" x2="232.0" y2="290" /><line x1="138.0" y1="400" x2="248.0" y2="290" /><line x1="154.0" y1="400" x2="264.0" y2="290" /><line x1="170.0" y1="400" x2="280.0" y2="290" /><line x1="186.0" y1="400" x2="296.0" y2="290" /><line x1="202.0" y1="400" x2="312.0" y2="290" /><line x1="218.0" y1="400" x2="328.0" y2="290" /></g>
+<rect x="250" y="290" width="110" height="110" rx="14" fill="#b7bfca" stroke="#15171a"/>
+<g clip-path="url(#b2)" stroke="#fff" stroke-width="4.2"><line x1="140.0" y1="400" x2="250.0" y2="290"/><line x1="150.4" y1="400" x2="260.4" y2="290"/><line x1="160.8" y1="400" x2="270.8" y2="290"/><line x1="171.2" y1="400" x2="281.2" y2="290"/><line x1="181.6" y1="400" x2="291.6" y2="290"/><line x1="192.0" y1="400" x2="302.0" y2="290"/><line x1="202.4" y1="400" x2="312.4" y2="290"/><line x1="212.8" y1="400" x2="322.8" y2="290"/><line x1="223.2" y1="400" x2="333.2" y2="290"/><line x1="233.6" y1="400" x2="343.6" y2="290"/><line x1="244.0" y1="400" x2="354.0" y2="290"/><line x1="254.4" y1="400" x2="364.4" y2="290"/><line x1="264.8" y1="400" x2="374.8" y2="290"/><line x1="275.2" y1="400" x2="385.2" y2="290"/><line x1="285.6" y1="400" x2="395.6" y2="290"/><line x1="296.0" y1="400" x2="406.0" y2="290"/><line x1="306.4" y1="400" x2="416.4" y2="290"/><line x1="316.8" y1="400" x2="426.8" y2="290"/><line x1="327.2" y1="400" x2="437.2" y2="290"/><line x1="337.6" y1="400" x2="447.6" y2="290"/><line x1="348.0" y1="400" x2="458.0" y2="290"/><line x1="358.4" y1="400" x2="468.4" y2="290"/><line x1="368.8" y1="400" x2="478.8" y2="290"/><line x1="379.2" y1="400" x2="489.2" y2="290"/><line x1="389.6" y1="400" x2="499.6" y2="290"/><line x1="400.0" y1="400" x2="510.0" y2="290"/></g>
+<g clip-path="url(#b2)" stroke="#0c0e12" stroke-width="1.6"><line x1="140.0" y1="400" x2="250.0" y2="290" /><line x1="150.4" y1="400" x2="260.4" y2="290" /><line x1="160.8" y1="400" x2="270.8" y2="290" /><line x1="171.2" y1="400" x2="281.2" y2="290" /><line x1="181.6" y1="400" x2="291.6" y2="290" /><line x1="192.0" y1="400" x2="302.0" y2="290" /><line x1="202.4" y1="400" x2="312.4" y2="290" /><line x1="212.8" y1="400" x2="322.8" y2="290" /><line x1="223.2" y1="400" x2="333.2" y2="290" /><line x1="233.6" y1="400" x2="343.6" y2="290" /><line x1="244.0" y1="400" x2="354.0" y2="290" /><line x1="254.4" y1="400" x2="364.4" y2="290" /><line x1="264.8" y1="400" x2="374.8" y2="290" /><line x1="275.2" y1="400" x2="385.2" y2="290" /><line x1="285.6" y1="400" x2="395.6" y2="290" /><line x1="296.0" y1="400" x2="406.0" y2="290" /><line x1="306.4" y1="400" x2="416.4" y2="290" /><line x1="316.8" y1="400" x2="426.8" y2="290" /><line x1="327.2" y1="400" x2="437.2" y2="290" /><line x1="337.6" y1="400" x2="447.6" y2="290" /><line x1="348.0" y1="400" x2="458.0" y2="290" /><line x1="358.4" y1="400" x2="468.4" y2="290" /><line x1="368.8" y1="400" x2="478.8" y2="290" /></g>
+<text x="40" y="418" fill="#444" font-size="12">before</text><text x="250" y="418" fill="#444" font-size="12">after turning (lines narrow with the part)</text>
+<text x="40" y="460" fill="#15171a" font-size="13">Core #0c0e12 in a white casing #ffffff. Far away the lines fade to a flat tint.</text>
+<text x="40" y="480" fill="#15171a" font-size="13">No repeating small circles.</text>
+<text x="460" y="34" font-size="18" font-weight="bold" fill="#15171a">2. The footprint: holes closed, never across a crease</text>
+<text x="460" y="96" fill="#15171a">Triangles the samples lie on (blue); holes (white)</text>
+<polygon points="460,200 512,200 512,110" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="460,200 512,110 460,110" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="512,200 564,200 564,110" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<polygon points="512,200 564,110 512,110" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="564,200 616,200 616,110" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="564,200 616,110 564,110" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<polygon points="616,200 668,200 668,110" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="616,200 668,110 616,110" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="668,200 720,200 720,110" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="668,200 720,110 668,110" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<polygon points="720,200 772,200 772,110" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<polygon points="720,200 772,110 720,110" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="772,200 824,200 824,110" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<polygon points="772,200 824,110 772,110" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<circle cx="475.6" cy="137.0" r="3.5" fill="#0c0e12"/>
+<circle cx="501.6" cy="182.0" r="3.5" fill="#0c0e12"/>
+<circle cx="532.8" cy="191.0" r="3.5" fill="#0c0e12"/>
+<circle cx="574.4" cy="137.0" r="3.5" fill="#0c0e12"/>
+<circle cx="621.2" cy="182.0" r="3.5" fill="#0c0e12"/>
+<circle cx="636.8" cy="137.0" r="3.5" fill="#0c0e12"/>
+<circle cx="683.6" cy="128.0" r="3.5" fill="#0c0e12"/>
+<circle cx="740.8" cy="186.5" r="3.5" fill="#0c0e12"/>
+<text x="460" y="222" fill="#444" font-size="12">black dots: the strategy's sample points (sparse)</text>
+<text x="460" y="266" fill="#15171a">After closing: a hole between two marked triangles is marked</text>
+<polygon points="460,370 512,370 512,280" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="460,370 512,280 460,280" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="512,370 564,370 564,280" fill="#f2b84b" stroke="#15171a" stroke-width="1"/>
+<polygon points="512,370 564,280 512,280" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="564,370 616,370 616,280" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="564,370 616,280 564,280" fill="#f2b84b" stroke="#15171a" stroke-width="1"/>
+<polygon points="616,370 668,370 668,280" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="616,370 668,280 616,280" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="668,370 720,370 720,280" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="668,370 720,280 668,280" fill="#f2b84b" stroke="#15171a" stroke-width="1"/>
+<polygon points="720,370 772,370 772,280" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<polygon points="720,370 772,280 720,280" fill="#7fb4ea" stroke="#15171a" stroke-width="1"/>
+<polygon points="772,370 824,370 824,280" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<polygon points="772,370 824,280 772,280" fill="#ffffff" stroke="#15171a" stroke-width="1"/>
+<circle cx="475.6" cy="307.0" r="3.5" fill="#0c0e12"/>
+<circle cx="501.6" cy="352.0" r="3.5" fill="#0c0e12"/>
+<circle cx="532.8" cy="361.0" r="3.5" fill="#0c0e12"/>
+<circle cx="574.4" cy="307.0" r="3.5" fill="#0c0e12"/>
+<circle cx="621.2" cy="352.0" r="3.5" fill="#0c0e12"/>
+<circle cx="636.8" cy="307.0" r="3.5" fill="#0c0e12"/>
+<circle cx="683.6" cy="298.0" r="3.5" fill="#0c0e12"/>
+<circle cx="740.8" cy="356.5" r="3.5" fill="#0c0e12"/>
+<text x="460" y="392" fill="#444" font-size="12">orange: added by the closing (each within 1.5 mm of a sample)</text>
+<line x1="846" y1="100" x2="846" y2="374" stroke="#d22" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="460" y="480" fill="#a11" font-size="12">Red dashed line: a crease of more than 25° (a lip, a wall).</text>
+<text x="460" y="498" fill="#a11" font-size="12">Closing stops there: the surface beyond it stays unmarked.</text>
+<text x="40" y="560" fill="#15171a" font-size="13">Rules: same surface (normals within 25°), at most 6 passes, within 1.5 mm of a sample point, nothing is ever unmarked.</text>
+</svg>
