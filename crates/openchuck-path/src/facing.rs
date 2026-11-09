@@ -423,10 +423,11 @@ fn above_area_note(
     let count = plan.passes_above_area.len();
     Ok(Some(
         crate::Notice::information(format!(
-            "the stock rises above the requested area, so {count} pass{} from the stock's top \
-             down to the area are added, each no deeper than the Stepdown (band along the \
-             tool); they take about {:.0} s more at the cutting feed",
-            if count == 1 { " is" } else { "es are" },
+            "the stock rises above the requested area, so {count} {} from the stock's top down \
+             to the area {} added, each no deeper than the Stepdown (band along the tool); \
+             they take about {:.0} s more at the cutting feed",
+            if count == 1 { "pass" } else { "passes" },
+            if count == 1 { "is" } else { "are" },
             60. * minutes
         ))
         .about(crate::notice::topic::STOCK_ABOVE_THE_AREA),

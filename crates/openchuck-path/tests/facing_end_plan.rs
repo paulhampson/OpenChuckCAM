@@ -1782,7 +1782,14 @@ fn req_op_24_req_nfr_07_part_extent_adds_bands_above_the_area() {
         .iter()
         .find(|n| n.topic.as_deref() == Some("Stock above the area"))
         .unwrap_or_else(|| panic!("{:?}", part.notices));
-    assert!(note.text.contains("passes"), "{}", note.text);
+    // The note says how many passes were added, in plain words (several
+    // here, so "passes ... are added").
+    assert!(
+        note.text
+            .contains(" passes from the stock's top down to the area are added, "),
+        "{}",
+        note.text
+    );
     // The part's top is 7 mm and the stock's 12 mm: the band tips step down
     // from the stock's top no more than 4 mm at a time.
     let mut heights: Vec<f64> = part
@@ -1862,4 +1869,33 @@ fn req_op_24_req_nfr_07_end_settings_beyond_the_tool_refuse_naming_them() {
             .unwrap_or_else(|| "accepted".to_owned());
         assert!(error.contains(named), "{error}");
     }
+}
+
+/// The "Stock above the area" note in the singular: with a 6 mm Stepdown
+/// the 5 mm of round stock above the part (top 12 mm, part top 7 mm) is one
+/// pass per slice and view.
+#[test]
+fn req_op_24_req_nfr_07_one_added_band_is_said_in_the_singular() {
+    use openchuck_path::ParameterValue;
+    let values = vec![
+        ("shape", ParameterValue::Text("end".into())),
+        ("extent", ParameterValue::Text("part".into())),
+        ("feed", ParameterValue::Number(600.)),
+        ("plunge_feed", ParameterValue::Number(200.)),
+        ("stepover", ParameterValue::Number(3.)),
+        ("stepdown", ParameterValue::Number(6.)),
+        ("stock_to_leave", ParameterValue::Number(9.)),
+    ];
+    let path = generate_on_round_bar(&values).unwrap_or_else(|e| panic!("{e}"));
+    let note = path
+        .notices
+        .iter()
+        .find(|n| n.topic.as_deref() == Some("Stock above the area"))
+        .unwrap_or_else(|| panic!("{:?}", path.notices));
+    assert!(
+        note.text
+            .contains(" 1 pass from the stock's top down to the area is added, "),
+        "{}",
+        note.text
+    );
 }
