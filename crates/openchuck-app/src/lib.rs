@@ -107,7 +107,7 @@ pub use export::{
 };
 pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome,
-    RUN_PROGRESS_TOTAL, Threads, job_label,
+    RUN_PROGRESS_TOTAL, Threads, ago, job_label,
 };
 pub use model::ModelStorage;
 /// The G-code reader and replay, re-exported so front ends need no engine
@@ -371,6 +371,30 @@ impl Application {
         self.recovered_unsaved
             .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Whether the project was recovered from a checkpoint and not saved
+    /// since: the recovered changes are lost at close unless the user saves
+    /// them, so Messages warns until then (decision record 0536 section 8).
+    pub fn is_recovered_unsaved(&self) -> bool {
+        self.recovered_unsaved
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Whether a tool's number differs from the project as last opened,
+    /// created or saved. A program written now uses the new numbers, but the
+    /// project would reopen with the old ones, so Messages warns until the
+    /// project is saved or the change is undone (GC-14; decision record 0536
+    /// section 8).
+    pub fn tool_numbers_unsaved(&self) -> bool {
+        // A tool added or removed since is not a changed number.
+        self.saved.lock().map_or(true, |saved| {
+            self.document.project.tools().iter().any(|now| {
+                saved.tools().iter().any(|then| {
+                    then.id == now.id && then.controller.number != now.controller.number
+                })
+            })
+        })
     }
 
     /// Whether the project differs from what was last opened, created or

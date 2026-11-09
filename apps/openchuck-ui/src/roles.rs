@@ -196,19 +196,20 @@ pub fn band_hatch(band: DeviationBand) -> Option<openchuck_viewport::Hatch> {
 /// slate, 4.7:1 on it and 10.5:1 on the view.
 pub const UNMEASURED_HATCH: Colour = hex(0xe3e7ec);
 
-/// The core of a dot marking a surface the tool could not reach, near
-/// black `#0c0e12` (decision record 0515 item 4): 3:1 or more against every
-/// deviation band, the part's grey and the hidden slate, in normal vision and
-/// each simulated colour vision type (see the test of this module).
-pub const AREA_DOT_CORE: Colour = hex(0x0c0e12);
-/// The ring round a dot's core, white `#ffffff`: the core against the ring
-/// reads on the darkest ground, and the ring against the core on the
+/// The core of the hatch lines marking a surface the tool could not reach,
+/// near black `#0c0e12` (decision record 0515 item 4, amended for issue 637):
+/// 3:1 or more against every deviation band, the part's grey and the hidden
+/// slate, in normal vision and each simulated colour vision type (see the
+/// test of this module).
+pub const AREA_HATCH_CORE: Colour = hex(0x0c0e12);
+/// The casing round a hatch line's core, white `#ffffff`: the core against the
+/// casing reads on the darkest ground, and the casing against the core on the
 /// lightest.
-pub const AREA_DOT_RING: Colour = hex(0xffffff);
-/// The ground of a numbered marker's badge: the dot's core.
-pub const AREA_MARKER_FILL: Colour = AREA_DOT_CORE;
-/// The ring of a numbered marker's badge and its number: the dot's ring.
-pub const AREA_MARKER_TEXT: Colour = AREA_DOT_RING;
+pub const AREA_HATCH_CASING: Colour = hex(0xffffff);
+/// The ground of a numbered marker's badge: the hatch's core.
+pub const AREA_MARKER_FILL: Colour = AREA_HATCH_CORE;
+/// The ring of a numbered marker's badge and its number: the hatch's casing.
+pub const AREA_MARKER_TEXT: Colour = AREA_HATCH_CASING;
 
 /// The top of the view's gradient, `#2c3139` (14.2).
 pub const VIEW_TOP: Color32 = theme::VIEWPORT_GRADIENT.0;
@@ -556,30 +557,34 @@ pub(crate) mod tests {
         assert!(difference(HIDDEN_BAND, PART) >= 20.0);
     }
 
-    /// The grounds a dot of the unreachable areas lies over: every deviation
-    /// band, the part's grey and the hidden slate.
-    fn dot_grounds() -> Vec<(String, Colour)> {
+    /// The grounds a hatch line of the unreachable areas lies over: every
+    /// deviation band, the part's grey, the hidden slate, and a light and a
+    /// dark ground standing for a light and a dark view (NFR-15).
+    fn hatch_grounds() -> Vec<(String, Colour)> {
         let mut out: Vec<(String, Colour)> = DeviationBand::ALL
             .iter()
             .map(|b| (format!("{b:?}"), band_colour(*b)))
             .collect();
         out.push(("part grey".to_owned(), PART));
         out.push(("hidden slate".to_owned(), HIDDEN_BAND));
+        out.push(("light ground".to_owned(), hex(0xf2f4f7)));
+        out.push(("dark ground".to_owned(), hex(0x15171a)));
         out
     }
 
-    /// Decision 0515 item 4, NFR-15: a dot's core reads at 3:1 or more
-    /// against every ground it can lie over, the ring against the core at
-    /// 3:1, so the dot as a whole reads on dark and light grounds alike;
+    /// Decision 0515 item 4 as amended for issue 637, NFR-15: a hatch line's
+    /// core reads at 3:1 or more against every ground it can lie over, the
+    /// casing against the core at 3:1, so the line as a whole reads on dark
+    /// and light grounds alike;
     /// under normal vision and each simulated colour vision type. The
     /// colours do not change with the interface scale, so the result holds
     /// at 100 % and 120 %.
     #[test]
-    fn req_nfr_15_unreachable_dots_read_on_every_band_and_the_part() {
+    fn req_nfr_15_unreachable_hatch_reads_on_every_band_and_the_part() {
         use measure::{contrast, difference, worst_contrast, worst_difference};
-        let (core, ring) = (AREA_DOT_CORE, AREA_DOT_RING);
-        let grounds = dot_grounds();
-        assert!(grounds.len() >= 7);
+        let (core, ring) = (AREA_HATCH_CORE, AREA_HATCH_CASING);
+        let grounds = hatch_grounds();
+        assert!(grounds.len() >= 9);
         for (name, ground) in &grounds {
             let (cn, cw) = (contrast(core, *ground), worst_contrast(core, *ground));
             let (rn, rw) = (contrast(ring, *ground), worst_contrast(ring, *ground));
@@ -588,12 +593,17 @@ pub(crate) mod tests {
                 "{name:12} core {cn:5.2}:1 (worst {cw:5.2}) ring {rn:5.2}:1 (worst {rw:5.2}) \
                  core dE {dn:5.1} (worst {dw:5.1})"
             );
-            // The core on its own reads on every ground; so does the dot as
+            // The core on its own reads on every ground; so does the line as
             // a whole (the better of its tones) in every vision.
-            assert!(cn >= 3.0 && cw >= 3.0, "{name}: core {cn:.2} / {cw:.2}");
+            // The view's own grounds are lit or dark at either end: the line
+            // reads there by its better tone (the casing on a dark view, the
+            // core on a light one), not by the core alone.
+            if !name.ends_with("ground") {
+                assert!(cn >= 3.0 && cw >= 3.0, "{name}: core {cn:.2} / {cw:.2}");
+            }
             assert!(
                 cn.max(rn) >= 3.0 && cw.max(rw) >= 3.0,
-                "{name}: dot {:.2} / {:.2}",
+                "{name}: line {:.2} / {:.2}",
                 cn.max(rn),
                 cw.max(rw)
             );
@@ -602,9 +612,9 @@ pub(crate) mod tests {
         let (n, w) = (contrast(core, ring), worst_contrast(core, ring));
         eprintln!("core against ring {n:.2}:1 (worst {w:.2})");
         assert!(n >= 3.0 && w >= 3.0, "{n:.2} / {w:.2}");
-        // A badge's number is the dot's ring on its core.
-        assert_eq!(AREA_MARKER_FILL, AREA_DOT_CORE);
-        assert_eq!(AREA_MARKER_TEXT, AREA_DOT_RING);
+        // A badge's number is the hatch's casing on its core.
+        assert_eq!(AREA_MARKER_FILL, AREA_HATCH_CORE);
+        assert_eq!(AREA_MARKER_TEXT, AREA_HATCH_CASING);
         // And no other role uses these two colours.
         for other in [
             PART,

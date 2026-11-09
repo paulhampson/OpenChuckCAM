@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="300" viewBox="0 0 720 300" font-family="Helvetica, Arial, sans-serif" font-size="13" role="img">
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<title>Where the blend starts and ends: option A against option B</title>
+<rect x="0" y="0" width="720" height="300" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#222222"/></marker></defs>
+<text x="20.0" y="26.0" fill="#222222" text-anchor="start" font-size="14" font-weight="bold" font-style="normal">Option A (chosen, D1): the whole ring, then the blend</text>
+<text x="60.0" y="64.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_k</text>
+<text x="60.0" y="124.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_k+1</text>
+<line x1="80.0" y1="60.0" x2="260.0" y2="60.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<circle cx="80.0" cy="60.0" r="4" fill="#222222"/>
+<line x1="260.0" y1="60.0" x2="282.5" y2="120.0" stroke="#1e8449" stroke-width="3" stroke-linecap="round"/>
+<line x1="282.5" y1="120.0" x2="402.5" y2="120.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<circle cx="260.0" cy="60.0" r="5" fill="#1e8449"/>
+<circle cx="282.5" cy="120.0" r="5" fill="#1e8449"/>
+<text x="270.0" y="52.0" fill="#1e8449" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">starts where ring k closes: (x_k, a_k + 360)</text>
+<text x="292.5" y="140.0" fill="#1e8449" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">ends where ring k+1 starts: (x_k+1, a_k + 360 + phi)</text>
+<text x="20.0" y="176.0" fill="#222222" text-anchor="start" font-size="14" font-weight="bold" font-style="normal">Option B (not chosen): the blend replaces the last phi of the ring</text>
+<text x="60.0" y="214.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_k</text>
+<text x="60.0" y="274.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_k+1</text>
+<line x1="80.0" y1="210.0" x2="237.5" y2="210.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<circle cx="80.0" cy="210.0" r="4" fill="#222222"/>
+<line x1="237.5" y1="210.0" x2="260.0" y2="210.0" stroke="#999999" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 4"/>
+<line x1="237.5" y1="210.0" x2="260.0" y2="270.0" stroke="#1e8449" stroke-width="3" stroke-linecap="round"/>
+<line x1="260.0" y1="270.0" x2="380.0" y2="270.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<text x="272.0" y="214.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">ring k is only 360 - phi long: not a whole turn at x_k</text>
+</svg>

@@ -30,8 +30,8 @@ The edge set is optional: without it, each face starts from its longest side. It
 4. Click **Generate stale** at the bottom right. It took about 29 s on the test computer.
 
 <figure>
-<a href="images/blisk_faceflow/02-stepover.png"><img src="images/blisk_faceflow/02-stepover.png" width="1920" height="1080" alt="The face-flow passes drawn in orange along the twisted hub floor, with dotted patches along both blade walls marking the unreachable area. Results: 1 operation(s), 2310 moves, 28.6 s to generate, and the lines quoted in the text."></a>
-<figcaption><b>Figure 2.</b> With the stepover of the tool's cutting data, 1 mm: the passes follow the floor, and the dotted area along the walls is where the ball does not fit.</figcaption>
+<a href="images/blisk_faceflow/02-stepover.png"><img src="images/blisk_faceflow/02-stepover.png" width="1920" height="1080" alt="The face-flow passes drawn in orange along the twisted hub floor, with a strip of white-cased black diagonal hatching along both blade walls marking the unreachable area. Results: 1 operation(s), 2310 moves, 28.6 s to generate, and the lines quoted in the text."></a>
+<figcaption><b>Figure 2.</b> With the stepover of the tool's cutting data, 1 mm: the passes follow the floor, and the hatched area along the walls is where the ball does not fit.</figcaption>
 </figure>
 
 ## Read the result
@@ -45,7 +45,7 @@ The Results list three lines for the operation:
 : The passes that are cut, after the stretches the tool cannot reach are left out. A pass that lies wholly in that area is not cut.
 
 "Unreached areas (operation 'Floor finish'): face-flow finishing cannot reach 1 area of the selected faces, which stay uncut: X 20.000 to 60.000 near A 282 (173.8 mm2), a neighbouring face is in the way of the tool; check them in the simulation before running the program"
-: The floor is a narrow strip between two blade walls, and a 3 mm ball cannot reach into the corners where the floor meets them without touching a wall. That strip, along the whole floor from X 20 to X 60, is not cut and is drawn dotted in the view. "A neighbouring face is in the way" means a blade wall, not the stock. The same line appears under **Messages**, with a link to the operation.
+: The floor is a narrow strip between two blade walls, and a 3 mm ball cannot reach into the corners where the floor meets them without touching a wall. That strip, along the whole floor from X 20 to X 60, is not cut and is drawn hatched in the view: black diagonal lines in a white casing, painted on the surface, so they turn and stretch with it as you orbit and zoom. "A neighbouring face is in the way" means a blade wall, not the stock. The same line appears under **Messages**, with a link to the operation.
 
 How much is that? When face-flow finishing was built, the five floors of this blisk were measured ([decision 0525](https://github.com/paulhampson/OpenChuckCAM/blob/main/docs/decisions/0525-face-flow-finishing.md)): the same on all five, 171.6 mm2 of the 496.3 mm2 floor (35 %) out of reach of the 3 mm ball, all of it along the blade walls, and 118.4 mm2 (24 %) with a 2 mm ball. This run reports 173.8 mm2 at its own stepover. Whether a smaller tool, a different tool, or leaving the strip suits your part is your call; the program does not choose for you, and it has no strategy yet that finishes the strip with a second tool.
 
