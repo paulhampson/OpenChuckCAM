@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (PATHFEED, issue #641; decision 0547, accepted)
+
+- **Changed (project schema 28):** End facing reads `stepover` as the slice along X and `stepdown` as the band along the tool, the other way round from before. Loading a file written at schema 27 or older exchanges the stored `stepover` and `stepdown` of each Facing operation whose `shape` is `end`, so it machines as before; a value it did not store stays unstored. Every other operation is unchanged. Files are written at schema 28.
+
 ## 0.47.0
 
 - **Family release (0.47.0, TABCUT; issue #555; decision 0527, accepted):** `openchuck-path`'s `RegionConstraint` gains the public field `outside`, a breaking change; no change to this crate.

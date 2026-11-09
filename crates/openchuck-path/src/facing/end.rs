@@ -25,9 +25,11 @@ pub struct EndFacingParameters {
     pub extent: FacingExtent,
     /// Margin at all four projected edges.
     pub margin: f64,
-    /// Maximum inward axial slice, limited by the cutting diameter.
+    /// Maximum inward axial slice, limited by the cutting diameter: the
+    /// operation's Stepover, a width across the tool (decision record 0547).
     pub axial_stepdown: f64,
-    /// Maximum spacing between flute bands; no greater than flute length.
+    /// Maximum spacing between flute bands; no greater than flute length:
+    /// the operation's Stepdown, a depth along the tool (decision record 0547).
     pub flute_step: f64,
     /// Initial displayed A for end-facing views.
     pub start_angle: Degrees,
@@ -56,8 +58,11 @@ impl EndFacingParameters {
         Ok(Self {
             extent: FacingExtent::from_name(parameters.text(parameter::EXTENT)?)?,
             margin: parameters.number(parameter::MARGIN)?,
-            axial_stepdown: parameters.number(roughing::STEPDOWN)?,
-            flute_step: parameters.number(names::STEPOVER)?,
+            // The slice along X is across the tool and the band along it,
+            // as a tool's cutting data defines Stepover and Stepdown (TL-05;
+            // decision record 0547 item 3).
+            axial_stepdown: parameters.number(names::STEPOVER)?,
+            flute_step: parameters.number(roughing::STEPDOWN)?,
             start_angle: Degrees(parameters.number(roughing::START_ANGLE)?),
             max_angle_step: Degrees(parameters.number(roughing::MAX_ANGLE_STEP)?),
             allowance: parameters.number(names::STOCK_TO_LEAVE)?,
@@ -85,6 +90,11 @@ pub struct EndPassPlan {
     /// Upper bound on the nominal radial remainder at a supported cylinder
     /// tab, separate from source/written-motion error; None without tab routing.
     pub tab_residual_bound: Option<f64>,
+    /// The indices of the passes that take the stock above the requested
+    /// area, from the stock's top at their view down to the area's top, so
+    /// that no band cuts deeper than the Stepdown (decision record 0547,
+    /// question 4). Empty for the Whole stock extent.
+    pub passes_above_area: Vec<usize>,
     /// Candidate straight, fixed-A passes, axial slice then ordered view/band.
     pub passes: Vec<Pass>,
 }
@@ -131,7 +141,7 @@ pub fn plan_end(
         || parameters.axial_stepdown > setup.tool.diameter.0
     {
         return Err(refuse(
-            "axial stepdown must be above zero and no greater than cutting diameter",
+            "the Stepover (slice thickness along X) must be above zero and no greater than the cutting diameter",
         ));
     }
     if !parameters.flute_step.is_finite()
@@ -139,7 +149,7 @@ pub fn plan_end(
         || parameters.flute_step > setup.tool.flute_length.0
     {
         return Err(refuse(
-            "flute band spacing must be above zero and no greater than flute length",
+            "the Stepdown (band along the tool) must be above zero and no greater than the flute length",
         ));
     }
     if !parameters.start_angle.0.is_finite()
@@ -238,7 +248,7 @@ pub fn plan_end(
     if axial_planes.is_empty() && flush {
         return Err(nothing_past());
     }
-    let (bands, tab_residual_bound) =
+    let (bands, tab_residual_bound, above_area) =
         routing::bands(setup, parameters, coverage, end, cutting_x, context)?;
     let count = axial_planes
         .len()
@@ -270,8 +280,22 @@ pub fn plan_end(
         ));
     }
     let rotary = RotaryMapping::of_profile(setup.machine);
-    let views = bands
-        .chunk_by(|a, b| a.angle == b.angle)
+    // Whether there is air beside each band's two ends (decision record 0547
+    // item 1).
+    let beside = bands
+        .iter()
+        .map(|band| routing::air_beside(setup, end, cutting_x, band, 0.125 * parameters.tolerance))
+        .collect::<Result<Vec<_>>>()?;
+    let clear = radius + gap;
+    let paired = bands
+        .iter()
+        .zip(beside)
+        .zip(above_area)
+        .map(|((band, air), above)| (band, air, above))
+        .collect::<Vec<_>>();
+    let mut passes_above_area = Vec::new();
+    let views = paired
+        .chunk_by(|a, b| a.0.angle == b.0.angle)
         .collect::<Vec<_>>();
     for (slice, &x) in axial_planes.iter().enumerate() {
         // Reverse VIEW order on alternate slices, keeping top-first bands
@@ -282,19 +306,39 @@ pub fn plan_end(
         } else {
             views.iter().rev().copied().collect::<Vec<_>>()
         };
-        for band in ordered.into_iter().flatten() {
+        for &(band, (low_air, high_air), above) in ordered.into_iter().flatten() {
+            if above {
+                passes_above_area.push(passes.len());
+            }
             context.check_cancelled()?;
             let (lo, hi) = band.heights;
             let centre_x = x + sign * radius;
             if !centre_x.is_finite() {
                 return Err(refuse("flank compensation overflowed"));
             }
+            // Each band comes in along X from air beyond the end face and
+            // leaves the same way. Where there is air beside the band's edge
+            // that leg runs beside the stock, the whole tool clear of it, so
+            // the flank first meets the face at its edge on the sweep across
+            // and turns only in air; where there is none the leg enters the
+            // face at the band's edge, as before (decision record 0547 item 1).
+            let low = if low_air {
+                band.across.0 - clear
+            } else {
+                band.across.0
+            };
+            let high = if high_air {
+                band.across.1 + clear
+            } else {
+                band.across.1
+            };
             let points = [
-                (air_x, band.across.0),
-                (centre_x, band.across.0),
-                (centre_x, band.across.1),
-                (air_x, band.across.1),
+                (air_x, low),
+                (centre_x, low),
+                (centre_x, high),
+                (air_x, high),
             ]
+            .into_iter()
             .map(|(along, across)| CutPoint {
                 tip: rotary.to_model(
                     AxisPosition {
@@ -314,13 +358,20 @@ pub fn plan_end(
                     band.angle,
                 ),
             })
-            .to_vec();
+            .collect::<Vec<_>>();
             passes.push(Pass {
                 helical_pass_start: false,
                 low_link: false,
                 points,
                 stock: None,
                 rapids: vec![],
+                // A leg along X into the face (or back out of it) with no
+                // air beside it goes at the plunge feed, as an entry move
+                // (decision record 0547 item 1).
+                plunge_fed: [(!low_air).then_some(1), (!high_air).then_some(3)]
+                    .into_iter()
+                    .flatten()
+                    .collect(),
             });
         }
     }
@@ -331,6 +382,7 @@ pub fn plan_end(
         axial_planes,
         bands,
         tab_residual_bound,
+        passes_above_area,
         passes,
     })
 }

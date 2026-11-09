@@ -2507,6 +2507,7 @@ impl Plan<'_> {
                                     points: std::mem::take(&mut points),
                                     stock: None,
                                     rapids: Vec::new(),
+                                    plunge_fed: Vec::new(),
                                 });
                             }
                         }
@@ -2522,6 +2523,7 @@ impl Plan<'_> {
                     points,
                     stock: None,
                     rapids: Vec::new(),
+                    plunge_fed: Vec::new(),
                 });
             }
         }

@@ -89,6 +89,7 @@ impl Strategy for Line {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }
@@ -1021,6 +1022,7 @@ fn clear_helices(fixture: &Fixture, height: f64) -> Vec<Pass> {
                 .collect(),
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         })
         .collect()
 }
@@ -1176,6 +1178,7 @@ fn req_op_11_req_op_14_req_op_15_a_reset_boundary_is_recorded_once_across_motion
         points,
         stock: None,
         rapids,
+        plunge_fed: Vec::new(),
     };
     // The first pass ends in a rapid along the axis, with no rotary motion.
     let passes = vec![

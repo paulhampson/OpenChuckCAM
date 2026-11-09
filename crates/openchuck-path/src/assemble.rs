@@ -432,6 +432,7 @@ pub(crate) fn assemble_limited(
     let mut placed: Vec<Vec<CutPoint>> = Vec::new();
     let mut stocks: Vec<Option<PassStock>> = Vec::new();
     let mut rapids: Vec<Vec<usize>> = Vec::new();
+    let mut plunge_fed: Vec<Vec<usize>> = Vec::new();
     let mut helical_starts = Vec::new();
     let mut low_links = Vec::new();
     let mut previous = Degrees(0.0);
@@ -463,7 +464,9 @@ pub(crate) fn assemble_limited(
         // (decision record 0050). A pass with rapid points (a drilled hole)
         // is left as it is: its rapids index its points, and its pecks run
         // along the tool axis on purpose.
-        let points = if pass.rapids.is_empty() {
+        // A pass with plunge-fed points (an End facing side entry, decision
+        // record 0547) is left as it is too: those indices name its points.
+        let points = if pass.rapids.is_empty() && pass.plunge_fed.is_empty() {
             walls::merge_at_walls(&rotary, &points, tolerance, chord)
         } else {
             points
@@ -474,6 +477,7 @@ pub(crate) fn assemble_limited(
         placed.push(points);
         stocks.push(pass.stock.clone());
         rapids.push(pass.rapids.clone());
+        plunge_fed.push(pass.plunge_fed.clone());
         helical_starts.push(pass.helical_pass_start);
         low_links.push(pass.low_link);
     }
@@ -620,6 +624,10 @@ pub(crate) fn assemble_limited(
             let end = b.pose(p.tip, p.a);
             if doubling.is_some_and(|r| r.contains(&k)) {
                 b.push(MoveKind::Rapid, end, None, None)?;
+            } else if plunge_fed.get(i).is_some_and(|f| f.contains(&k)) {
+                // An entry along the pass at the plunge feed (decision record
+                // 0547 item 1), timed by its contact like the cut around it.
+                b.push(MoveKind::LeadIn, end, Some(*c), Some(common.plunge_feed))?;
             } else {
                 let from = b.at().height;
                 let before = b.segments.len();

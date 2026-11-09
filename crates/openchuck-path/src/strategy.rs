@@ -90,6 +90,13 @@ pub struct Pass {
     /// keeps its contact points as given instead of smoothing them (the path
     /// doubles back on itself).
     pub rapids: Vec<usize>,
+    /// Indices into `points` of the points reached at the plunge feed, as an
+    /// entry move (`LeadIn`), instead of at the cutting feed: an End facing
+    /// band's move along X into the face where there is no air beside it
+    /// (decision record 0547 item 1). An index of 0 has no move. Path
+    /// fitting's merge at walls leaves a pass with such points as it is, so
+    /// the indices keep their points.
+    pub plunge_fed: Vec<usize>,
 }
 
 /// A strategy's passes with what it found worth telling the user, as
@@ -727,19 +734,21 @@ fn keep_clear(
         }
         note_reach(&pass.points);
         let single = pass.points.len() == 1;
-        let mut run: Vec<CutPoint> = Vec::new();
-        let mut runs: Vec<Vec<CutPoint>> = Vec::new();
-        for point in &pass.points {
-            let joins = run.last().is_some_and(|last| move_clear(last, point));
+        // Each kept point with its index in the pass, so the plunge-fed
+        // points keep their meaning in the pieces (decision record 0547).
+        let mut run: Vec<(usize, CutPoint)> = Vec::new();
+        let mut runs: Vec<Vec<(usize, CutPoint)>> = Vec::new();
+        for (index, point) in pass.points.iter().enumerate() {
+            let joins = run.last().is_some_and(|(_, last)| move_clear(last, point));
             if !joins && !run.is_empty() {
                 runs.push(std::mem::take(&mut run));
             }
             if clear(point) {
-                run.push(*point);
+                run.push((index, *point));
             }
         }
         runs.push(run);
-        let pieces: Vec<Vec<CutPoint>> = runs
+        let pieces: Vec<Vec<(usize, CutPoint)>> = runs
             .into_iter()
             .filter(|r| r.len() >= 2 || (single && r.len() == 1))
             .collect();
@@ -747,13 +756,23 @@ fn keep_clear(
         if left < pass.points.len() || pieces.len() > 1 {
             cut_short = true;
         }
-        for points in pieces {
+        for piece in pieces {
+            // A point reached at the plunge feed stays so, unless it is now
+            // where its piece starts (an index of 0 has no move).
+            let plunge_fed = piece
+                .iter()
+                .enumerate()
+                .skip(1)
+                .filter(|(_, (original, _))| pass.plunge_fed.contains(original))
+                .map(|(at, _)| at)
+                .collect();
             kept.push(Pass {
                 helical_pass_start: helical_start_pending,
                 low_link: pass.low_link,
-                points,
+                points: piece.into_iter().map(|(_, point)| point).collect(),
                 stock: pass.stock.clone(),
                 rapids: Vec::new(),
+                plunge_fed,
             });
             helical_start_pending = false;
         }
@@ -1030,6 +1049,7 @@ mod tests {
             points: xs.iter().map(|&x| point(x)).collect(),
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }
     }
 
@@ -1109,6 +1129,25 @@ mod tests {
         // A pass of one point that is clear stays.
         let (same, _) = keep_clear(vec![pass(&[2.0])], Vec::new(), &KEEP_OUT, MID).unwrap();
         assert_eq!(same, vec![pass(&[2.0])]);
+    }
+
+    /// A pass's plunge-fed points (decision record 0547 item 1) keep their
+    /// meaning when a held region is in the setup: a clear pass keeps them,
+    /// and a pass cut short keeps those still in it, at their new indices.
+    #[test]
+    fn req_set_09_req_op_24_plunge_fed_points_survive_the_held_region_check() {
+        let mut clear = pass(&[0.0, 2.0, 4.0, 6.0]);
+        clear.plunge_fed = vec![1, 3];
+        let (kept, _) = keep_clear(vec![clear.clone()], Vec::new(), &KEEP_OUT, MID).unwrap();
+        assert_eq!(kept, vec![clear]);
+        // Cut short where it reaches over the held region: the points from
+        // X -6 on are kept, the second of them plunge-fed as before.
+        let mut short = pass(&[-10.0, -6.0, -2.0, 2.0]);
+        short.plunge_fed = vec![2];
+        let (kept, _) = keep_clear(vec![short], Vec::new(), &KEEP_OUT, MID).unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(xs(&kept[0]), vec![-6.0, -2.0, 2.0]);
+        assert_eq!(kept[0].plunge_fed, vec![1]);
     }
 
     #[test]

@@ -1030,6 +1030,7 @@ impl<'a> Job<'a> {
             points: sites.iter().map(|(s, t)| self.cut_point(*s, *t)).collect(),
             stock: Some(stock.clone()),
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }
     }
 

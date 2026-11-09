@@ -76,6 +76,7 @@ impl Strategy for OneRing {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }
@@ -1747,7 +1748,12 @@ fn req_op_24_req_ui_07_facing_forms_show_only_the_selected_modes_settings() {
     assert!(
         form.fields
             .iter()
-            .any(|f| f.name == "stepdown" && f.label == "Axial stepdown")
+            .any(|f| f.name == "stepover" && f.label == "Stepover (slice thickness along X)")
+    );
+    assert!(
+        form.fields
+            .iter()
+            .any(|f| f.name == "stepdown" && f.label == "Stepdown (band along the tool)")
     );
     set_strategy(
         &mut app,

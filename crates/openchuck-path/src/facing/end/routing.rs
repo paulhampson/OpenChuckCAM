@@ -26,7 +26,7 @@ pub(super) fn bands(
     end: FacingEnd,
     target: f64,
     context: &JobContext<'_>,
-) -> Result<(Vec<EndBand>, Option<f64>)> {
+) -> Result<(Vec<EndBand>, Option<f64>, Vec<bool>)> {
     let [y0, z0] = coverage.min();
     let [y1, z1] = coverage.max();
     let corners = [
@@ -67,7 +67,7 @@ pub(super) fn bands(
                 .iter()
                 .all(|p| (p.y - centre.y).hypot(p.z - centre.z) <= radius)
             {
-                return Ok((vec![], None));
+                return Ok((vec![], None, vec![]));
             }
             if (tab.base_radius() - tab.top_radius()).abs() > 0. {
                 return Err(refuse(
@@ -138,6 +138,7 @@ pub(super) fn bands(
         (views, None)
     };
     let mut bands = vec![];
+    let mut above = Vec::new();
     let reach = corners.iter().map(|p| p.y.hypot(p.z)).fold(0., f64::max)
         + setup.tool.overall_length.0
         + setup.tool.diameter.0;
@@ -218,6 +219,35 @@ pub(super) fn bands(
                 "the flutes are too short to overlap the bands by the written-motion allowance",
             ));
         }
+        // Where the stock rises above the requested area at this view (a
+        // Part or Part plus tabs extent), the flutes of the area's first band
+        // would cut it all at once. Bands from the stock's top down to the
+        // area's top, each no deeper than the Stepdown and swept across the
+        // area's width only, take it in steps (the owner's answer to question
+        // 4 of decision record 0547, option A). The same material is removed.
+        if top > high {
+            let across = (
+                polygon.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min),
+                polygon
+                    .iter()
+                    .map(|p| p[0])
+                    .fold(f64::NEG_INFINITY, f64::max),
+            );
+            let mut upper = top;
+            for lower in LayerDistribution::Full.levels(top, high, step)? {
+                context.check_cancelled()?;
+                bands.push(EndBand {
+                    angle,
+                    heights: (lower, upper),
+                    across,
+                });
+                above.push(true);
+                if bands.len() > 100_000 {
+                    return Err(refuse("end flute-band budget exceeded"));
+                }
+                upper = lower;
+            }
+        }
         let mut upper = high;
         for lower in LayerDistribution::Full.levels(high, low, step)? {
             context.check_cancelled()?;
@@ -230,6 +260,7 @@ pub(super) fn bands(
                     heights: (lower, upper),
                     across: (min, max),
                 });
+                above.push(false);
                 if bands.len() > 100_000 {
                     return Err(refuse("end flute-band budget exceeded"));
                 }
@@ -237,7 +268,56 @@ pub(super) fn bands(
             upper = lower;
         }
     }
-    Ok((bands, residual))
+    Ok((bands, residual, above))
+}
+
+/// Whether there is air beside `band`'s two ends across the tool: no stock
+/// past the band's low and high across edges between its two heights, so the
+/// tool can start and end its sweep there, clear of the stock, and enter the
+/// face from its edge (decision record 0547 item 1). The stock is the whole
+/// stock's projected rectangle on the end plane at `target` (for a round bar,
+/// its bounding square), seen from the band's view: a conservative bound.
+/// Above the band's top the flutes meet only what this slice's earlier bands
+/// at the same view have already removed, so only the band's heights count.
+pub(super) fn air_beside(
+    setup: &FacingSetup<'_>,
+    end: FacingEnd,
+    target: f64,
+    band: &EndBand,
+    written: f64,
+) -> Result<(bool, bool)> {
+    let whole = super::super::extents::FacingExtent::WholeStock.planar(
+        super::super::geometry::FacingPlane::end(end),
+        setup.stock,
+        setup.part,
+        setup.tabs,
+        0.,
+    )?;
+    let [y0, z0] = whole.min();
+    let [y1, z1] = whole.max();
+    let rotary = RotaryMapping::of_profile(setup.machine);
+    let polygon = [
+        Point3::new(target, y0, z0),
+        Point3::new(target, y1, z0),
+        Point3::new(target, y1, z1),
+        Point3::new(target, y0, z1),
+    ]
+    .map(|p| {
+        let axis = rotary.to_axis(p, band.angle);
+        [axis.across, axis.height]
+    })
+    .to_vec();
+    let strip = clip(&clip(&polygon, band.heights.0, true), band.heights.1, false);
+    let min = strip.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
+    let max = strip.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
+    if !min.is_finite() || !max.is_finite() {
+        // No stock between the band's heights at all.
+        return Ok((true, true));
+    }
+    Ok((
+        min >= band.across.0 - written,
+        max <= band.across.1 + written,
+    ))
 }
 
 /// The refusal for an end deeper than the flutes reach (decision 0344 item 7
