@@ -1,0 +1,11 @@
+schema = 25
+id = "0c0c0640-0000-4000-8000-000000000302"
+order = "W"
+name = "Axial lead, through stock"
+setup = "0c0c0640-0000-4000-8000-000000000002"
+strategy = "axial_finishing"
+tool = "0c0c0640-0000-4000-8000-000000000105"
+selections = []
+
+[parameters]
+entry = "lead"
