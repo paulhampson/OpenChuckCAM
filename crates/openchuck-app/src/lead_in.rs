@@ -213,7 +213,11 @@ pub mod topic {
 
 /// The topics whose messages name the tool too, because the tool's size,
 /// flutes or number matter to them (decision record 0536 section 3).
-pub const TOOL_TOPICS: &[&str] = &[openchuck_path::topic::FLUTE_LENGTH, topic::TAB_LENGTH];
+pub const TOOL_TOPICS: &[&str] = &[
+    openchuck_path::topic::FLUTE_LENGTH,
+    topic::TAB_LENGTH,
+    topic::TAB_CLEARANCE,
+];
 
 /// Whether a message under `topic` names the operation's tool as well.
 pub fn names_the_tool(topic: &str) -> bool {
@@ -271,6 +275,7 @@ mod tests {
         // size, flutes or number matter.
         assert!(names_the_tool("Flute length"));
         assert!(names_the_tool("Tab length"));
+        assert!(names_the_tool("Tab clearance"));
         assert!(!names_the_tool("Overcut"));
     }
 

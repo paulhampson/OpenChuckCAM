@@ -863,7 +863,6 @@ fn generate_unnamed(
             Some(ParameterValue::Number(n)) => *n,
             _ => operation_leave,
         };
-        let label = crate::workholding::operation_label(project, operation);
         leave_notes.extend(
             crate::workholding::uncleared_tab_notes(
                 &setup.workholding,
@@ -873,8 +872,6 @@ fn generate_unnamed(
                     cutting_radius: profile.cutting_radius(),
                     reach: tool_reach(&profile, &snapshot.tool),
                     leave,
-                    tool: &snapshot.name,
-                    operation: &label,
                 },
             )
             .into_iter()
