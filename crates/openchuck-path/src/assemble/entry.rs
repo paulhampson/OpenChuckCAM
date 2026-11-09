@@ -448,20 +448,7 @@ impl Entry {
                 })
                 .count();
             if reversals > 0 {
-                b.notes.push(
-                    crate::notice::Notice::information(format!(
-                        "pass {} starts with too short a stretch to ramp along without turning \
-                         the part, so its ramp goes back and forth over the pass's own path, \
-                         reversing A {} during the entry",
-                        pass + 1,
-                        if reversals == 1 {
-                            "once".to_owned()
-                        } else {
-                            format!("{reversals} times")
-                        }
-                    ))
-                    .about(crate::notice::topic::RAMP_ENTRY),
-                );
+                b.reversed_ramps.push((pass, reversals));
             }
         }
         Ok(())
@@ -806,14 +793,7 @@ impl Entry {
             b.steepened_ramps.push((pass, angle));
         }
         if let Some(turns) = plan.on_axis {
-            b.notes.push(
-                crate::notice::Notice::information(format!(
-                    "pass {} starts on the rotary axis, where a ramp has no path to follow, so \
-                     the tool descends there while the part turns {turns:.2} turns",
-                    pass + 1
-                ))
-                .about(crate::notice::topic::RAMP_ENTRY),
-            );
+            b.on_axis_ramps.push((pass, turns));
         }
         Ok(())
     }

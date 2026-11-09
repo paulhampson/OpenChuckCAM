@@ -173,6 +173,12 @@ struct Builder<'a> {
     /// Ring and spiral ramps made steeper near the axis, with the angle
     /// used (decision 0543 section 4, point 3).
     steepened_ramps: Vec<(usize, f64)>,
+    /// Ramps that went back and forth over a short stretch, reversing A,
+    /// with the reversals (decision 0543 D3).
+    reversed_ramps: Vec<(usize, usize)>,
+    /// Passes on the rotary axis descended while A turns, with the turns
+    /// (decision 0543 section 4, point 2).
+    on_axis_ramps: Vec<(usize, f64)>,
 }
 
 impl Builder<'_> {
@@ -508,6 +514,8 @@ pub fn assemble_with_entry(
         steep_ramps: Vec::new(),
         single_point_plunges: Vec::new(),
         steepened_ramps: Vec::new(),
+        reversed_ramps: Vec::new(),
+        on_axis_ramps: Vec::new(),
     };
 
     let entry = entry::Entry::new(input, common, entry)?;
@@ -632,27 +640,66 @@ pub fn assemble_with_entry(
         safe_height,
     )?;
     b.retract(safe_height)?;
-    let list = |passes: &[usize]| {
-        passes
-            .iter()
-            .map(|p| (p + 1).to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
+    let list = |passes: &[usize]| passes_named(passes);
     if !b.single_point_plunges.is_empty() {
         let text = format!(
             "{} with no path for a ramp to follow, so {} entered by a straight plunge, as \
              Allow single-point plunge asks",
             if b.single_point_plunges.len() == 1 {
-                format!("pass {} is a single point", list(&b.single_point_plunges))
+                format!("{} is a single point", list(&b.single_point_plunges))
             } else {
-                format!("passes {} are single points", list(&b.single_point_plunges))
+                format!("{} are single points", list(&b.single_point_plunges))
             },
             if b.single_point_plunges.len() == 1 {
                 "it is"
             } else {
                 "they are"
             }
+        );
+        b.notes
+            .insert(0, Notice::information(text).about(topic::RAMP_ENTRY));
+    }
+    if !b.reversed_ramps.is_empty() {
+        let passes: Vec<usize> = b.reversed_ramps.iter().map(|r| r.0).collect();
+        let reversals: usize = b.reversed_ramps.iter().map(|r| r.1).sum();
+        let one = passes.len() == 1;
+        let text = format!(
+            "{} with too short a stretch to ramp along without turning the part, so {} \
+             back and forth over {} own path, reversing A {} in all during the {}",
+            if one {
+                format!("{} starts", list(&passes))
+            } else {
+                format!("{} start", list(&passes))
+            },
+            if one {
+                "its ramp goes"
+            } else {
+                "their ramps go"
+            },
+            if one { "the pass's" } else { "each pass's" },
+            if reversals == 1 {
+                "once".to_owned()
+            } else {
+                format!("{reversals} times")
+            },
+            if one { "entry" } else { "entries" }
+        );
+        b.notes
+            .insert(0, Notice::information(text).about(topic::RAMP_ENTRY));
+    }
+    if !b.on_axis_ramps.is_empty() {
+        let passes: Vec<usize> = b.on_axis_ramps.iter().map(|r| r.0).collect();
+        let most = b.on_axis_ramps.iter().map(|r| r.1).fold(0.0, f64::max);
+        let one = passes.len() == 1;
+        let text = format!(
+            "{} on the rotary axis, where a ramp has no path to follow, so the tool descends \
+             there while the part turns {}{most:.2} turns",
+            if one {
+                format!("{} starts", list(&passes))
+            } else {
+                format!("{} start", list(&passes))
+            },
+            if one { "" } else { "up to " }
         );
         b.notes
             .insert(0, Notice::information(text).about(topic::RAMP_ENTRY));
@@ -665,10 +712,9 @@ pub fn assemble_with_entry(
             .map(|(_, a)| *a)
             .fold(0.0, f64::max);
         let text = format!(
-            "{} {} round the part near the rotary axis, where a ramp at the Ramp angle would \
-             take more than 10 turns, so {} steeper, up to {steepest:.2} degrees, as Steeper ramp \
-             near the axis asks",
-            if passes.len() == 1 { "pass" } else { "passes" },
+            "{} round the part near the rotary axis, where a ramp at the Ramp angle would take \
+             more than 10 turns, so {} steeper, up to {steepest:.2} degrees, as Steeper ramp near \
+             the axis asks",
             if passes.len() == 1 {
                 format!("{} turns", list(&passes))
             } else {
@@ -688,9 +734,9 @@ pub fn assemble_with_entry(
             "{} more steeply than the ramp angle just before {} first point, so {} that \
              drop there, as {} {}",
             if b.steep_ramps.len() == 1 {
-                format!("pass {} drops", list(&b.steep_ramps))
+                format!("{} drops", list(&b.steep_ramps))
             } else {
-                format!("passes {} drop", list(&b.steep_ramps))
+                format!("{} drop", list(&b.steep_ramps))
             },
             if b.steep_ramps.len() == 1 {
                 "its"
@@ -1143,6 +1189,18 @@ mod tests {
     }
 
     #[test]
+    fn req_op_11_req_nfr_07_one_note_names_many_passes_shortly() {
+        // One note per operation, as the feed-limit summary of #600: a few
+        // passes by name, many as a count with the first and last.
+        assert_eq!(passes_named(&[2]), "pass 3");
+        assert_eq!(passes_named(&[2, 4, 6]), "passes 3, 5 and 7");
+        let many: Vec<usize> = (0..50).map(|k| 2 * k + 2).collect();
+        assert_eq!(
+            passes_named(&many),
+            "50 passes, from pass 3 to pass 101 (3, 5, 7 ... 97, 99, 101)"
+        );
+    }
+    #[test]
     fn req_op_13_contact_smoothing_stops_at_a_wall_step() {
         // Three points at the foot of a wall, three on top, the contact
         // jumping 5 mm between them.
@@ -1244,6 +1302,8 @@ mod tests {
                 steep_ramps: Vec::new(),
                 single_point_plunges: Vec::new(),
                 steepened_ramps: Vec::new(),
+                reversed_ramps: Vec::new(),
+                on_axis_ramps: Vec::new(),
             };
             let end = b.pose(to.tip, to.a);
             // A contact feed far above the limits, so the axes set the time.
@@ -1315,6 +1375,8 @@ mod tests {
             steep_ramps: Vec::new(),
             single_point_plunges: Vec::new(),
             steepened_ramps: Vec::new(),
+            reversed_ramps: Vec::new(),
+            on_axis_ramps: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
         b.push(
@@ -1378,6 +1440,8 @@ mod tests {
             steep_ramps: Vec::new(),
             single_point_plunges: Vec::new(),
             steepened_ramps: Vec::new(),
+            reversed_ramps: Vec::new(),
+            on_axis_ramps: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
         // A contact feed far above the limits, so the axes set the time.
@@ -1402,5 +1466,34 @@ mod tests {
             .unwrap();
         let f = 60.0 * (written_z.hypot(0.001)) / b.segments[0].duration.0;
         assert!(f <= fast_z.linear.0, "F{f:.3}");
+    }
+}
+
+/// Passes named for a note (decision 0536; the grouping of #600): "pass 3",
+/// "passes 3, 5 and 7", or for many "52 passes, from pass 3 to pass 98 (3,
+/// 5, 7 ... 94, 96, 98)", so one note per operation stays short.
+fn passes_named(passes: &[usize]) -> String {
+    let names: Vec<String> = passes.iter().map(|p| (p + 1).to_string()).collect();
+    match names.as_slice() {
+        [] => String::new(),
+        [one] => format!("pass {one}"),
+        [rest @ .., last] if names.len() <= 6 => {
+            format!("passes {} and {last}", rest.join(", "))
+        }
+        _ => {
+            let head = names.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+            let tail = names
+                .iter()
+                .skip(names.len() - 3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{} passes, from pass {} to pass {} ({head} ... {tail})",
+                names.len(),
+                names.first().cloned().unwrap_or_default(),
+                names.last().cloned().unwrap_or_default()
+            )
+        }
     }
 }
