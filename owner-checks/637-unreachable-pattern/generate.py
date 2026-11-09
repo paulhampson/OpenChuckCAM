@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Writes the owner-check project for issue #637:
 
-    python3 owner-checks/rc/637-unreachable-pattern/generate.py
+    python3 owner-checks/637-unreachable-pattern/generate.py
 
 It writes project/ beside this script with the generator of the #512 check: the starting project
 of the user guide's blisk examples with face-flow finishing ("Floor finish") on the hub floor
@@ -19,7 +19,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE.parent.parent / "512-face-flow-finishing" / "generate.py"
+SOURCE = HERE.parent / "512-face-flow-finishing" / "generate.py"
 
 
 def main():

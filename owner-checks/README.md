@@ -37,6 +37,7 @@ Fixes merged on `main` after the first set was checked: the message work of [dec
 | #634 (fixed in #653) | The "Exact STEP surface contact" tooltips end at "More accurate ..." and "No effect on a mesh part.", with no measurements or decision numbers | 2 min | [`634-exact-contact-tooltip`](634-exact-contact-tooltip/CHECK.md) | [`634-exact-contact-tooltip.zip`](634-exact-contact-tooltip/634-exact-contact-tooltip.zip) |
 | #635 (fixed in #648) | The warning under a setting is one block across the Inspector's width | 3 min | [`635-inline-warning-alignment`](635-inline-warning-alignment/CHECK.md) | [`635-inline-warning-alignment.zip`](635-inline-warning-alignment/635-inline-warning-alignment.zip) |
 | #636 (fixed in #653) | File > Open project and New project: OK opens a typed or pasted folder and Cancel abandons it, with no "Unconfirmed changes" dialog | 3 min | [`636-open-no-unconfirmed-dialog`](636-open-no-unconfirmed-dialog/CHECK.md) | [`636-open-no-unconfirmed-dialog.zip`](636-open-no-unconfirmed-dialog/636-open-no-unconfirmed-dialog.zip) |
+| #637 (fixed in #652) | The areas a strategy could not reach are hatched on the surface (1 mm lines that move with the part), as one closed area | 3 min | [`637-unreachable-pattern`](637-unreachable-pattern/CHECK.md) | [`637-unreachable-pattern.zip`](637-unreachable-pattern/637-unreachable-pattern.zip) |
 
 The #600 and #622 projects are unchanged copies of the tutorial project [`testdata/examples/baluster/baluster-project`](../testdata/examples/baluster/baluster-project/). Each zipped project of the second set was checked with `openchuck-cli validate` on `main` at `1f3675d52` (all valid).
 
@@ -46,7 +47,6 @@ Fixes not merged when written (8 Nov 2026), and the message-work checks that wai
 
 | Issue | What to check | Time | Steps | Project zip |
 | --- | --- | --- | --- | --- |
-| #637 (decision 0549, #651) | The areas a strategy could not reach are hatched on the surface (1 mm lines that move with the part), as one closed area | 3 min | [`637-unreachable-pattern`](rc/637-unreachable-pattern/CHECK.md) | [`637-unreachable-pattern.zip`](rc/637-unreachable-pattern/637-unreachable-pattern.zip) |
 | #604 | After a stock change, the default tab line and Add default tabs follow at once (no fix yet) | 5 min | [`604-tab-defaults-follow-stock`](rc/604-tab-defaults-follow-stock/CHECK.md) | [`604-tab-defaults-follow-stock.zip`](rc/604-tab-defaults-follow-stock/604-tab-defaults-follow-stock.zip) |
 | 0536 step 3 (merged in #648; to post on the tracking issue) | Every message has its topic and context; Show setting goes to every kind of field | 10 min | [`0536-step3-lead-in-show-setting`](rc/0536-step3-lead-in-show-setting/CHECK.md) | [`0536-step3-lead-in-show-setting.zip`](rc/0536-step3-lead-in-show-setting/0536-step3-lead-in-show-setting.zip) |
 | 0536 step 4 | Setup and export messages in the same form, with field labels; command-line help without requirement numbers | 10 min | [`0536-step4-setup-export-cli-messages`](rc/0536-step4-setup-export-cli-messages/CHECK.md) | [`0536-step4-setup-export-cli-messages.zip`](rc/0536-step4-setup-export-cli-messages/0536-step4-setup-export-cli-messages.zip) |
