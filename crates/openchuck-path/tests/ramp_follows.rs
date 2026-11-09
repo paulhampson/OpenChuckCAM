@@ -970,3 +970,136 @@ fn req_op_11_req_op_03_roughing_past_a_flat_free_end_plunges_its_nub() {
     );
     assert_eq!(near_axis(&on), 0, "no ring left within the nub");
 }
+
+/// One pass through the given (X, A) points, the tool dropped onto the part
+/// at each, A 0 to start.
+#[derive(Debug)]
+struct Through(Vec<(f64, f64)>);
+
+impl Strategy for Through {
+    fn name(&self) -> &str {
+        "test_through"
+    }
+    fn label(&self) -> &str {
+        "Through points (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        _: &openchuck_path::Parameters,
+        _: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        use openchuck_types::units::{Degrees, Millimetres};
+        let points = self
+            .0
+            .iter()
+            .filter_map(|&(x, a)| {
+                let line = input
+                    .rotary
+                    .tool_line(Millimetres(x), Degrees(a), Millimetres(0.0));
+                input
+                    .surface
+                    .drop_tool(input.tool, &line)
+                    .map(|c| openchuck_path::CutPoint {
+                        tip: c.tip,
+                        a: Degrees(a),
+                        contact: c.contact,
+                    })
+            })
+            .collect();
+        Ok(vec![openchuck_path::Pass {
+            helical_pass_start: false,
+            low_link: false,
+            points,
+            stock: None,
+            rapids: Vec::new(),
+        }])
+    }
+}
+
+#[test]
+fn req_op_11_req_op_15_a_partial_ring_is_ramped_back_and_forth_over_its_own_arc() {
+    // Decision 0543 D3: an arc shorter than a turn has no ring before its
+    // first point to ramp round, so the ramp goes back and forth over the
+    // arc itself, A reversing during the entry only, with a note counting
+    // the reversals; D4: within the angle on the tip's real path.
+    let f = cylinder();
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let arc = Through((0..=18).map(|k| (20.0, 5.0 * f64::from(k))).collect());
+    let path = make(&f, &arc, &v, &[]).unwrap();
+    let all = entries(&path);
+    let (before, moves, head) = &all[0];
+    assert!(moves.len() > 2, "{}", moves.len());
+    assert_eq!(moves.last(), Some(head));
+    let tan = ANGLE.to_radians().tan();
+    let mut p = *before;
+    let mut turns = Vec::new();
+    for m in moves {
+        let at = f.rotary.to_axis(m.tip, m.a);
+        assert!((at.along - 20.0).abs() < 1e-6, "{at:?}");
+        assert!((-1e-6..=90.0 + 1e-6).contains(&m.a.0), "{}", m.a.0);
+        let from = f.rotary.to_axis(p.tip, p.a);
+        let radius = 0.5 * (from.across.hypot(from.height) + at.across.hypot(at.height));
+        let travel = radius * (m.a.0 - p.a.0).abs().to_radians();
+        let drop = from.across.hypot(from.height) - at.across.hypot(at.height);
+        assert!(drop <= travel * tan + 1e-6, "{drop} over {travel}");
+        turns.push((m.a.0 - p.a.0).signum());
+        p = *m;
+    }
+    assert!(
+        turns.windows(2).any(|w| w[0] != w[1]),
+        "A reverses during the entry: {turns:?}"
+    );
+    assert!(
+        path.notices.iter().any(|n| n.text.contains("reversing A")),
+        "{:?}",
+        path.notices
+    );
+}
+
+#[test]
+fn req_op_11_req_nfr_07_a_ring_ramp_outside_a_limited_a_range_is_refused_by_name() {
+    // Decision 0543 D4: the ramp round a ring turns A before the pass's
+    // first point, and that extra A is counted against a limited A range.
+    let mut f = cylinder();
+    f.rotary.range = openchuck_types::machine::ARange::Limited {
+        min: openchuck_types::units::Degrees(0.0),
+        max: openchuck_types::units::Degrees(360.0),
+    };
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let ring = Through((0..=72).map(|k| (20.0, 5.0 * f64::from(k))).collect());
+    let err = make(&f, &ring, &v, &[]).unwrap_err();
+    assert!(
+        err.contains("Ramp entry: pass 1 needs A from")
+            && err.contains("outside the machine's A range of 0.000 to 360.000 degrees")
+            && err.contains("Widen A range"),
+        "{err}"
+    );
+}
+
+#[test]
+fn req_op_11_req_nfr_07_a_pass_shorter_than_the_tool_radius_is_refused_by_name() {
+    // Decision 0543 D3: the back-and-forth needs at least the tool radius
+    // of the pass's own path to go over. A shorter line is continued over
+    // the rest of the pass (point 1); where the whole pass is shorter, the
+    // ramp is refused, naming the stretch and the other entries.
+    let f = cylinder();
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let short = Through(vec![(20.0, 0.0), (20.5, 0.0)]);
+    let err = make(&f, &short, &v, &[]).unwrap_err();
+    assert!(
+        err.contains("Ramp entry: pass 1 starts with a stretch of 0.500 mm")
+            && err.contains("the tool radius")
+            && err.contains("Set Entry to Plunge or Helix"),
+        "{err}"
+    );
+}
