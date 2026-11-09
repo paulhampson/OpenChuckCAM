@@ -142,7 +142,8 @@ pub fn plan_end(
     {
         return Err(refuse(
             "the Stepover (slice thickness along X) must be above zero and no greater than the cutting diameter",
-        ));
+        )
+        .with_setting(crate::params::names::STEPOVER));
     }
     if !parameters.flute_step.is_finite()
         || parameters.flute_step <= 0.
@@ -150,7 +151,8 @@ pub fn plan_end(
     {
         return Err(refuse(
             "the Stepdown (band along the tool) must be above zero and no greater than the flute length",
-        ));
+        )
+        .with_setting(crate::roughing::parameter::STEPDOWN));
     }
     if !parameters.start_angle.0.is_finite()
         || !parameters.max_angle_step.0.is_finite()
@@ -168,9 +170,10 @@ pub fn plan_end(
         return Err(refuse("invalid stock allowance or tolerance"));
     }
     if !parameters.approach.is_finite() || parameters.approach < 0. {
-        return Err(refuse(
-            "the approach distance must be finite and not negative",
-        ));
+        return Err(
+            refuse("the approach distance must be finite and not negative")
+                .with_setting(crate::params::names::APPROACH_DISTANCE),
+        );
     }
     let source_error = setup
         .projection_error
@@ -492,5 +495,5 @@ fn reject_known_frustum_obstruction(
 }
 
 fn refuse(reason: &str) -> PathError {
-    PathError::Strategy(format!("End facing: {reason}"))
+    PathError::refused(crate::topic::END_FACING, reason)
 }

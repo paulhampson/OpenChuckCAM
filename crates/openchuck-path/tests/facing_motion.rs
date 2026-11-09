@@ -488,3 +488,18 @@ fn req_op_24_req_nfr_04_axially_separated_end_motion_does_not_rescan_all_source_
     verify_protected_clearance(&setup, &g, 0.01, 0., &JobContext::new(&token, &NoProgress))
         .unwrap();
 }
+
+/// Decision record 0644: a Facing motion refusal names its check.
+#[test]
+fn req_ui_12_facing_motion_refusals_carry_their_topic() {
+    let m = machine();
+    let mut g = group();
+    g.segments[0].end.tip.x = 101.;
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    assert!(matches!(
+        verify_machine_motion(&g, &m, &ctx).unwrap_err(),
+        openchuck_path::PathError::Refused { topic, setting: None, .. }
+            if topic == openchuck_path::topic::FACING_MOTION
+    ));
+}

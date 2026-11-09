@@ -122,9 +122,10 @@ impl Job<'_> {
             let fine = (length / self.line_spacing()).ceil().max(1.) * SUB as f64;
             nodes += (lines + 1.) * (fine + 1.);
             if !nodes.is_finite() || nodes > MAX_NODES {
-                return Err(refuse(
-                    "scoped Flat line budget exceeded; increase stepover",
-                ));
+                return Err(
+                    refuse("scoped Flat line budget exceeded; increase stepover")
+                        .with_setting(crate::params::names::STEPOVER),
+                );
             }
             let (lines, fine) = (lines as usize, fine as usize);
             for line in 0..=lines {
@@ -155,5 +156,5 @@ fn positive_span(x: (f64, f64)) -> Result<()> {
     Ok(())
 }
 fn refuse(reason: &str) -> PathError {
-    PathError::Strategy(format!("Facing extent: {reason}"))
+    PathError::refused(crate::topic::FACING_EXTENT, reason)
 }

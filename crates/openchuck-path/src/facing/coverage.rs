@@ -117,5 +117,5 @@ pub fn verify_flat_raster(
 }
 
 fn refuse(reason: &str) -> PathError {
-    PathError::Strategy(format!("Facing completion: {reason}"))
+    PathError::refused(crate::topic::FACING_COMPLETION, reason)
 }

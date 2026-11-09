@@ -1896,3 +1896,46 @@ fn req_op_24_req_nfr_07_one_added_band_is_said_in_the_singular() {
         note.text
     );
 }
+
+/// Decision record 0644: an End facing refusal names its check and the
+/// setting to change, so the application shows it in the one form.
+#[test]
+fn req_ui_12_end_facing_refusals_carry_their_topic() {
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Cylinder {
+        diameter: Millimetres(24.),
+        length: Millimetres(60.),
+        x_start: Millimetres(0.),
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let mut bad = settings();
+    bad.axial_stepdown = 3.01;
+    match plan_end(&setup, &bad, &ctx).unwrap_err() {
+        openchuck_path::PathError::Refused {
+            topic,
+            text,
+            setting,
+        } => {
+            assert_eq!(topic, openchuck_path::topic::END_FACING);
+            assert!(text.starts_with("the Stepover"), "{text}");
+            assert_eq!(
+                setting.as_deref(),
+                Some(openchuck_path::params::names::STEPOVER)
+            );
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}

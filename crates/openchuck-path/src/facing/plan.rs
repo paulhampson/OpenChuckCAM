@@ -145,10 +145,12 @@ pub fn plan_box_sides(
         ));
     }
     if !parameters.tolerance.is_finite() || parameters.tolerance <= 0.0 {
-        return Err(refuse("tolerance must be finite and above zero"));
+        return Err(refuse("tolerance must be finite and above zero")
+            .with_setting(crate::params::names::TOLERANCE));
     }
     if !parameters.allowance.is_finite() || parameters.allowance < 0.0 {
-        return Err(refuse("stock to leave must be finite and nonnegative"));
+        return Err(refuse("stock to leave must be finite and nonnegative")
+            .with_setting(crate::params::names::STOCK_TO_LEAVE));
     }
     let source_error = setup
         .projection_error
@@ -165,9 +167,10 @@ pub fn plan_box_sides(
         || parameters.stepdown <= 0.0
         || parameters.stepdown > setup.tool.flute_length.0
     {
-        return Err(refuse(
-            "stepdown must be above zero and no greater than flute length",
-        ));
+        return Err(
+            refuse("stepdown must be above zero and no greater than flute length")
+                .with_setting(crate::roughing::parameter::STEPDOWN),
+        );
     }
     if !parameters.stepover.is_finite()
         || parameters.stepover <= 0.0
@@ -175,7 +178,8 @@ pub fn plan_box_sides(
     {
         return Err(refuse(
             "stepover must be above zero and no greater than flat cutting diameter",
-        ));
+        )
+        .with_setting(crate::params::names::STEPOVER));
     }
     for (lo, hi) in setup.held.iter().flatten() {
         if !lo.is_finite() || !hi.is_finite() || hi <= lo {
@@ -275,5 +279,5 @@ pub fn plan_box_sides(
 }
 
 fn refuse(reason: &str) -> PathError {
-    PathError::Strategy(format!("Box facing: {reason}"))
+    PathError::refused(crate::topic::BOX_FACING, reason)
 }

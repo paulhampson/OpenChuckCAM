@@ -216,3 +216,23 @@ fn req_op_24_actual_small_rotary_word_error_reserves_disc_tilt_within_tolerance(
     verify_flat_raster(rect, p, 7., &rows(0.0001), 1., 0.01).unwrap();
     assert!(verify_flat_raster(rect, p, 7., &rows(1.), 1., 0.01).is_err());
 }
+
+/// Decision record 0644: a Facing completion refusal names its check.
+#[test]
+fn req_ui_12_facing_completion_refusals_carry_their_topic() {
+    let p = plane();
+    let rect = p
+        .bounds(
+            [Point3::new(0., 0., 7.), Point3::new(10., 10., 7.)],
+            &[],
+            0.,
+        )
+        .unwrap();
+    let mut rows = rows();
+    rows.remove(0);
+    assert!(matches!(
+        verify_flat_raster(rect, p, 7., &rows, 1., 0.01).unwrap_err(),
+        openchuck_path::PathError::Refused { topic, setting: None, .. }
+            if topic == openchuck_path::topic::FACING_COMPLETION
+    ));
+}
