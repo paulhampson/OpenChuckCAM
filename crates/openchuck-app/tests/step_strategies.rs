@@ -293,7 +293,14 @@ fn outline() -> Outline {
 /// Gates 1 and 2 on both posts, no gouge into the exact surface, and the
 /// same G-code at 1, 2 and N threads.
 fn check(job: &Job) {
-    let (dir, mut app, _) = build(job, "check");
+    check_in(job, "check");
+}
+
+/// [`check`] in a project folder named by `tag`, so that tests checking the
+/// same part with the same strategy, which run at once in one process, do
+/// not share (and delete) one folder.
+fn check_in(job: &Job, tag: &str) {
+    let (dir, mut app, _) = build(job, tag);
     let model = placed(job.part, &job.transform);
     let samples = Samples::of(&model);
     let outline = outline();
@@ -1129,10 +1136,13 @@ fn req_op_11_req_imp_02_a_ramp_on_a_step_part_follows_the_pass_without_gouging()
         ]
     };
     for (part, shape) in [("cone", "rings"), ("revolved_spline", "helix")] {
-        check(&Job {
-            part,
-            transform: onto_axis(),
-            operations: vec![("helical_finishing", ramp(shape))],
-        });
+        check_in(
+            &Job {
+                part,
+                transform: onto_axis(),
+                operations: vec![("helical_finishing", ramp(shape))],
+            },
+            "ramp",
+        );
     }
 }
