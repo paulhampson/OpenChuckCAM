@@ -1,0 +1,12 @@
+schema = 25
+id = "0c0c0641-0000-4000-8000-000000000306"
+order = "UA"
+name = "Face end, part only"
+setup = "57ad6798-2544-4dfb-90a0-caf67ec69484"
+strategy = "facing"
+tool = "c0de0001-0000-4000-8000-000000000104"
+selections = []
+
+[parameters]
+extent = "part"
+shape = "end"

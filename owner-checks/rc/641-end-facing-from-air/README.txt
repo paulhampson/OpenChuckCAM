@@ -9,6 +9,8 @@ DRAFT: to run on the release candidate, once the fix is merged.
    across; nothing feeds along X into the end face.
 4. Post and export: written, not refused.
 5. Stepdown 30: refused, naming Stepdown.
+6. "2 Face end, part only": a note "Stock above the area (...)"; side
+   entries at the plunge feed.
 Old behaviour: refused at posting ("an actual End cut exceeds the selected
 maximum axial stepdown"); with smaller values each band fed sideways
 along X into the end face at the cutting feed.
