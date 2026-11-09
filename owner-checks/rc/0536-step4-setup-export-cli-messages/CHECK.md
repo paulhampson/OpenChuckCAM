@@ -55,7 +55,7 @@ Run with the command-line tool, Linux x86_64, release builds each in a target fo
 
 **Seen, reported to the coordinator, not part of the check:**
 
-- The refusal for a missing acknowledgement now reads "... before running.. Read them, then acknowledge them to write the files." and "... or make the tab longer.. Read them ...": a doubled full stop where the message, now ending with a full stop, is followed by the refusal's own.
+- The refusal for a missing acknowledgement read "... before running.. Read them, ..." on `0d640692` (a doubled full stop); fixed by #670, on `main` from `576ef9c`: on `07ec6990` it reads "... or make the tab longer. Read them, then acknowledge them to write the files."
 - `openchuck-cli setup` still lists a setup's checks and workholding findings without the topic, starting in lower case and some without a full stop ("the safe cylinder (radius 30.000 mm) is inside ... before running", "tab 1 is placed automatically at the head of the part, but there is no room there: ..."); `regenerate` and the export use the new form.
 - A rapid that removes material and short blocks in Report mode were not produced on public material here (the tutorial job has neither); their texts are from the merged pull request.
 - The Show setting links and the Facing deviation note need the interface, which cannot be run without a display here.

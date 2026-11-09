@@ -69,7 +69,7 @@ To come (not built yet). A section and a check will be added here when it is mer
 ## Known, not part of these checks
 
 - The Facing line is the one note without a topic in front ("operation 'Face end': Facing covered ..."); it is your wording, parked for your decision.
-- The command line's refusal for a missing acknowledgement shows a doubled full stop ("... before running.. Read them, ..."), and `openchuck-cli setup` still lists setup and workholding findings in the older form; both reported to the message lane.
+- `openchuck-cli setup` still lists setup and workholding findings in the older form; reported to the message lane. (The doubled full stop in the command line's acknowledgement refusal, "... before running.. Read them", is fixed by #670.)
 - Several earlier checks quote these texts and pass in either form: #600, #622 and #567 (and #611, whose workholding texts are unchanged).
 
 ---
