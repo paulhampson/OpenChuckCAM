@@ -27,7 +27,7 @@ The inventory of the refusals on `main`, #656 and #663 (about 270 sites in the p
    `PathError::refused(topic, text)` and `.with_setting(key)` build it. Every refusal of a strategy moves to it:
    - each file's `refuse()` helper takes its old prefix as the topic: End facing, Facing completion, Facing motion, Box facing, Facing extent, and **Facing check** for "Facing final validation" (the coordinator's scope of 9 Nov 2026);
    - a connection refusal takes Links, and no longer names the operation in its text;
-   - the entry refusals take Ramp entry, Entry, Face nubs, Lead entry and Helix entry, each with the setting its first remedy names;
+   - the entry refusals take Ramp entry, Entry, Face nubs, Lead entry and Helix entry, each with the setting its first remedy names (RAMPLEAD's lead refusals of #665 too, with Lead radius or Entry);
    - the texts with no prefix take the topic of the check they make where one exists (Held region, Region, Selection set, Surface, Stock, Stock to leave, Links, Faces across the axis, Past the ends), and otherwise their strategy's (Rotary roughing, Axial finishing, Helical finishing, Simultaneous 4-axis finishing, Rest machining, Pencil clean-up, Swarf, Face-flow finishing, Edge following, Radial drilling, Facing, Toolpath).
 
    The words of each text are kept. `PathError::Parameter`, `Surface`, `Region` and `RotaryLimit` stay, for the geometry's own errors. Adding the variant and the topics is an addition (`PathError` is `#[non_exhaustive]`), but the refusal texts change: the library family takes the next minor version at release (decision 0048).
@@ -37,6 +37,8 @@ The inventory of the refusals on `main`, #656 and #663 (about 270 sites in the p
    - anything else is a Generation refusal.
 
    `AppError::Operation` goes. The application's own refusals take topics: Machine profile, Setup, Tool, Part, Stock, Material, Operation, Selection set, STEP part, Workholding, Travel, Stock to leave, Cutting data, Setting and Box facing.
+
+   A refusal that lists passes names them as every note that lists passes does (`openchuck_path::passes_named`, made public): "pass 149 is entered by a straight plunge …", "88 passes, from pass 1 to pass 88 (1, 2, 3 ... 86, 87, 88), are entered …", not "88 passes, the first pass 1, are entered …" (OWNERCHECKS2, relayed on 9 Nov 2026).
 
    A refusal is displayed through `lead_in::in_form`, so every route (Messages, the inspector, the command line) reads it alike, with one full stop. The run's record keeps the refusal's parts: Messages shows it under its own topic, not under Generation, and Show setting opens the operation at the setting (decision 0536 section 4). A selection-set or STEP-part refusal said before generating is not said again after a run refused with it.
 3. **The Facing notes take the form** (the owner's answer (3)), under the topic Facing:

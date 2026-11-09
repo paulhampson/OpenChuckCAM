@@ -232,12 +232,13 @@ The author's test of section 2 names 0538.
 
 ### Build step 6
 
-Built by lane MSGREVIEW on `claude/lane-msgreview-step6` for [decision 0644](0644-refusals-take-the-one-form.md) (proposed), built on `main` at `576ef9c9` with #663 (at `3a296afc`) merged locally, then rebased onto `main` at `fa1c2de1` (#663 and #655 merged), with the workspace at 0.55.0, provisional. Run in the session's Linux container with `cargo nextest run`, uninstrumented. The inventory and the topic of every refusal are in [docs/archive/0644-refusals-take-the-one-form/](../archive/0644-refusals-take-the-one-form/).
+Built by lane MSGREVIEW on `claude/lane-msgreview-step6` for [decision 0644](0644-refusals-take-the-one-form.md) (proposed), built on `main` at `576ef9c9` with #663 (at `3a296afc`) merged locally, then rebased onto `main` at `3fac35f7` (#663, #655 and #665 merged), with the workspace at 0.55.0, provisional. Run in the session's Linux container with `cargo nextest run`, uninstrumented. The inventory and the topic of every refusal are in [docs/archive/0644-refusals-take-the-one-form/](../archive/0644-refusals-take-the-one-form/).
 
 What changed:
 
 - **`PathError::Refused { topic, text, setting }`** in the pathing library, and every strategy refusal moved to it, strategy by strategy (8 commits); "Facing final validation" is the topic Facing check; a connection refusal no longer names the operation in its text.
 - **`AppError::Refused` gains `setting`** and is built from the variant, not by matching text (RAMPENTRY's list of topics goes); `AppError::Operation` goes, and the application's own refusals take topics. A refusal is displayed through `lead_in::in_form`. The run's record keeps its parts, so Messages shows it under its own topic with Show setting at its setting, and a selection-set or STEP-part refusal is not said twice.
+- **RAMPLEAD's lead refusals** (#665) carry the topic Lead entry with the setting their remedy names, and the plunge refusal names its passes with `openchuck_path::passes_named`, as the notes do ("88 passes, from pass 1 to pass 88 (1, 2, 3 ... 86, 87, 88), are entered …"; OWNERCHECKS2).
 - **The Facing notes** read "Facing (operation 'X'): facing covered the end faces it was asked to." and "Facing (operation 'X'): intentionally unfaced: …" (the owner's answer (3)).
 - **The setup checks** on the command line (`setup`, `report`, the warnings before a run) are in the one form (`SetupReport::warning_lines`; the report's notes are made in it).
 - **Checks:** the command line's guard test, and the topics check's refusal rules with the `[strategy_refusals]` baseline.
@@ -253,10 +254,10 @@ Tests, each named by requirement:
 - `setup::req_set_01_req_set_06_setups_are_checked_against_the_machine` (the notes and `warning_lines` in the form);
 - `facing::integration_tests` (the two Facing notes in the form), `results_panel::tests::req_nfr_12_the_facing_line_names_the_simulation_only_when_there_is_one`;
 - `openchuck-cli` `cli::req_ui_12_the_command_line_says_every_check_in_the_one_form` (the guard; it fails on the old setup listing, whose lines had no topic);
-- `xtask` `topics::tests::req_ui_12_a_refusal_without_a_topic_is_counted`, `req_ui_12_a_refusal_names_its_topic_by_a_constant`, `messages::tests::req_ui_12_a_text_naming_a_requirement_or_a_decision_is_counted`, `req_ui_12_a_test_module_after_other_attributes_is_test_code`; `openchuck-cli` `cli::req_ui_12_the_guard_knows_an_internal_reference`; `pathing::req_op_14_stock_beyond_the_retract_height_is_refused` (the topic Links, and no requirement number);
+- `xtask` `topics::tests::req_ui_12_a_refusal_without_a_topic_is_counted`, `req_ui_12_a_refusal_names_its_topic_by_a_constant`, `messages::tests::req_ui_12_a_text_naming_a_requirement_or_a_decision_is_counted`, `req_ui_12_a_test_module_after_other_attributes_is_test_code`; `openchuck-cli` `cli::req_ui_12_the_guard_knows_an_internal_reference`; `pathing::req_op_14_stock_beyond_the_retract_height_is_refused` (the topic Links, and no requirement number); `messages::tests::req_ui_12_a_raw_string_ends_at_its_own_quote` (the scan read the rest of a file as strings after a raw string ending in a backslash); `operation::tests::req_op_11_req_ui_12_a_plunge_refusal_names_its_passes_as_the_notes_do`; `lead_follows::req_op_11_req_op_14_in_roughing_a_lead_beside_a_partial_ring_through_uncut_stock_is_refused_naming_entry` (the topic and the setting);
 - the existing tests that read refusal texts follow the form.
 
-Suites at `9ee18203` (the code commits; the docs commit adds no code): `openchuck-path`, `openchuck-app`, `openchuck-ui`, `openchuck-cli` and `xtask` ran 2,697 tests, 2,694 passed and 3 skipped; the other 3 failed only because the container's disk filled during the run ("No space left on device" writing a project), and the 4 `feed_limits` tests passed when run again. No new test takes over a minute. `cargo fmt`, `cargo clippy --workspace --all-targets`, and `cargo xtask deps` (with `messages` and `topics`), `licences`, `records` and `trace` (105 of 105 P1 requirements) pass.
+Suites at `84e40d68`, on `main` at `3fac35f7`: `openchuck-path`, `openchuck-app`, `openchuck-ui`, `openchuck-cli` and `xtask` ran 2,748 tests, all passed (3 skipped). No new test takes over a minute. `cargo fmt`, `cargo clippy --workspace --all-targets`, and `cargo xtask deps` (with `messages` and `topics`), `licences`, `records` and `trace` pass.
 
 Not verified here:
 
