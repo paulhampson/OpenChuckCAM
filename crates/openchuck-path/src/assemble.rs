@@ -1195,6 +1195,35 @@ fn view<'a>(stocks: &'a [Option<PassStock>], i: usize, input: &'a StrategyInput<
     }
 }
 
+/// Passes named for a note (decision 0536; the grouping of #600): "pass 3",
+/// "passes 3, 5 and 7", or for many "52 passes, from pass 3 to pass 98 (3,
+/// 5, 7 ... 94, 96, 98)", so one note per operation stays short.
+fn passes_named(passes: &[usize]) -> String {
+    let names: Vec<String> = passes.iter().map(|p| (p + 1).to_string()).collect();
+    match names.as_slice() {
+        [] => String::new(),
+        [one] => format!("pass {one}"),
+        [rest @ .., last] if names.len() <= 6 => {
+            format!("passes {} and {last}", rest.join(", "))
+        }
+        _ => {
+            let head = names.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+            let tail = names
+                .iter()
+                .skip(names.len() - 3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{} passes, from pass {} to pass {} ({head} ... {tail})",
+                names.len(),
+                names.first().cloned().unwrap_or_default(),
+                names.last().cloned().unwrap_or_default()
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -1501,34 +1530,5 @@ mod tests {
             .unwrap();
         let f = 60.0 * (written_z.hypot(0.001)) / b.segments[0].duration.0;
         assert!(f <= fast_z.linear.0, "F{f:.3}");
-    }
-}
-
-/// Passes named for a note (decision 0536; the grouping of #600): "pass 3",
-/// "passes 3, 5 and 7", or for many "52 passes, from pass 3 to pass 98 (3,
-/// 5, 7 ... 94, 96, 98)", so one note per operation stays short.
-fn passes_named(passes: &[usize]) -> String {
-    let names: Vec<String> = passes.iter().map(|p| (p + 1).to_string()).collect();
-    match names.as_slice() {
-        [] => String::new(),
-        [one] => format!("pass {one}"),
-        [rest @ .., last] if names.len() <= 6 => {
-            format!("passes {} and {last}", rest.join(", "))
-        }
-        _ => {
-            let head = names.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
-            let tail = names
-                .iter()
-                .skip(names.len() - 3)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(
-                "{} passes, from pass {} to pass {} ({head} ... {tail})",
-                names.len(),
-                names.first().cloned().unwrap_or_default(),
-                names.last().cloned().unwrap_or_default()
-            )
-        }
     }
 }
