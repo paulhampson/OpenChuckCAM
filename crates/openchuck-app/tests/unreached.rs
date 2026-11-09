@@ -539,7 +539,9 @@ fn req_ui_12_the_unreached_warning_offers_show_in_view_for_each_listed_area() {
         .iter()
         .find(|m| {
             m.severity == Severity::Warning
-                && m.text.starts_with("Simultaneous finishing cannot reach")
+                && m.text.starts_with(
+                    "Unreached areas (operation 'Finish'): simultaneous finishing cannot reach",
+                )
         })
         .unwrap_or_else(|| panic!("{:?}", overview.messages));
     assert_eq!(warning.source, Some(ItemRef::Operation(b.operation)));

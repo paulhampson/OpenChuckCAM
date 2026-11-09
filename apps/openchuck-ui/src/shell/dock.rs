@@ -223,11 +223,11 @@ impl Shell {
                                     marks::severity(ui, m.severity);
                                 },
                                 &m.text,
-                                [source_name, m.action.map(|a| a.label())],
+                                [source_name, m.action.as_ref().map(|a| a.label())],
                             );
                             match clicked {
                                 Some(0) => show = m.source,
-                                Some(_) => act = m.action,
+                                Some(_) => act = m.action.clone(),
                                 None => {}
                             }
                             // "Show in view N" for each area a warning of
@@ -237,7 +237,7 @@ impl Shell {
                                     ui.add_space(24.0);
                                     for view in &m.views {
                                         if ui.link(view.label()).clicked() {
-                                            act = Some(*view);
+                                            act = Some(view.clone());
                                         }
                                     }
                                 });
@@ -316,6 +316,16 @@ impl Shell {
                                     None => ui.label(format!("{}: done", entry.label)),
                                 };
                             }
+                            // What the user did, with how long ago
+                            // (decision record 0536 section 8).
+                            Some(JobOutcome::Action) => {
+                                marks::tick(ui);
+                                ui.label(&entry.label);
+                                ui.label(
+                                    RichText::new(openchuck_app::ago(entry.started.elapsed()))
+                                        .color(DARK.muted),
+                                );
+                            }
                             None => {}
                         }
                         if let Some(took) = entry.took {
@@ -359,9 +369,9 @@ impl Shell {
                             marks::severity(ui, Severity::Warning);
                         }
                     };
-                    let label = check.action.map(|a| a.label());
+                    let label = check.action.as_ref().map(|a| a.label());
                     if row_with_links(ui, mark, &check.text, [label, None]) == Some(0) {
-                        act = check.action;
+                        act = check.action.clone();
                     }
                 }
             });

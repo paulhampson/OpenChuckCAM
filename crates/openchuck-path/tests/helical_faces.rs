@@ -1345,7 +1345,9 @@ fn free_end_warnings(path: &GeneratedPath) -> Vec<String> {
         .filter(|w| {
             w.setting.as_deref() == Some("face_free_ends") && w.text.contains("mm of flute")
         })
-        .map(|w| w.text.clone())
+        // The sentence, so the topic is read too (decision record 0536
+        // section 3).
+        .map(openchuck_path::Notice::sentence)
         .collect()
 }
 

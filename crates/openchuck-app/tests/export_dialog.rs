@@ -290,7 +290,9 @@ fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_n
     let mut run = post(&mut app, OutputGrouping::Setup);
     let message = "Swarf on face 7 cuts into the finished surface by 0.0131 mm.";
     run.groups[0].warnings.push(
-        openchuck_path::Notice::warning(message.to_owned()).with_setting("tolerance".to_owned()),
+        openchuck_path::Notice::warning(message.to_owned())
+            .about(openchuck_path::topic::OVERCUT)
+            .with_setting("tolerance".to_owned()),
     );
     let name = app
         .project()
@@ -850,6 +852,7 @@ fn req_gc_05_req_gc_12_req_ui_12_write_messages_retain_every_actual_full_path_an
                 .all(|path| message.text.contains(&path.display().to_string()))
                 && message
                     .action
+                    .as_ref()
                     .is_some_and(|action| action.label() == "Show result")),
             "Messages must retain all actual paths and offer the result again"
         );
@@ -935,7 +938,10 @@ fn req_gc_15_req_nfr_07_destination_changes_or_stale_inputs_write_nothing() {
         app.overview(None, &openchuck_app::JobLog::default())
             .messages
             .iter()
-            .filter(|m| m.action.is_some_and(|a| a.label() == "Show result"))
+            .filter(|m| m
+                .action
+                .as_ref()
+                .is_some_and(|a| a.label() == "Show result"))
             .count()
             >= 2
     );
@@ -1053,7 +1059,11 @@ fn req_ui_12_req_gc_05_the_retained_export_message_keeps_every_path_exact() {
     let message = overview
         .messages
         .iter()
-        .find(|m| m.action.is_some_and(|a| a.label() == "Show result"))
+        .find(|m| {
+            m.action
+                .as_ref()
+                .is_some_and(|a| a.label() == "Show result")
+        })
         .unwrap();
     assert_eq!(
         message.text,
@@ -1469,6 +1479,7 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
                    passes is within the allowed excess of 0.010 mm at 1 place";
     run.groups[0].warnings.push(
         openchuck_path::Notice::warning(message.to_owned())
+            .about(openchuck_path::topic::PARTIAL_PATH)
             .with_setting("scallop".to_owned())
             .to_acknowledge(openchuck_path::Acknowledgement::PartialPath),
     );
@@ -1483,7 +1494,9 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
     let w = warnings(&checks);
     assert!(
         w.iter()
-            .any(|t| t.contains(&format!("'{name}' has a partial path")) && t.contains(message)),
+            .any(|t| t.contains(&format!("(operation '{name}')"))
+                && t.contains(message.trim_end_matches('.'))
+                && t.ends_with("A partial path: acknowledge it before the files are written")),
         "{w:?}"
     );
     let run = std::sync::Arc::new(run);
@@ -1538,9 +1551,10 @@ fn req_gc_16_a_possible_collision_is_written_only_once_this_result_is_acknowledg
     let (dir, mut app) = project("collision", false);
     let plain = std::sync::Arc::new(post(&mut app, OutputGrouping::Setup));
     let mut run = post(&mut app, OutputGrouping::Setup);
-    let message = "Flute length: the stock stands up to 3.000 mm above the tool's tip";
+    let message = "the stock stands up to 3.000 mm above the tool's tip";
     run.groups[0].warnings.push(
         openchuck_path::Notice::warning(message.to_owned())
+            .about(openchuck_path::topic::FLUTE_LENGTH)
             .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision),
     );
     let name = app
@@ -1555,16 +1569,18 @@ fn req_gc_16_a_possible_collision_is_written_only_once_this_result_is_acknowledg
     let w = warnings(&checks);
     assert!(
         w.iter().any(
-            |t| t.contains(&format!("'{name}' has a possible collision"))
+            |t| t.starts_with(&format!("Flute length (operation '{name}'"))
                 && t.contains("the stock stands up to 3.000 mm")
+                && t.ends_with("A possible collision: acknowledge it before the files are written")
         ),
         "{w:?}"
     );
     assert!(openchuck_app::partial_operations(app.project(), &run).is_empty());
     let found = openchuck_app::collision_warnings(app.project(), &run);
     assert_eq!(found.len(), 1, "{found:?}");
+    // In the one form (decision record 0536 section 3).
     assert!(
-        found[0].contains(&format!("operation '{name}'")),
+        found[0].starts_with(&format!("Flute length (operation '{name}', tool '")),
         "{found:?}"
     );
     // Writing waits for the tick.

@@ -78,9 +78,13 @@ fn req_prj_08_worker_snapshot_and_recovery_do_not_modify_saved_project() {
     let app =
         Application::from_checkpoint(&project, recovered.unwrap(), Threads::Exactly(1)).unwrap();
     assert!(app.is_modified());
+    // The recovered changes are kept only until saved: the warning in
+    // Messages reads this (decision record 0536 section 8).
+    assert!(app.is_recovered_unsaved());
     assert_eq!(app.project().name(), "checkpointed");
     app.save().unwrap();
     assert!(!app.is_modified());
+    assert!(!app.is_recovered_unsaved());
     assert_eq!(file::load(&project).unwrap().name(), "checkpointed");
     session.close(1).unwrap();
     until(&mut session, |n| matches!(n, Notice::Closed { .. }));

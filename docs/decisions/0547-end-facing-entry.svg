@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="740" viewBox="0 0 800 740" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <title>Decision 0547: how an End facing band enters the face, and what the engagement check measures</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c0392b"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1e8449"/>
+    </marker>
+    <pattern id="slice" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" fill="#fdebd0"/>
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#e59866" stroke-width="2"/>
+    </pattern>
+  </defs>
+  <rect width="800" height="740" fill="#ffffff"/>
+
+  <!-- Panel A: today -->
+  <text x="20" y="22" font-weight="bold" font-size="13">Today (main): a sideways entry along X</text>
+  <text x="20" y="38" fill="#555">Looking down the tool axis, one band</text>
+  <g transform="translate(0,30)">
+  <rect x="40" y="80" width="220" height="250" fill="#d5d8dc" stroke="#7f8c8d"/>
+  <rect x="230" y="80" width="30" height="250" fill="url(#slice)" stroke="#e59866"/>
+  <text x="120" y="210" fill="#424949">stock</text>
+  <line x1="230" y1="60" x2="230" y2="350" stroke="#555" stroke-dasharray="4 3"/>
+  <text x="182" y="58" fill="#555">cutting plane</text>
+  <circle cx="255" cy="330" r="25" fill="#aed6f1" fill-opacity="0.75" stroke="#2e86c1"/>
+  <path d="M340,330 L262,330" stroke="#c0392b" stroke-width="2.5" fill="none" marker-end="url(#arrow-red)"/>
+  <path d="M255,322 L255,88" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M262,80 L340,80" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="286" y="352" fill="#c0392b">1: into the face,</text>
+  <text x="286" y="366" fill="#c0392b">half the tool in</text>
+  <text x="286" y="380" fill="#c0392b">the material</text>
+  <text x="130" y="300" fill="#c0392b">90° turn in</text>
+  <text x="130" y="314" fill="#c0392b">the material</text>
+  <text x="262" y="200">2: across</text>
+  <text x="290" y="72">3: out</text>
+  </g>
+
+  <!-- Panel B: decision 0547 -->
+  <text x="390" y="22" font-weight="bold" font-size="13">Decision 0547: enter from air beside the stock</text>
+  <text x="390" y="38" fill="#555">Same view and band</text>
+  <g transform="translate(0,30)">
+  <rect x="410" y="80" width="220" height="250" fill="#d5d8dc" stroke="#7f8c8d"/>
+  <rect x="600" y="80" width="30" height="250" fill="url(#slice)" stroke="#e59866"/>
+  <text x="490" y="210" fill="#424949">stock</text>
+  <line x1="600" y1="60" x2="600" y2="410" stroke="#555" stroke-dasharray="4 3"/>
+  <circle cx="625" cy="380" r="25" fill="#aed6f1" fill-opacity="0.75" stroke="#2e86c1"/>
+  <circle cx="625" cy="30" r="25" fill="none" stroke="#2e86c1" stroke-dasharray="3 3"/>
+  <path d="M625,372 L625,62" stroke="#1e8449" stroke-width="2.5" fill="none" marker-end="url(#arrow-green)"/>
+  <line x1="660" y1="330" x2="660" y2="355" stroke="#555"/>
+  <line x1="655" y1="330" x2="665" y2="330" stroke="#555"/>
+  <line x1="655" y1="355" x2="665" y2="355" stroke="#555"/>
+  <text x="668" y="347">approach distance</text>
+  <text x="658" y="386">comes down here, in air</text>
+  <text x="658" y="34">leaves here, in air</text>
+  <text x="640" y="200" fill="#1e8449">across only: the flank</text>
+  <text x="640" y="214" fill="#1e8449">enters the face from its</text>
+  <text x="640" y="228" fill="#1e8449">edge; no sideways move,</text>
+  <text x="640" y="242" fill="#1e8449">no turn in the material</text>
+  </g>
+
+  <g transform="translate(0,50)">
+  <!-- Legend -->
+  <rect x="40" y="420" width="14" height="10" fill="url(#slice)" stroke="#e59866"/>
+  <text x="60" y="429">slice cut by this pass (between the cutting plane and the face)</text>
+  <circle cx="447" cy="425" r="6" fill="#aed6f1" stroke="#2e86c1"/>
+  <text x="458" y="429">tool</text>
+
+  <!-- Panel C: the engagement check -->
+  <line x1="20" y1="446" x2="740" y2="446" stroke="#d5d8dc"/>
+  <text x="20" y="468" font-weight="bold" font-size="13">The engagement check (item 2), looking along Y</text>
+  <g transform="translate(0,30)">
+  <rect x="60" y="490" width="240" height="110" fill="#d5d8dc" stroke="#7f8c8d"/>
+  <rect x="270" y="490" width="30" height="30" fill="#ffffff" stroke="#7f8c8d" stroke-dasharray="3 3"/>
+  <rect x="270" y="520" width="30" height="30" fill="url(#slice)" stroke="#e59866"/>
+  <text x="120" y="560" fill="#424949">stock</text>
+  <rect x="270" y="470" width="50" height="80" fill="#aed6f1" fill-opacity="0.75" stroke="#2e86c1"/>
+  <rect x="285" y="452" width="20" height="18" fill="#aed6f1" stroke="#2e86c1"/>
+  <text x="326" y="482" fill="#2e86c1">flutes</text>
+  <line x1="270" y1="612" x2="300" y2="612" stroke="#333" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="160" y="630">radial width = slice thickness along X, at most the Stepover</text>
+  <line x1="345" y1="520" x2="345" y2="550" stroke="#333" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="352" y="532">axial depth = band along the tool,</text>
+  <text x="352" y="546">at most the Stepdown</text>
+  <text x="326" y="508" fill="#555">removed by the band above</text>
+  <text x="400" y="580">Measured on the assembled path; a cut over either setting is</text>
+  <text x="400" y="594">refused, naming the setting. Where there is no air beside the</text>
+  <text x="400" y="608">band, the sideways entry is kept, fed at the plunge feed.</text>
+  </g>
+  </g>
+</svg>

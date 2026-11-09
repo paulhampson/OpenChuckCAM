@@ -247,7 +247,10 @@ fn req_ui_14_the_keys_are_left_to_any_dialog_or_window_in_front_of_the_view() {
     type Open = fn(&mut Shell);
     let cases: [(&str, Open); 3] = [
         ("an error dialog", |s| {
-            s.dialog = Some(Dialog::Error("Something failed.".to_owned()));
+            s.dialog = Some(Dialog::Error(crate::failure::Failure::new(
+                "Save",
+                "something failed",
+            )));
         }),
         ("the export dialog", Shell::open_export),
         ("the add-operation dialog", |s| {
@@ -450,7 +453,7 @@ fn req_ui_05_a_set_is_deleted_from_the_tree_and_refused_while_used() {
         .unwrap();
     rig.shell.tree_action(super::TreeAction::DeleteSet(id));
     match &rig.shell.dialog {
-        Some(Dialog::Error(note)) => assert!(note.contains("is used by"), "{note}"),
+        Some(Dialog::Error(note)) => assert!(note.text.contains("is used by"), "{}", note.text),
         other => panic!("refused with a note, not {other:?}"),
     }
     assert_eq!(

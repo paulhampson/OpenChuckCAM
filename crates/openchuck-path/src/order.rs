@@ -34,6 +34,7 @@
 
 use openchuck_types::machine::MaxFeeds;
 
+use crate::notice::{Notice, topic};
 use crate::params::{ParameterKind, ParameterSpec};
 use crate::strategy::Pass;
 
@@ -210,7 +211,7 @@ pub(crate) struct Arranged {
     pub passes: Vec<Pass>,
     /// A note saying what cutting by region did or why it did not, when it
     /// was asked for and there was something to move.
-    pub note: Option<String>,
+    pub note: Option<Notice>,
 }
 
 /// `main` then `groups`, in the order `order` (the parameter's value) asks
@@ -306,7 +307,10 @@ fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates, feed: f64) -
              tool travels {x1:.1} mm along the part between passes instead of {x0:.1} mm, and \
              the moves between passes take about {longer:+.1} s"
         );
-        (placed, Some(note))
+        (
+            placed,
+            Some(Notice::information(note).about(topic::PASS_ORDER)),
+        )
     } else {
         let note = format!(
             "the turns at faces across the rotary axis and the passes on surfaces hidden from \
@@ -314,7 +318,10 @@ fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates, feed: f64) -
              beside their region the moves between passes would take about {longer:.1} s \
              longer, more than one hundredth of the operation's estimated time ({allowed:.1} s)"
         );
-        (old, Some(note))
+        (
+            old,
+            Some(Notice::information(note).about(topic::PASS_ORDER)),
+        )
     };
     // Each block is moved out once, in the chosen order.
     let mut slots: Vec<Option<Vec<Pass>>> = blocks.into_iter().map(Some).collect();
@@ -543,14 +550,14 @@ mod tests {
         let after = arrange(AFTER_MAIN, main.clone(), near.clone(), rates(), FEED);
         assert_eq!(after.note, None);
         let moved = arrange(BY_REGION, main.clone(), near, rates(), FEED);
-        let note = moved.note.unwrap();
+        let note = moved.note.unwrap().text;
         assert!(
             note.contains("travels 0.0 mm along the part between passes instead of 10.0 mm"),
             "{note}"
         );
         let far = vec![vec![pass(10.0, 10.0, 180.0, 180.0)]];
         let kept = arrange(BY_REGION, main.clone(), far, rates(), 1.0e6);
-        let note = kept.note.unwrap();
+        let note = kept.note.unwrap().text;
         assert!(note.contains("are cut after the main passes"), "{note}");
         let last = vec![vec![pass(20.0, 20.0, 0.0, 0.0)]];
         assert_eq!(arrange(BY_REGION, main, last, rates(), FEED).note, None);

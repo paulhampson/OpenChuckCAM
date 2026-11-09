@@ -36,7 +36,7 @@
 //! Where a pass can reach the selected region is found through the region's
 //! offset ([`crate::candidates`], slice 12).
 
-use crate::notice::{Acknowledgement, Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice, topic};
 use openchuck_types::geometry::Point3;
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
@@ -204,6 +204,15 @@ pub enum Protection {
     Avoid,
     /// Kept the stock to leave clear of, less the tolerance.
     Check,
+}
+
+/// The topic of a warning that the tool breaks a set of this protection
+/// (decision record 0536 section 3).
+pub(crate) fn set_topic(protection: Protection) -> &'static str {
+    match protection {
+        Protection::Avoid => topic::AVOID_SET,
+        Protection::Check => topic::CHECK_SET,
+    }
 }
 
 /// An avoid or check surface that is only measured (decision record 0176):
@@ -453,7 +462,7 @@ pub(crate) fn watched_warnings(
             };
             Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(set_topic(w.protection).to_owned()),
                 segment: None,
                 text: format!(
                     "The tool {breaks} '{}' along about {length:.3} mm of the toolpath. The set \

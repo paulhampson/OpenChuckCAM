@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="360" viewBox="0 0 760 360" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <title>Decision 0548: a steep descent inside a roughing pass goes down no faster than the plunge feed</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c0392b"/>
+    </marker>
+  </defs>
+  <rect width="760" height="360" fill="#ffffff"/>
+  <text x="20" y="22" font-weight="bold" font-size="13">A roughing pass on one layer, side view along the pass</text>
+  <text x="20" y="38" fill="#555">Up the page is up the tool axis</text>
+
+  <!-- stock removed by earlier layers -->
+  <rect x="40" y="60" width="470" height="70" fill="#ffffff" stroke="#aab7b8" stroke-dasharray="4 3"/>
+  <text x="50" y="80" fill="#7f8c8d">removed by earlier layers</text>
+  <!-- stock this layer has not cut -->
+  <rect x="40" y="130" width="470" height="80" fill="#d5d8dc"/>
+  <text x="50" y="150" fill="#424949">stock this layer has not cut</text>
+  <!-- part -->
+  <rect x="40" y="210" width="470" height="60" fill="#85929e"/>
+  <rect x="210" y="100" width="90" height="110" fill="#85929e"/>
+  <text x="225" y="250" fill="#ffffff">part</text>
+  <text x="220" y="160" fill="#ffffff">raised floor</text>
+
+  <!-- layer level -->
+  <line x1="30" y1="200" x2="520" y2="200" stroke="#555" stroke-dasharray="2 3"/>
+  <text x="440" y="222" fill="#ffffff">layer level</text>
+
+  <!-- tool tip path -->
+  <path d="M50,200 L196,200" stroke="#333" stroke-width="2" fill="none"/>
+  <path d="M196,200 L204,92" stroke="#333" stroke-width="2" fill="none"/>
+  <path d="M204,92 L306,92" stroke="#333" stroke-width="2" fill="none"/>
+  <path d="M306,92 L318,198" stroke="#c0392b" stroke-width="3" fill="none" marker-end="url(#arrow-red)"/>
+  <path d="M318,200 L500,200" stroke="#333" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="70" y="192">cutting feed</text>
+  <text x="380" y="192">cutting feed</text>
+  <text x="236" y="86">cutting feed</text>
+  <text x="326" y="128" fill="#c0392b">the drop off the raised floor:</text>
+  <text x="326" y="142" fill="#c0392b">slowed so the tip goes down</text>
+  <text x="326" y="156" fill="#c0392b">no faster than the plunge feed</text>
+  <text x="40" y="292" fill="#555">The tip path is drawn; the tool rides the stock to leave above the part.</text>
+
+  <!-- inset: the rule -->
+  <rect x="540" y="56" width="200" height="214" fill="#fbfcfc" stroke="#d5d8dc"/>
+  <text x="552" y="76" font-weight="bold">The rule (no angle threshold)</text>
+  <path d="M570,100 L650,200" stroke="#c0392b" stroke-width="2.5" fill="none" marker-end="url(#arrow-red)"/>
+  <line x1="570" y1="100" x2="650" y2="100" stroke="#999" stroke-dasharray="3 3"/>
+  <line x1="660" y1="100" x2="660" y2="200" stroke="#333" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="586" y="116" fill="#555">θ</text>
+  <text x="588" y="168" fill="#c0392b">F</text>
+  <text x="666" y="146">F sin θ</text>
+  <text x="552" y="226">down the tool axis:</text>
+  <text x="552" y="242">F sin θ ≤ plunge feed;</text>
+  <text x="552" y="258">F is lowered only if needed</text>
+
+  <text x="20" y="320">Roughing only: rotary roughing, and Facing in its Flat and Round shapes. Finishing keeps its feeds (OI-2134).</text>
+  <text x="20" y="336">Level, rising and shallow moves keep the cutting feed; entries, exits and links are unchanged.</text>
+</svg>

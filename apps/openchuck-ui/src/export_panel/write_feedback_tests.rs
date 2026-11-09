@@ -184,7 +184,11 @@ fn req_ui_12_req_gc_12_success_stays_until_dismissed_and_is_retained_in_messages
     let message = overview
         .messages
         .iter()
-        .find(|m| m.action.is_some_and(|a| a.label() == "Show result"))
+        .find(|m| {
+            m.action
+                .as_ref()
+                .is_some_and(|a| a.label() == "Show result")
+        })
         .unwrap();
     assert!(
         paths

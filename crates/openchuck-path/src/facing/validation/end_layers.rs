@@ -49,7 +49,7 @@ pub(super) fn verify(
     let outer = if sign > 0. { bounds.1 } else { -bounds.0 };
     let levels = LayerDistribution::Equal.levels(outer, sign * target.x, p.axial_stepdown)?;
     if levels.is_empty() {
-        return Err(refuse("End has no independently verified removal slice"));
+        return Err(refuse("End has no independently checked removal slice"));
     }
     let scale = std::iter::once(group.start)
         .chain(group.segments.iter().map(|s| s.end))
