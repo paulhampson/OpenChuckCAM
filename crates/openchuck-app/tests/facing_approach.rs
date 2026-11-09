@@ -258,3 +258,63 @@ fn req_op_24_req_nfr_12_baluster_end_is_faced_from_both_sides_within_the_flutes(
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Decision 0547 item 4 (finding (a) of issue #641): on the Baluster's own
+/// round stock, lengthened to leave exactly 3 mm past the end at 1 mm of
+/// stock to leave, a Stepover of 1 mm (the slice along X, as the tool's
+/// Hardwood preset gives it) cuts three full slices. Rounding the written
+/// tool centre to three decimals made the read-back slice 1.0005 mm, and the
+/// post-time check refused it as deeper than the Stepover. It posts through
+/// both posts.
+#[test]
+fn req_op_24_req_nfr_05_whole_number_of_slices_posts_with_both_posts() {
+    let dir = project("whole-slices", "");
+    let setup = dir.join(format!("setups/{SETUP}.toml"));
+    let text = std::fs::read_to_string(&setup).unwrap();
+    let start = text.find("[stock]").unwrap();
+    let end = text[start..]
+        .find("\n[stock.bounds.max]")
+        .map(|i| start + i)
+        .unwrap();
+    let tail = &text[end..];
+    let after = tail
+        .find("z = 17.5\n")
+        .map(|i| i + "z = 17.5\n".len())
+        .unwrap();
+    let rest = &tail[after..];
+    std::fs::write(
+        &setup,
+        format!(
+            "{}[stock]\ntype = \"cylinder\"\ndiameter = 24.000000238343276\nlength = 66.0\n\
+             x_start = -1.0\n{rest}",
+            &text[..start]
+        ),
+    )
+    .unwrap();
+    // The Baluster at its own size, not scaled.
+    let file = dir.join("project.toml");
+    let text = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(
+        &file,
+        text.replace(
+            "\n[[models.transform]]\nkind = \"scale\"\nfactor = 1.15\n",
+            "",
+        ),
+    )
+    .unwrap();
+    let operation = dir.join(format!("operations/{FACING}.toml"));
+    let text = std::fs::read_to_string(&operation).unwrap();
+    std::fs::write(
+        &operation,
+        text.replace("schema = 25\n", "schema = 28\n").replace(
+            "stepdown = 2.0\nstepover = 2.2225\n",
+            "stepdown = 2.2225\nstepover = 1.0\n",
+        ),
+    )
+    .unwrap();
+    for name in ["makera-z1", "linuxcnc"] {
+        let run = post(&dir, name);
+        assert_eq!(run.gcode.len(), 1, "{name}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

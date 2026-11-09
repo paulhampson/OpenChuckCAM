@@ -26,8 +26,8 @@ use crate::theme::DARK;
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use openchuck_app::new_folder;
 use openchuck_app::overview::{
-    Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SettingPlace, SetupPart,
-    Severity, Step,
+    Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SettingPlace, SettingRef,
+    SetupPart, Severity, Step,
 };
 use openchuck_app::project::ItemId;
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId};
@@ -1479,17 +1479,48 @@ impl Shell {
             }
             // The setting the message names, by its key (decision record
             // 0536 section 4).
-            MessageAction::ShowSetting(setting) => match setting.place {
-                SettingPlace::Operation(op) => {
-                    self.show_item(ItemRef::Operation(op));
-                    self.setting_jump = Some((op, setting.key));
+            MessageAction::ShowSetting(setting) => {
+                // The field is marked with the message that links to it.
+                let text = self
+                    .overview
+                    .messages
+                    .iter()
+                    .find(|m| {
+                        m.action.as_ref() == Some(&MessageAction::ShowSetting(setting.clone()))
+                    })
+                    .map(|m| m.text.clone())
+                    .unwrap_or_default();
+                match setting.place {
+                    SettingPlace::Operation(op) => {
+                        self.show_item(ItemRef::Operation(op));
+                        self.setting_jump = Some((op, setting.key));
+                    }
+                    SettingPlace::Tool(tool) => {
+                        self.show_item(ItemRef::Tool(tool));
+                        self.tool_library.show_setting(&setting.key, &text);
+                    }
+                    SettingPlace::Setup(setup) => {
+                        let field = openchuck_app::setup_form::SetupField::from_key(&setting.key);
+                        let section = if setting.key == SettingRef::MACHINE {
+                            Some(SetupPart::Machine)
+                        } else {
+                            field.map(inspector::setup_field_section)
+                        };
+                        self.open_step(Step::Setup);
+                        self.choose_setup(setup, section);
+                        // A link to a setting with no field of its own (the
+                        // machine) leaves no earlier mark behind.
+                        match field {
+                            Some(field) => {
+                                self.form
+                                    .show_setting(inspector::setup_field_key(field), text);
+                            }
+                            None => self.form.clear_shown(),
+                        }
+                    }
+                    SettingPlace::Post => self.open_export(),
                 }
-                SettingPlace::Tool(tool) => self.show_item(ItemRef::Tool(tool)),
-                SettingPlace::Setup(setup) => {
-                    self.message_action(MessageAction::ReviewSetup(setup))
-                }
-                SettingPlace::Post => self.open_export(),
-            },
+            }
         }
     }
 

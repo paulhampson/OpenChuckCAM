@@ -72,6 +72,7 @@ impl Strategy for OneRing {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }

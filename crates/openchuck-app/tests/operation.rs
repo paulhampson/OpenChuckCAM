@@ -76,6 +76,7 @@ impl Strategy for OneRing {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }
@@ -1468,10 +1469,17 @@ fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_b
     let status = &overview.items[&ItemRef::Operation(op)];
     assert_eq!(status.state, ItemState::Error, "{status:?}");
     assert!(status.cause.ends_with(said), "{}", status.cause);
+    // In the one form (decision record 0536 section 3): its topic, the
+    // operation, then the refusal.
     let message = overview
         .messages
         .iter()
-        .find(|m| m.text == said)
+        .find(|m| {
+            m.text.split_once("): ").is_some_and(|(lead, rest)| {
+                lead.starts_with("Selection set (operation '")
+                    && rest.to_lowercase() == said.to_lowercase()
+            })
+        })
         .expect("the refusal is in Messages");
     assert_eq!(message.severity, Severity::Error);
     assert_eq!(message.source, Some(ItemRef::Operation(op)));
@@ -1817,7 +1825,12 @@ fn req_op_24_req_ui_07_facing_forms_show_only_the_selected_modes_settings() {
     assert!(
         form.fields
             .iter()
-            .any(|f| f.name == "stepdown" && f.label == "Axial stepdown")
+            .any(|f| f.name == "stepover" && f.label == "Stepover (slice thickness along X)")
+    );
+    assert!(
+        form.fields
+            .iter()
+            .any(|f| f.name == "stepdown" && f.label == "Stepdown (band along the tool)")
     );
     set_strategy(
         &mut app,
@@ -2228,7 +2241,7 @@ fn req_op_24_req_gc_07_legacy_default_imported_stock_keeps_the_pre_scope_refusal
     assert!(
         before
             .to_string()
-            .contains("imported stock (SET-04) is not available yet"),
+            .contains("imported stock is not available yet"),
         "{before}"
     );
     set_strategy(&mut app, op, "facing", &parameters);
@@ -2422,10 +2435,17 @@ fn req_op_11_req_nfr_07_back_and_forth_ramp_on_a_step_part_says_what_to_change_b
     let status = &overview.items[&ItemRef::Operation(op)];
     assert_eq!(status.state, ItemState::Error, "{status:?}");
     assert!(status.cause.ends_with(said), "{}", status.cause);
+    // In the one form (decision record 0536 section 3): its topic, the
+    // operation, then the refusal.
     let message = overview
         .messages
         .iter()
-        .find(|m| m.text == said)
+        .find(|m| {
+            m.text.split_once("): ").is_some_and(|(lead, rest)| {
+                lead.starts_with("Ramp entry (operation '")
+                    && rest.to_lowercase() == said.to_lowercase()
+            })
+        })
         .expect("the refusal is in Messages");
     assert_eq!(message.severity, Severity::Error);
     assert_eq!(

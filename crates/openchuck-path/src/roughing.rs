@@ -237,6 +237,12 @@ fn number(
 }
 
 impl Strategy for RotaryRoughing {
+    fn limits_descent_feed(&self, _parameters: &Parameters) -> bool {
+        // A drop to the layer goes into stock it has not cut (decision
+        // record 0548).
+        true
+    }
+
     fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
         // The layers start at the stock's farthest point from the axis and
         // the Stepdown is held to the flutes (decision record 0509).
@@ -1025,6 +1031,7 @@ impl<'a> Job<'a> {
             points: sites.iter().map(|(s, t)| self.cut_point(*s, *t)).collect(),
             stock: Some(stock.clone()),
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }
     }
 

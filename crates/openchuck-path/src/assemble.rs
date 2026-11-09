@@ -396,6 +396,20 @@ pub fn assemble_with_entry(
     entry: &EntryParameters,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
+    assemble_limited(passes, input, common, entry, None, context)
+}
+
+/// [`assemble_with_entry`], with every cutting move inside a pass that goes
+/// down along the tool axis slowed, where needed, so its tip goes down no
+/// faster than `descent_limit` (the plunge feed; decision record 0548).
+pub(crate) fn assemble_limited(
+    passes: &[Pass],
+    input: &StrategyInput<'_>,
+    common: &CommonParameters,
+    entry: &EntryParameters,
+    descent_limit: Option<FeedRate>,
+    context: &JobContext<'_>,
+) -> Result<GeneratedPath> {
     let rotary = input.rotary;
     let link_height = match common.retract {
         Retract::Clearance => input.clearance.radius.0,
@@ -418,6 +432,7 @@ pub fn assemble_with_entry(
     let mut placed: Vec<Vec<CutPoint>> = Vec::new();
     let mut stocks: Vec<Option<PassStock>> = Vec::new();
     let mut rapids: Vec<Vec<usize>> = Vec::new();
+    let mut plunge_fed: Vec<Vec<usize>> = Vec::new();
     let mut helical_starts = Vec::new();
     let mut low_links = Vec::new();
     let mut previous = Degrees(0.0);
@@ -449,7 +464,9 @@ pub fn assemble_with_entry(
         // (decision record 0050). A pass with rapid points (a drilled hole)
         // is left as it is: its rapids index its points, and its pecks run
         // along the tool axis on purpose.
-        let points = if pass.rapids.is_empty() {
+        // A pass with plunge-fed points (an End facing side entry, decision
+        // record 0547) is left as it is too: those indices name its points.
+        let points = if pass.rapids.is_empty() && pass.plunge_fed.is_empty() {
             walls::merge_at_walls(&rotary, &points, tolerance, chord)
         } else {
             points
@@ -460,6 +477,7 @@ pub fn assemble_with_entry(
         placed.push(points);
         stocks.push(pass.stock.clone());
         rapids.push(pass.rapids.clone());
+        plunge_fed.push(pass.plunge_fed.clone());
         helical_starts.push(pass.helical_pass_start);
         low_links.push(pass.low_link);
     }
@@ -606,8 +624,20 @@ pub fn assemble_with_entry(
             let end = b.pose(p.tip, p.a);
             if doubling.is_some_and(|r| r.contains(&k)) {
                 b.push(MoveKind::Rapid, end, None, None)?;
+            } else if plunge_fed.get(i).is_some_and(|f| f.contains(&k)) {
+                // An entry along the pass at the plunge feed (decision record
+                // 0547 item 1), timed by its contact like the cut around it.
+                b.push(MoveKind::LeadIn, end, Some(*c), Some(common.plunge_feed))?;
             } else {
+                let from = b.at().height;
+                let before = b.segments.len();
                 b.push(MoveKind::Cutting, end, Some(*c), Some(common.feed))?;
+                if let Some(limit) = descent_limit
+                    && b.segments.len() > before
+                {
+                    let down = from - rotary.to_axis(p.tip, p.a).height;
+                    limit_descent(&mut b, before, down, limit);
+                }
             }
         }
         entry.exit(&mut b, common, input, i, points)?;
@@ -645,6 +675,34 @@ pub fn assemble_with_entry(
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })
+}
+
+/// Slows the cutting move `index` of `b`, which takes the tip `down` along
+/// the tool axis, so it goes down no faster than `limit` (decision record
+/// 0548): its time becomes at least the descent at that feed, and its
+/// contact feed is lowered to match. The descent is taken a written unit
+/// longer, the most rounding both ends' heights to the written decimals can
+/// add to it, so the program as written goes down no faster either
+/// (decision record 0034's allowance, for the tool axis). A move already that slow, or not going
+/// down, is left as it is. A note that the machine's limits set the move's
+/// time no longer holds once this sets it, so it is dropped.
+fn limit_descent(b: &mut Builder<'_>, index: usize, down: f64, limit: FeedRate) {
+    if down <= EPS || limit.0.is_nan() || limit.0 <= 0.0 {
+        return;
+    }
+    let least = 60.0 * (down + WRITTEN_UNIT) / limit.0;
+    let Some(segment) = b.segments.get_mut(index) else {
+        return;
+    };
+    if segment.duration.0 >= least {
+        return;
+    }
+    let length = segment.contact_length.0;
+    if length > EPS {
+        segment.contact_feed = Some(FeedRate(60.0 * length / least));
+    }
+    segment.duration = Seconds(least);
+    b.notes.retain(|n| n.segment != Some(index));
 }
 
 /// Points either side of a contact averaged with it to measure the contact

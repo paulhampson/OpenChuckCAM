@@ -164,20 +164,16 @@ pub fn collision_warnings(project: &Project, run: &Regeneration) -> Vec<String> 
         }
         out.extend(rapid_cuts(run, operation));
     }
-    out.extend(
-        setup_collisions(run)
-            .into_iter()
-            .map(|(setup, text)| format!("Setup '{setup}': {text}")),
-    );
+    out.extend(setup_collisions(run));
     out
 }
 
-/// The possible collisions of the run's setups (decision record 0538), as
-/// (setup name, the check's text): a safe cylinder that does not enclose the
+/// The possible collisions of the run's setups (decision record 0538), each
+/// in the one form naming its setup: a safe cylinder that does not enclose the
 /// stock or the part, or is inside the minimum clearance, and a tool that may
 /// be too long to clear the workholding. Read from the project the run was
 /// made from and the part bounds it measured, so they are this result's.
-fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
+fn setup_collisions(run: &Regeneration) -> Vec<String> {
     let project = &run.project;
     let Some(machine) = project.machine() else {
         return Vec::new();
@@ -200,7 +196,7 @@ fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
             found
                 .iter()
                 .filter(|w| crate::setup::is_possible_collision(&w.kind))
-                .map(|w| (setup.name.clone(), crate::overview::setup_warning_text(w))),
+                .map(|w| crate::overview::setup_warning_in_form(&setup.name, w)),
         );
         // The tools of the setup's operations in this run, in the tool
         // list's order, as the setup check names them.
@@ -220,13 +216,10 @@ fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
             )
             .filter(|h| h.below_minimum.is_some())
             {
-                out.push((
-                    setup.name.clone(),
-                    crate::setup::spindle_height_text(
-                        snapshot.controller.number,
-                        &snapshot.name,
-                        &height,
-                    ),
+                out.push(crate::overview::tool_length_text(
+                    &setup.name,
+                    snapshot,
+                    &height,
                 ));
             }
         }
@@ -238,25 +231,26 @@ fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
 /// removing material, as a sentence naming the operation (decision record
 /// 0538): a crash, not a cut.
 fn rapid_cuts(run: &Regeneration, operation: &Operation) -> Vec<String> {
-    // The simulation names an operation as it was called when the run was
-    // made (issue 209).
-    let made_as = run
-        .project
-        .operation(operation.id)
-        .map_or(operation.name.as_str(), |o| o.name.as_str());
-    run.simulation
+    // By the operation's id, so the current name is the one shown (issue
+    // 209).
+    run.groups
         .iter()
-        .flat_map(|s| s.setups.iter())
-        .flat_map(|s| s.operations.iter())
-        .filter(|o| o.operation == made_as)
-        .flat_map(|o| o.rapid_cuts.iter())
-        .map(|cut| {
-            format!(
-                "Operation '{}': move {} is a rapid that removes {:.3} mm³ of material",
-                operation.name, cut.segment, cut.volume
-            )
-        })
+        .filter(|g| g.operation == operation.id)
+        .flat_map(|g| g.rapid_cuts.iter())
+        .map(|&(segment, volume)| rapid_cut_text(&operation.name, segment, volume))
         .collect()
+}
+
+/// A rapid move of the operation named `operation` that removes material, in
+/// the one form (decision record 0536 section 3): "Rapid cut (operation
+/// '<name>'): move N is a rapid that removes V mm³ of material". The same in
+/// Messages, the Results tab, the export checks and on the command line.
+pub(crate) fn rapid_cut_text(operation: &str, segment: usize, volume: f64) -> String {
+    crate::lead_in::in_form(
+        crate::lead_in::topic::RAPID_CUT,
+        &crate::lead_in::Context::operation(operation),
+        &format!("move {segment} is a rapid that removes {volume:.3} mm³ of material"),
+    )
 }
 
 /// A warning of `operation`'s path naming the operation: in the one form of
@@ -637,19 +631,22 @@ pub(crate) fn export_checks_with(
                 for cut in rapid_cuts(run, operation) {
                     push(
                         CheckLevel::Warning,
+                        // As a path's possible collision reads (CodeRabbit on
+                        // #659: the cut's text ends with a full stop).
                         format!(
-                            "{cut}: a possible collision, which must be acknowledged before \
-                             the files are written"
+                            "{}. A possible collision: acknowledge it before the files are \
+                             written",
+                            cut.trim_end_matches('.')
                         ),
                     );
                 }
             }
-            for (setup, text) in setup_collisions(run) {
+            for text in setup_collisions(run) {
                 push(
                     CheckLevel::Warning,
                     format!(
-                        "Setup '{setup}' has a possible collision, which must be acknowledged \
-                         before the files are written: {text}"
+                        "{}. A possible collision: acknowledge it before the files are written",
+                        text.trim_end_matches('.')
                     ),
                 );
             }

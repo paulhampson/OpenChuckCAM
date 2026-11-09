@@ -103,6 +103,9 @@ pub mod topic {
     pub const PENCIL: &str = "Pencil clean-up";
     /// How swarf cutting follows a ruled face.
     pub const SWARF: &str = "Swarf";
+    /// The bands End facing adds where the stock rises above the requested
+    /// area (decision record 0547, question 4).
+    pub const STOCK_ABOVE_THE_AREA: &str = "Stock above the area";
 }
 
 /// How serious a [`Notice`] is (decision record 0536 section 1).

@@ -71,6 +71,7 @@ impl Strategy for FineRing {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }

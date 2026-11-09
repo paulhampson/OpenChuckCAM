@@ -431,7 +431,7 @@ impl MachineProfile {
             return Err(Error::invalid(
                 "machine.rotary_axis",
                 format!(
-                    "a rotary axis about {} is not supported yet (SET-02); use x",
+                    "a rotary axis about {} is not supported yet; use x",
                     self.rotary_axis.name()
                 ),
             ));

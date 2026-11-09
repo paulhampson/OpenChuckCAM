@@ -152,7 +152,7 @@ Also: simulate one roughing and one finishing operation on a public stand-in (`t
 
 ### As built (lane RINGSTEP, the build pull request for #638 and #644, 8 Nov 2026)
 
-Built on `main` `1f3675d`, with `main` `645256c` (MSGREVIEW step 3) merged, on the records of pull request #647. Library 0.52.0, as the Merge Manager sequences it (MSGREVIEW took 0.51.0). The Decision above is as the owner accepted it; these are the refinements the build made, each within it:
+Built on `main` `1f3675d`, with `main` `645256c` (MSGREVIEW step 3) merged, on the records of pull request #647. Library 0.53.0, as the Merge Manager sequences it (MSGREVIEW took 0.51.0 and PATHFEED 0.52.0); released with `main` `db6bc84` merged. The Decision above is as the owner accepted it; these are the refinements the build made, each within it:
 
 - **Item 4, helical finishing and rest machining.** The blend's `Fit` starts at the ring's own start angle, the Start angle + k·φ·sign (a ring ends a whole turn on, so `helical::join` joins them as before), and is seeded no more coarsely than a sharp step (one seed per `CONSTRAINED_SPACING` of X) or the largest angle step. With sharp steps every ring still starts at the Start angle, by the code before. Adaptive spacing measures a blended ring's angles round one turn from the Start angle (`rem_euclid(360)`), as a ring closes on itself.
 - **Item 4, roughing and round Facing.** `Piece::Blend { x0, x1, a0, phi, nodes }` has `max(ceil(φ / (360 / per_turn)), ceil(s_k / line_spacing), 1)` nodes, so no further apart in A than a ring's nodes nor along X than a step's. Ring k starts at the Start angle + 360·k + φ·k; with sharp steps the term φ·k is absent and the arithmetic is the code before.

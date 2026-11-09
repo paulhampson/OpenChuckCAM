@@ -358,6 +358,7 @@ pub(crate) fn free_ends(
                 points: pass,
                 stock: None,
                 rapids: Vec::new(),
+                plunge_fed: Vec::new(),
             });
         }
         let (from, to) = (end.x - radius, end.x + radius);
@@ -595,6 +596,7 @@ fn push_run(out: &mut Vec<Pass>, points: Vec<CutPoint>) {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         });
     }
 }

@@ -31,7 +31,7 @@ A tool cannot cut a corner tighter than its own radius, or a groove narrower tha
 2. Under the view, click **Results**. In Figure 2, **Information** is turned off, so the list shows the warnings only.
 
 <figure>
-<a href="images/rest/02-rest-after-finish.png"><img src="images/rest/02-rest-after-finish.png" width="1920" height="1080" alt="The three operations generated; the view shows the paths and numbered black-and-white markers labelled Unreachable (Rest) in the legend, near the held end and along the part; the Results tab, with Information turned off, reads 3 operation(s), 32759 moves, and lists the warnings of each operation, among them operation 'Rest': move 0: rest machining cannot reach 9 areas of the part."></a>
+<a href="images/rest/02-rest-after-finish.png"><img src="images/rest/02-rest-after-finish.png" width="1920" height="1080" alt="The three operations generated; the view shows the paths, numbered black-and-white markers and diagonal hatching on the surfaces, labelled Unreachable (Rest) in the legend, near the held end and along the part; the Results tab, with Information turned off, reads 3 operation(s), 32759 moves, and lists the warnings of each operation, among them operation 'Rest': move 0: rest machining cannot reach 9 areas of the part."></a>
 <figcaption><b>Figure 2.</b> The numbered markers show where material is left that the rest tool cannot reach.</figcaption>
 </figure>
 

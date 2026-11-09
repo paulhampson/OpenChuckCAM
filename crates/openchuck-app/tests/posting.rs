@@ -1067,14 +1067,37 @@ fn req_gc_17_req_gc_12_report_preserves_output_and_explains_short_blocks() {
         reported
             .warnings
             .iter()
-            .any(|n| n.contains("short blocks") && n.contains("500"))
+            .any(|n| n.starts_with("Short blocks (operation '") && n.contains("500"))
     );
     let checks = app.export_checks(Some(&reported), Some(&reported), None);
     assert!(
         checks
             .checks
             .iter()
-            .any(|c| c.text.contains("short blocks"))
+            .any(|c| c.text.starts_with("Short blocks (operation '"))
+    );
+    // In Messages too, as a warning that marks the operation and shows the
+    // post's short block setting (decision record 0536, the owner's answer
+    // (e); OI-373).
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    let message = overview
+        .messages
+        .iter()
+        .find(|m| m.text.starts_with("Short blocks (operation '"))
+        .unwrap_or_else(|| panic!("{:?}", overview.messages));
+    assert_eq!(message.severity, openchuck_app::overview::Severity::Warning);
+    let Some(openchuck_app::overview::ItemRef::Operation(op)) = message.source else {
+        panic!("{message:?}");
+    };
+    assert_eq!(
+        overview.items[&openchuck_app::overview::ItemRef::Operation(op)].state,
+        openchuck_app::overview::ItemState::Warning
+    );
+    assert_eq!(
+        message.action,
+        Some(openchuck_app::overview::MessageAction::ShowSetting(
+            openchuck_app::overview::SettingRef::setup_machine(app.project().setups()[0].id)
+        ))
     );
     let sheet = app.setup_sheet_for_run(&reported);
     let html = sheet.to_html();

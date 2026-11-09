@@ -96,6 +96,10 @@ pub struct GroupInfo {
     pub unreached: std::sync::Arc<[openchuck_path::Unreached]>,
     /// Facing inputs captured with this generation, shared with its cache.
     pub facing: Option<crate::facing::FacingVerification>,
+    /// The rapid moves of the group the run's stock simulation found
+    /// removing material, as (move, mm³): a possible collision (decision
+    /// record 0538). Empty when the run did not simulate the stock.
+    pub rapid_cuts: Vec<(usize, f64)>,
 }
 
 /// The result of regenerating a project.
@@ -408,6 +412,7 @@ pub(crate) fn regenerate(
         if let Some(limit) = crate::note_groups::feed_limit_of(&feed_notes) {
             regeneration.feed_limits.push((operation.id, limit));
         }
+        let mut rapid_cuts = Vec::new();
         if stocked {
             let mut index = setups.iter().position(|s| s.id == operation.setup);
             if let Some(stock) = cached_stock {
@@ -475,14 +480,18 @@ pub(crate) fn regenerate(
                     }
                 }
             }
-            let cuts = index
+            rapid_cuts = index
                 .and_then(|at| setups.get(at))
                 .map(|s| s.last_rapid_cuts())
-                .unwrap_or_default();
-            for cut in cuts {
-                regeneration.warnings.push(format!(
-                    "operation '{}': move {} is a rapid that removes {:.3} mm3 of material",
-                    operation.name, cut.segment, cut.volume
+                .unwrap_or_default()
+                .iter()
+                .map(|cut| (cut.segment, cut.volume))
+                .collect();
+            for &(segment, volume) in &rapid_cuts {
+                regeneration.warnings.push(crate::export::rapid_cut_text(
+                    &operation.name,
+                    segment,
+                    volume,
                 ));
             }
         }
@@ -499,6 +508,7 @@ pub(crate) fn regenerate(
             warnings: path.warnings.clone(),
             unreached: std::sync::Arc::clone(&path.unreached),
             facing: path.facing.clone(),
+            rapid_cuts,
         });
         // Everything this operation needs of its own is done; the run is
         // not, so it shows finalising until the run is committed (0517).
@@ -710,6 +720,7 @@ mod tests {
                 points,
                 stock: None,
                 rapids: Vec::new(),
+                plunge_fed: Vec::new(),
             }])
         }
     }

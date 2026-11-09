@@ -249,7 +249,7 @@ fn req_ui_12_req_ui_16_a_message_link_keeps_clear_of_its_wrapped_sentence() {
     let rects = rig.text_rects();
     let sentence = rects
         .iter()
-        .find(|(t, _)| t.starts_with("STL holds triangles only"))
+        .find(|(t, _)| t.starts_with("Model notes (model 'cube.stl'): STL holds triangles only"))
         .expect("the STL message is shown");
     let link = rects
         .iter()
@@ -324,4 +324,46 @@ fn req_ui_16_req_sim_04_the_whole_playback_tab_shows_in_the_default_dock_and_sta
         draw(&mut rig);
         assert_eq!(probe(&rig), idle, "stepped, {window:?}");
     }
+}
+
+/// Decision record 0536 sections 1 and 5 (the owner's answer of 8 Nov 2026
+/// to question (b)): information not about a run, such as a model's file
+/// notes, is listed in Messages, but the label does not count it and the
+/// item's mark does not change for it.
+#[test]
+fn req_ui_12_information_in_messages_is_not_counted_and_leaves_the_mark() {
+    use openchuck_app::overview::{ItemRef, ItemState, Severity};
+    let mut rig = rig("smoke-information");
+    rig.shell.dock_tab = DockTab::Messages;
+    draw(&mut rig);
+    let model = rig.shell.app.as_ref().unwrap().project().models()[0].id;
+    let note = rig
+        .shell
+        .overview
+        .messages
+        .iter()
+        .find(|m| m.source == Some(ItemRef::Model(model)) && m.severity == Severity::Info)
+        .unwrap_or_else(|| panic!("{:?}", rig.shell.overview.messages))
+        .text
+        .clone();
+    assert!(rig.shows(&note) || rig.texts().iter().any(|t| note.starts_with(t.0.as_str())));
+    // The label counts errors and warnings only.
+    let counted =
+        rig.shell.overview.count(Severity::Error) + rig.shell.overview.count(Severity::Warning);
+    let label = if counted == 0 {
+        "Messages".to_owned()
+    } else {
+        format!("Messages ({counted})")
+    };
+    assert!(rig.shows(&label), "{:?}", rig.texts());
+    assert!(rig.shell.overview.count(Severity::Info) > 0);
+    // The model's mark is not a problem.
+    assert!(
+        rig.shell
+            .overview
+            .status(ItemRef::Model(model))
+            .is_none_or(|s| !matches!(s.state, ItemState::Warning | ItemState::Error)),
+        "{:?}",
+        rig.shell.overview.status(ItemRef::Model(model))
+    );
 }
