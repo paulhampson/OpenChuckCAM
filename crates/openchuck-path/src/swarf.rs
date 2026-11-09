@@ -445,7 +445,8 @@ impl Flank {
             }
             reached |= reaches;
         }
-        Err(PathError::Strategy(
+        Err(PathError::refused(
+            crate::topic::SWARF,
             "the tool has no straight flank to cut with: its profile has no straight piece \
              rising to the cutting radius, so swarf cannot use it"
                 .to_owned(),
@@ -1225,16 +1226,20 @@ fn place(
     // to the normal (a near-ruled face is not exactly straight).
     let d = UnitVec3::new(chord - n * chord.dot(n))
         .map_err(|_| {
-            PathError::Strategy(format!(
-                "a ruling at parameter {:.4} runs along its own normal",
-                ruling.t
-            ))
+            PathError::refused(
+                crate::topic::SWARF,
+                format!(
+                    "a ruling at parameter {:.4} runs along its own normal",
+                    ruling.t
+                ),
+            )
         })?
         .get();
     let (sa, ca) = flank.half_angle.sin_cos();
     let ideal = d * ca + n * sa;
     let axis = UnitVec3::new(Vec3::new(0.0, ideal.y, ideal.z)).map_err(|_| {
-        PathError::Strategy(
+        PathError::refused(
+            crate::topic::SWARF,
             "its rulings run along the rotary axis, so no rotation of the part brings the flank \
              to them and no tool taper helps (decision record 0021, OI-94)"
                 .to_owned(),
@@ -1372,16 +1377,19 @@ fn ruling_deviation(
 fn check_length(flank: &Flank, settings: &Settings, pose: &Pose, number: u32) -> Result<()> {
     let needed = settings.tip_extension + pose.ruling_length * flank.half_angle.cos();
     if needed > flank.length() + 1e-9 {
-        return Err(PathError::Strategy(format!(
-            "swarf on face {number} needs {needed:.3} mm of flank (a ruling of {:.3} mm plus the \
+        return Err(PathError::refused(
+            crate::topic::SWARF,
+            format!(
+                "swarf on face {number} needs {needed:.3} mm of flank (a ruling of {:.3} mm plus the \
              tip extension of {} mm) but the tool's flank is {:.3} mm long, from {:.3} to {:.3} \
              mm above the tip",
-            pose.ruling_length,
-            settings.tip_extension,
-            flank.length(),
-            flank.z_start,
-            flank.z_end
-        )));
+                pose.ruling_length,
+                settings.tip_extension,
+                flank.length(),
+                flank.z_start,
+                flank.z_end
+            ),
+        ));
     }
     Ok(())
 }
@@ -1981,8 +1989,12 @@ pub fn face_path(
 ) -> Result<FacePath> {
     let number = face.number;
     let face = face.face;
-    let fail =
-        |what: String| PathError::Strategy(format!("swarf cannot cut face {number}: {what}"));
+    let fail = |what: String| {
+        PathError::refused(
+            crate::topic::SWARF,
+            format!("swarf cannot cut face {number}: {what}"),
+        )
+    };
     let flank = Flank::of(tool)?;
     let detection = detect_rulings(face, settings.tolerance);
     if let Some(why) = detection.refusal() {
@@ -2027,7 +2039,7 @@ pub fn face_path(
         })
         .ok_or_else(|| fail("its middle ruling has no extent".to_owned()))?;
     let sign = choose_sign(&middle, &flank, settings, rotary).map_err(|e| match e {
-        PathError::Strategy(why) => fail(why),
+        PathError::Refused { topic, text, .. } if topic == crate::topic::SWARF => fail(text),
         other => other,
     })?;
     let limiter = Limiter {
@@ -2139,7 +2151,7 @@ pub fn face_path(
     };
     let placed = |r: &Ruling| -> Result<Pose> {
         let pose = pose_of(r, sign, &flank, &placing, rotary).map_err(|e| match e {
-            PathError::Strategy(why) => fail(why),
+            PathError::Refused { topic, text, .. } if topic == crate::topic::SWARF => fail(text),
             other => other,
         })?;
         check_length(&flank, &placing, &pose, number)?;
@@ -2981,7 +2993,8 @@ fn swarf(
     context: &JobContext<'_>,
 ) -> Result<StrategyOutput> {
     if region.region.is_some() {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::REGION,
             "swarf cuts the selected faces, not a region: put the walls to cut in its face set, \
              and use a boundary, avoid or check set to limit it"
                 .to_owned(),
@@ -2989,7 +3002,8 @@ fn swarf(
     }
     let faces = input.surface.exact_faces();
     if faces.is_empty() {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::SWARF,
             "swarf needs the exact faces of a STEP model to read their rulings, and the selection \
              has none: a mesh has no rulings to follow (decision record 0021)"
                 .to_owned(),
@@ -3037,7 +3051,7 @@ fn swarf(
         let path = face_path(face, input.tool, input.rotary, &settings, region, context)?;
         let limit = settings.material_left_limit();
         if let Some(why) = path.refusal(limit) {
-            return Err(PathError::Strategy(why));
+            return Err(PathError::refused(crate::topic::SWARF, why));
         }
         if path.gouge > settings.tolerance {
             let clearing = clearing_tolerance(
@@ -3188,7 +3202,10 @@ mod tests {
         // A face that cannot be made at the first tolerance tried: the
         // operation's own tolerance and cut, which are true.
         let clearing = search_clearing(0.01, 0.0172, |_| {
-            Err(PathError::Strategy("no rulings".to_owned()))
+            Err(PathError::refused(
+                crate::topic::SWARF,
+                "no rulings".to_owned(),
+            ))
         });
         assert_eq!(
             clearing,
