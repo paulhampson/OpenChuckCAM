@@ -277,7 +277,7 @@ impl DexelStock {
             }
             _ => Err(Error::invalid(
                 "stock",
-                "imported stock is not supported yet (SET-04)",
+                "imported stock is not supported yet",
             )),
         }
     }

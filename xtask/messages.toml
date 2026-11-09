@@ -5,8 +5,8 @@
 # not have more than its count, and a file that has fewer must lower it.
 #
 # [message_new]: messages built with `Message::new` outside `Message::about`, per file.
-# Decision 0536 build steps 3 to 5 move them to `Message::about`; at zero, `Message::new`
-# becomes private.
+# Decision 0536 build steps 3 to 5 moved them to `Message::about`; step 4 reached zero
+# and made `Message::new` private, so the table is empty and stays empty.
 #
 # [claims]: uses of a word that claims safety ("verified", "certified", "ready to run" and
 # the others of `CLAIMS` in xtask/src/messages.rs) in a product file's string literals
@@ -14,6 +14,5 @@
 # (OI-2097), so the table is empty and stays empty: no product text may use one.
 
 [message_new]
-"crates/openchuck-app/src/overview.rs" = 24
 
 [claims]

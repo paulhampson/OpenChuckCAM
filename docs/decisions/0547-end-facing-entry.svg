@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="740" viewBox="0 0 800 740" font-family="Helvetica, Arial, sans-serif" font-size="12">
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="760" viewBox="0 0 800 760" font-family="Helvetica, Arial, sans-serif" font-size="12">
   <title>Decision 0547: how an End facing band enters the face, and what the engagement check measures</title>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -15,7 +15,7 @@
       <line x1="0" y1="0" x2="0" y2="6" stroke="#e59866" stroke-width="2"/>
     </pattern>
   </defs>
-  <rect width="800" height="740" fill="#ffffff"/>
+  <rect width="800" height="760" fill="#ffffff"/>
 
   <!-- Panel A: today -->
   <text x="20" y="22" font-weight="bold" font-size="13">Today (main): a sideways entry along X</text>
@@ -47,22 +47,27 @@
   <rect x="600" y="80" width="30" height="250" fill="url(#slice)" stroke="#e59866"/>
   <text x="490" y="210" fill="#424949">stock</text>
   <line x1="600" y1="60" x2="600" y2="410" stroke="#555" stroke-dasharray="4 3"/>
+  <circle cx="705" cy="380" r="25" fill="none" stroke="#2e86c1" stroke-dasharray="3 3"/>
+  <path d="M678,380 L635,380" stroke="#1e8449" stroke-width="2.5" fill="none" marker-end="url(#arrow-green)"/>
   <circle cx="625" cy="380" r="25" fill="#aed6f1" fill-opacity="0.75" stroke="#2e86c1"/>
-  <circle cx="625" cy="30" r="25" fill="none" stroke="#2e86c1" stroke-dasharray="3 3"/>
   <path d="M625,372 L625,62" stroke="#1e8449" stroke-width="2.5" fill="none" marker-end="url(#arrow-green)"/>
-  <line x1="660" y1="330" x2="660" y2="355" stroke="#555"/>
-  <line x1="655" y1="330" x2="665" y2="330" stroke="#555"/>
-  <line x1="655" y1="355" x2="665" y2="355" stroke="#555"/>
-  <text x="668" y="347">approach distance</text>
-  <text x="658" y="386">comes down here, in air</text>
-  <text x="658" y="34">leaves here, in air</text>
-  <text x="640" y="200" fill="#1e8449">across only: the flank</text>
+  <circle cx="625" cy="30" r="25" fill="none" stroke="#2e86c1" stroke-dasharray="3 3"/>
+  <path d="M652,30 L697,30" stroke="#1e8449" stroke-width="2.5" fill="none" marker-end="url(#arrow-green)"/>
+  <circle cx="705" cy="30" r="25" fill="none" stroke="#2e86c1" stroke-dasharray="3 3"/>
+  <line x1="580" y1="330" x2="580" y2="355" stroke="#555"/>
+  <line x1="575" y1="330" x2="585" y2="330" stroke="#555"/>
+  <line x1="575" y1="355" x2="585" y2="355" stroke="#555"/>
+  <text x="470" y="347">approach distance</text>
+  <text x="560" y="420">1: down in air beyond the end face,</text>
+  <text x="560" y="434">then in along X beside the stock</text>
+  <text x="652" y="62">3: out along X, then up</text>
+  <text x="640" y="200" fill="#1e8449">2: across; the flank</text>
   <text x="640" y="214" fill="#1e8449">enters the face from its</text>
   <text x="640" y="228" fill="#1e8449">edge; no sideways move,</text>
   <text x="640" y="242" fill="#1e8449">no turn in the material</text>
   </g>
 
-  <g transform="translate(0,50)">
+  <g transform="translate(0,70)">
   <!-- Legend -->
   <rect x="40" y="420" width="14" height="10" fill="url(#slice)" stroke="#e59866"/>
   <text x="60" y="429">slice cut by this pass (between the cutting plane and the face)</text>

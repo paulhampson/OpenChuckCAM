@@ -387,6 +387,23 @@ impl ToolLibraryWindow {
         }
     }
 
+    /// Marks the chosen tool's field `key` (a name of
+    /// [`tool_edit::fields`]) with the warning `text` and brings it into
+    /// view: "Show setting" on a message about the tool (decision record
+    /// 0536 section 4). Nothing is marked while another edit is unsaved,
+    /// as the tool is not chosen then.
+    pub fn show_setting(&mut self, key: &str, text: &str) {
+        if !self.is_dirty() {
+            self.fields.show_setting(key, text);
+        }
+    }
+
+    /// Whether "Show setting" has marked the field `key`.
+    #[cfg(test)]
+    pub fn is_shown(&self, key: &str) -> bool {
+        self.fields.is_shown(key)
+    }
+
     /// The library, read once when first asked (the operation inspector
     /// compares project tools with it, TL-07).
     pub fn library(&mut self) -> Option<&ToolLibrary> {

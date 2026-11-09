@@ -113,6 +113,9 @@ pub mod topic {
     /// Nubs of stock round the rotary axis removed by a plunge instead of
     /// ring layers (decision record 0543 section 4, point 3).
     pub const FACE_NUBS: &str = "Face nubs";
+    /// The bands End facing adds where the stock rises above the requested
+    /// area (decision record 0547, question 4).
+    pub const STOCK_ABOVE_THE_AREA: &str = "Stock above the area";
 }
 
 /// How serious a [`Notice`] is (decision record 0536 section 1).

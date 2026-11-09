@@ -102,6 +102,16 @@ fn facing_line(name: &str, simulated: bool) -> String {
     }
 }
 
+/// The note on the whole-part deviation under a run with a Facing
+/// operation: only when the run was simulated, as the deviation it speaks
+/// of follows only then (NFR-12; inventory row V091, CodeRabbit on #653).
+fn deviation_note(facing: bool, simulated: bool) -> Option<&'static str> {
+    (facing && simulated).then_some(
+        "Whole-part deviation below still counts retained stock and every overcut. Simulation \
+         is measured at the displayed cell resolution.",
+    )
+}
+
 /// The fixed bin edges of the histogram, millimetres: the thresholds of the
 /// part's colour bands (`DeviationBand`), mirrored below the surface for the
 /// overcut. Only the edges beyond the tolerance and within the extremes are
@@ -692,8 +702,9 @@ impl ResultsPanel {
                     ui.label(note);
                 }
             }
-            if run.groups.iter().any(|g| g.facing.is_some()) {
-                ui.label("Whole-part deviation below still counts retained stock and every overcut. Simulation is measured at the displayed cell resolution.");
+            let facing = run.groups.iter().any(|g| g.facing.is_some());
+            if let Some(note) = deviation_note(facing, run.simulation.is_some()) {
+                ui.label(note);
             }
         }
         match results {
@@ -1394,6 +1405,17 @@ mod tests {
         assert_eq!(overcut_text(&none), "none");
         assert!(none.histogram.is_empty());
         assert!(histogram(&[f64::NAN], tolerance).is_empty());
+    }
+
+    #[test]
+    fn req_nfr_12_req_sim_05_the_deviation_note_shows_only_with_a_simulation() {
+        // A generate-only run with a Facing operation has no deviation below
+        // it, so the note about the deviation is not shown (V091).
+        assert_eq!(deviation_note(true, false), None);
+        assert!(
+            deviation_note(true, true).is_some_and(|n| n.starts_with("Whole-part deviation below"))
+        );
+        assert_eq!(deviation_note(false, true), None);
     }
 
     #[test]

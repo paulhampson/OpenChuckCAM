@@ -76,6 +76,7 @@ impl Strategy for OneRing {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }
@@ -1468,10 +1469,17 @@ fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_b
     let status = &overview.items[&ItemRef::Operation(op)];
     assert_eq!(status.state, ItemState::Error, "{status:?}");
     assert!(status.cause.ends_with(said), "{}", status.cause);
+    // In the one form (decision record 0536 section 3): its topic, the
+    // operation, then the refusal.
     let message = overview
         .messages
         .iter()
-        .find(|m| m.text == said)
+        .find(|m| {
+            m.text.split_once("): ").is_some_and(|(lead, rest)| {
+                lead.starts_with("Selection set (operation '")
+                    && rest.to_lowercase() == said.to_lowercase()
+            })
+        })
         .expect("the refusal is in Messages");
     assert_eq!(message.severity, Severity::Error);
     assert_eq!(message.source, Some(ItemRef::Operation(op)));
@@ -1708,6 +1716,83 @@ fn req_op_14_req_gc_07_a_saved_finishing_operation_keeps_retracting() {
     }
 }
 
+#[test]
+fn req_op_11_a_new_ring_operation_blends_its_steps() {
+    // Decision 0545 item 1 (the owner's choice D3, relayed): a new operation
+    // of every strategy with Steps between rings is written with "blended";
+    // an operation saved without it keeps "sharp" (the default), and other
+    // strategies get nothing.
+    use openchuck_path::helical::parameter::{BLENDED, RING_STEP};
+    let (dir, mut app, op) = project("ring-step-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let step = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get(RING_STEP)
+            .cloned()
+    };
+    let blended = Some(openchuck_app::project::ParameterValue::Text(BLENDED.into()));
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "rotary_roughing",
+        "facing",
+        "simultaneous_finishing",
+    ] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(step(&app, added), blended, "{strategy}");
+    }
+    for strategy in ["axial_finishing", "indexed_finishing", "pencil_finishing"] {
+        if let Ok(added) = app.add_operation(strategy, strategy, setup, tool) {
+            assert_eq!(step(&app, added), None, "{strategy}");
+        }
+    }
+    assert_eq!(step(&app, op), None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_a_saved_ring_operation_keeps_sharp_steps() {
+    // Decision 0545 item 1: a ring operation saved before the setting has
+    // no `ring_step`, so when its project is opened again its steps are
+    // sharp and its toolpath, and so its G-code, is what it was: the same
+    // as with Sharp chosen.
+    use openchuck_path::helical::parameter::{PASS_SHAPE, RING_STEP, RINGS, SHARP};
+    for strategy in ["helical_finishing", "rotary_roughing"] {
+        let (dir, mut app, op) = project(&format!("saved-rings-{strategy}"));
+        let rings = ParameterValue::Text(RINGS.into());
+        let free_ends = ParameterValue::Flag(false);
+        let values: Vec<(&str, ParameterValue)> = if strategy == "helical_finishing" {
+            vec![(PASS_SHAPE, rings), ("face_free_ends", free_ends)]
+        } else {
+            vec![(PASS_SHAPE, rings)]
+        };
+        set_strategy(&mut app, op, strategy, &values);
+        app.save().unwrap();
+        drop(app);
+        let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+        assert_eq!(
+            app.project()
+                .operation(op)
+                .unwrap()
+                .parameters
+                .get(RING_STEP),
+            None,
+            "{strategy}"
+        );
+        let saved = app.regenerate().unwrap();
+        app.set_parameter(op, RING_STEP, Some(ParameterValue::Text(SHARP.into())))
+            .unwrap();
+        let sharp = app.regenerate().unwrap();
+        assert!(!saved.toolpath.groups.is_empty(), "{strategy}");
+        assert_eq!(saved.toolpath, sharp.toolpath, "{strategy}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
 /// `op` turned into `strategy` with the given values.
 fn set_strategy(
     app: &mut Application,
@@ -1740,7 +1825,12 @@ fn req_op_24_req_ui_07_facing_forms_show_only_the_selected_modes_settings() {
     assert!(
         form.fields
             .iter()
-            .any(|f| f.name == "stepdown" && f.label == "Axial stepdown")
+            .any(|f| f.name == "stepover" && f.label == "Stepover (slice thickness along X)")
+    );
+    assert!(
+        form.fields
+            .iter()
+            .any(|f| f.name == "stepdown" && f.label == "Stepdown (band along the tool)")
     );
     set_strategy(
         &mut app,
@@ -2151,7 +2241,7 @@ fn req_op_24_req_gc_07_legacy_default_imported_stock_keeps_the_pre_scope_refusal
     assert!(
         before
             .to_string()
-            .contains("imported stock (SET-04) is not available yet"),
+            .contains("imported stock is not available yet"),
         "{before}"
     );
     set_strategy(&mut app, op, "facing", &parameters);
@@ -2435,6 +2525,7 @@ impl Strategy for OnePoint {
                 .collect(),
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }

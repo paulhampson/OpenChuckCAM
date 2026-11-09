@@ -32,6 +32,8 @@ mod brep_queries;
 mod carving;
 #[path = "cutter.rs"]
 mod cutter;
+#[path = "descent_feed.rs"]
+mod descent_feed;
 #[path = "drill.rs"]
 mod drill;
 #[path = "drop_threads.rs"]
@@ -110,6 +112,8 @@ mod region;
 mod region_offsets;
 #[path = "rest.rs"]
 mod rest;
+#[path = "ring_steps.rs"]
+mod ring_steps;
 #[path = "roughing.rs"]
 mod roughing;
 #[path = "roughing_region.rs"]

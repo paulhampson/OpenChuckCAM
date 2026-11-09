@@ -325,6 +325,7 @@ mod tests {
             warnings: vec![],
             unreached: std::sync::Arc::from([]),
             facing: Some(proof),
+            rapid_cuts: Vec::new(),
         };
         let canonical = group.clone();
         let output = crate::connections::assemble(
@@ -403,6 +404,7 @@ mod tests {
             warnings: vec![],
             unreached: std::sync::Arc::from([]),
             facing: Some(proof.clone()),
+            rapid_cuts: Vec::new(),
         };
         let path = Toolpath {
             groups: vec![group],
@@ -717,6 +719,7 @@ mod tests {
             warnings: vec![],
             unreached: std::sync::Arc::from([]),
             facing: None,
+            rapid_cuts: Vec::new(),
         };
         let run = crate::Regeneration {
             canonical_toolpath: openchuck_types::ir::Toolpath {

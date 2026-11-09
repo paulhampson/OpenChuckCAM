@@ -18,6 +18,8 @@ mod app;
 mod checkpoint_schedule;
 #[path = "checkpoints.rs"]
 mod checkpoints;
+#[path = "descent_feed.rs"]
+mod descent_feed;
 #[path = "drilling.rs"]
 mod drilling;
 #[path = "export_dialog.rs"]

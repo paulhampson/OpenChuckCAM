@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! End candidates use true flank geometry, equal axial slices and finite
 //! flute bands. These checks do not certify assembled motion clearance.
-#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::float_cmp,
+    clippy::panic
+)]
 use openchuck_path::facing::end::{EndFacingParameters, plan_end};
 use openchuck_path::facing::extents::FacingExtent;
 use openchuck_path::facing::plan::FacingSetup;
@@ -108,9 +113,12 @@ fn req_op_24_end_flank_uses_equal_axial_slices_and_top_first_flute_bands() {
     assert_eq!(plan.passes.len(), 15);
     for (slice, passes) in plan.passes.chunks(3).enumerate() {
         for (band, pass) in passes.iter().enumerate() {
+            // In and out along X beside the 20 mm wide box, the whole Ø3
+            // tool the 1 mm approach distance past each edge, so the flank
+            // meets the face at its edge (decision 0547 item 1).
             assert_eq!(pass.points.len(), 4);
-            assert_eq!(pass.points[0].tip.y, -10.);
-            assert_eq!(pass.points.last().unwrap().tip.y, 10.);
+            assert_eq!(pass.points[0].tip.y, -12.5);
+            assert_eq!(pass.points.last().unwrap().tip.y, 12.5);
             let cutting = pass
                 .points
                 .iter()
@@ -501,8 +509,9 @@ fn req_op_24_stored_end_settings_control_axial_depth_flute_spacing_and_start_vie
         ("shape", ParameterValue::Text("end".into())),
         ("feed", ParameterValue::Number(600.)),
         ("plunge_feed", ParameterValue::Number(200.)),
-        ("stepover", ParameterValue::Number(1.)),
-        ("stepdown", ParameterValue::Number(2.)),
+        // Decision 0547: Stepover is the slice along X, Stepdown the band.
+        ("stepover", ParameterValue::Number(2.)),
+        ("stepdown", ParameterValue::Number(1.)),
         ("stock_to_leave", ParameterValue::Number(0.2)),
         ("start_angle", ParameterValue::Number(30.)),
         ("max_angle_step", ParameterValue::Number(2.)),
@@ -624,8 +633,9 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
         ("shape", ParameterValue::Text("end".into())),
         ("feed", ParameterValue::Number(600.)),
         ("plunge_feed", ParameterValue::Number(200.)),
-        ("stepover", ParameterValue::Number(1.)),
-        ("stepdown", ParameterValue::Number(2.)),
+        // Decision 0547: Stepover is the slice along X, Stepdown the band.
+        ("stepover", ParameterValue::Number(2.)),
+        ("stepdown", ParameterValue::Number(1.)),
     ]
     .into_iter()
     .map(|(k, v)| (k.into(), v))
@@ -682,7 +692,8 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
     // a default no-op would wrongly accept the strict stock/tool witness below.
     let mut checked_values = values.clone();
     checked_values.insert("stock_to_leave".into(), ParameterValue::Number(0.2));
-    checked_values.insert("stepover".into(), ParameterValue::Number(10.));
+    // The 10 mm band of `settings()` is the Stepdown (decision 0547).
+    checked_values.insert("stepdown".into(), ParameterValue::Number(10.));
     let checked_parameters = Facing.resolve_parameters(&checked_values).unwrap();
     Facing
         .validate_path(&input, &checked_parameters, &path, &ctx)
@@ -1390,4 +1401,498 @@ fn req_op_24_facing_a_flush_end_with_no_stock_to_leave_says_there_is_nothing_pas
     };
     let plan = plan_end(&setup, &flush, &ctx).unwrap();
     assert!(!plan.passes.is_empty());
+}
+
+/// Decision 0547 item 3: End facing reads the Stepover as the slice along X
+/// (a radial width, across the tool) and the Stepdown as the band along the
+/// tool (an axial depth), as a tool's cutting data defines them (TL-05). A
+/// Stepdown deeper than the tool's diameter, as a preset may give, is a
+/// band, not a slice, and is not refused.
+#[test]
+fn req_op_24_req_tl_05_end_reads_stepover_across_and_stepdown_along_the_tool() {
+    use openchuck_path::{Facing, ParameterValue, Strategy};
+    let values = [
+        ("shape", ParameterValue::Text("end".into())),
+        ("feed", ParameterValue::Number(600.)),
+        ("plunge_feed", ParameterValue::Number(200.)),
+        ("stepover", ParameterValue::Number(1.5)),
+        ("stepdown", ParameterValue::Number(7.)),
+        ("stock_to_leave", ParameterValue::Number(0.2)),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.into(), v))
+    .collect();
+    let p = EndFacingParameters::read(&Facing.resolve_parameters(&values).unwrap()).unwrap();
+    assert_eq!(p.axial_stepdown, 1.5, "the slice along X is the Stepover");
+    assert_eq!(p.flute_step, 7., "the band along the tool is the Stepdown");
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let plan = plan_end(&setup, &p, &ctx).unwrap();
+    // 9.8 mm from the stock end at 60 to the target at 50.2, in slices of
+    // at most 1.5 mm: seven equal slices of 1.4 mm.
+    assert_eq!(plan.axial_planes.len(), 7);
+    for band in &plan.bands {
+        assert!(band.heights.1 - band.heights.0 <= 7. + 1e-9, "{band:?}");
+    }
+}
+
+/// Decision 0547 item 3: the End labels say which setting is which.
+#[test]
+fn req_op_24_req_op_16_end_labels_name_the_slice_and_the_band() {
+    use openchuck_path::{Facing, ParameterValue, Strategy};
+    let values = [("shape".to_owned(), ParameterValue::Text("end".into()))]
+        .into_iter()
+        .collect();
+    let schema = Facing.schema_for(&values);
+    let label = |name: &str| schema.get(name).unwrap().label.clone();
+    assert_eq!(label("stepover"), "Stepover (slice thickness along X)");
+    assert_eq!(label("stepdown"), "Stepdown (band along the tool)");
+}
+
+/// The stock's extent across the tool at view `angle`, from the box's eight
+/// corners (an independent bound, not the planner's own clipping).
+fn box_across(
+    stock: &Stock,
+    angle: openchuck_types::units::Degrees,
+    rotary: &openchuck_path::RotaryMapping,
+) -> (f64, f64) {
+    let Stock::Box { bounds } = stock else {
+        panic!("box stock")
+    };
+    let mut range = (f64::INFINITY, f64::NEG_INFINITY);
+    for x in [bounds.min.x, bounds.max.x] {
+        for y in [bounds.min.y, bounds.max.y] {
+            for z in [bounds.min.z, bounds.max.z] {
+                let a = rotary.to_axis(Point3::new(x, y, z), angle);
+                range = (range.0.min(a.across), range.1.max(a.across));
+            }
+        }
+    }
+    range
+}
+
+fn box_setup_parts() -> (TriangleMesh, Tool, MachineProfile, Stock) {
+    (
+        part(),
+        tool(),
+        MachineProfile::example_x_rotary(),
+        Stock::Box {
+            bounds: Aabb {
+                min: Point3::new(0., -10., -12.),
+                max: Point3::new(60., 10., 12.),
+            },
+        },
+    )
+}
+
+/// Decision 0547 item 1: where there is air beside the band (Whole stock),
+/// the tool comes in along X and leaves along X wholly beside the stock, at
+/// least the approach distance clear of it, and sweeps across from there:
+/// no move along X into the face, and no turn in the material. Only the
+/// sweep across meets the face, entering it at its edge.
+#[test]
+fn req_op_24_req_op_11_end_band_enters_from_air_beside_the_stock() {
+    let (part, tool, machine, stock) = box_setup_parts();
+    let rotary = openchuck_path::RotaryMapping::of_profile(&machine);
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let s = settings();
+    let plan = plan_end(&setup, &s, &ctx).unwrap();
+    let radius = 0.5 * tool.diameter.0;
+    assert!(!plan.passes.is_empty());
+    for pass in &plan.passes {
+        let axis: Vec<_> = pass
+            .points
+            .iter()
+            .map(|p| rotary.to_axis(p.tip, p.a))
+            .collect();
+        assert_eq!(axis.len(), 4, "{axis:?}");
+        let (lo, hi) = box_across(&stock, pass.points[0].a, &rotary);
+        // Legs 1 and 3 run along X at one across position each.
+        assert!((axis[0].across - axis[1].across).abs() < 1e-9);
+        assert!((axis[2].across - axis[3].across).abs() < 1e-9);
+        for leg in [axis[0].across, axis[3].across] {
+            let beside = (lo - (leg + radius)).max((leg - radius) - hi);
+            assert!(
+                beside >= s.approach - 1e-9,
+                "a leg along X is {beside:.4} mm beside the stock"
+            );
+        }
+        // In air beside the stock the legs keep the cutting feed.
+        assert!(pass.plunge_fed.is_empty(), "{:?}", pass.plunge_fed);
+        // Leg 2 crosses the stock's whole width at the cutting X.
+        assert!((axis[1].along - axis[2].along).abs() < 1e-9);
+        assert!(axis[1].across.min(axis[2].across) < lo && axis[1].across.max(axis[2].across) > hi);
+    }
+}
+
+/// Decision 0547 item 1: where there is no air beside the band (the Part
+/// extent on stock wider than the part), the band keeps its move along X
+/// into the face at the band's edge.
+#[test]
+fn req_op_24_req_op_11_part_extent_band_keeps_its_side_entry() {
+    let (part, tool, machine, stock) = box_setup_parts();
+    let rotary = openchuck_path::RotaryMapping::of_profile(&machine);
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let s = EndFacingParameters {
+        extent: FacingExtent::Part,
+        ..settings()
+    };
+    let plan = plan_end(&setup, &s, &ctx).unwrap();
+    assert!(!plan.passes.is_empty());
+    for pass in &plan.passes {
+        assert_eq!(pass.points.len(), 4);
+        let (lo, hi) = box_across(&stock, pass.points[0].a, &rotary);
+        let first = rotary.to_axis(pass.points[0].tip, pass.points[0].a).across;
+        assert!(
+            first > lo && first < hi,
+            "the side entry is at the band's edge, in the stock"
+        );
+        // The legs along X into the face and out of it go at the plunge feed.
+        assert_eq!(pass.plunge_fed, vec![1, 3]);
+    }
+}
+
+/// End facing generated through the Facing strategy on the 24 mm round bar
+/// (60 mm long) with `values`, validated as a host does.
+fn generate_on_round_bar(
+    values: &[(&str, openchuck_path::ParameterValue)],
+) -> openchuck_path::Result<openchuck_path::GeneratedPath> {
+    use openchuck_path::rotary::RotaryMapping;
+    use openchuck_path::{AcceptAll, AnalyticStock, Facing, MeshSurface, StrategyInput};
+    use openchuck_types::ir::PathTags;
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Cylinder {
+        diameter: Millimetres(24.),
+        length: Millimetres(60.),
+        x_start: Millimetres(0.),
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let surface = MeshSurface::new(&part).unwrap();
+    let profile = tool.profile().unwrap();
+    let original = AnalyticStock::Cylinder {
+        radius: 12.,
+        x_start: 0.,
+        x_end: 60.,
+    };
+    let tags = PathTags {
+        operation: "op".into(),
+        setup: "setup".into(),
+        tool: "tool".into(),
+    };
+    let input = StrategyInput {
+        surface: &surface,
+        stock: &original,
+        collision: &AcceptAll,
+        tool: &profile,
+        rotary: RotaryMapping::of_profile(&machine),
+        clearance: machine.clearance,
+        max_feeds: machine.max_feeds,
+        tags: &tags,
+        facing: Some(&setup),
+        keep_out: &[],
+        shank: None,
+    };
+    let values = values
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    openchuck_path::generate(&Facing, &input, &values, &ctx)
+}
+
+/// Decision 0547 item 2: the depth each sweep cuts along the tool is checked
+/// on the assembled path against the Stepdown (band along the tool), from
+/// the stock's top at that view or the bottom of the band above it. A path
+/// planned with a 4 mm Stepdown, checked against 2 mm, is refused naming
+/// the Stepdown.
+#[test]
+fn req_op_24_req_nfr_07_end_engagement_over_the_stepdown_refuses_naming_it() {
+    use openchuck_path::rotary::RotaryMapping;
+    use openchuck_path::{
+        AcceptAll, AnalyticStock, Facing, MeshSurface, ParameterValue, Strategy, StrategyInput,
+    };
+    use openchuck_types::ir::PathTags;
+    let values = |stepdown: f64| -> std::collections::BTreeMap<String, ParameterValue> {
+        [
+            ("shape", ParameterValue::Text("end".into())),
+            ("feed", ParameterValue::Number(600.)),
+            ("plunge_feed", ParameterValue::Number(200.)),
+            ("stepover", ParameterValue::Number(2.)),
+            ("stepdown", ParameterValue::Number(stepdown)),
+            ("stock_to_leave", ParameterValue::Number(0.2)),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect()
+    };
+    let path = generate_on_round_bar(
+        &values(4.)
+            .into_iter()
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.clone()))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Cylinder {
+        diameter: Millimetres(24.),
+        length: Millimetres(60.),
+        x_start: Millimetres(0.),
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let surface = MeshSurface::new(&part).unwrap();
+    let profile = tool.profile().unwrap();
+    let original = AnalyticStock::Cylinder {
+        radius: 12.,
+        x_start: 0.,
+        x_end: 60.,
+    };
+    let tags = PathTags {
+        operation: "op".into(),
+        setup: "setup".into(),
+        tool: "tool".into(),
+    };
+    let input = StrategyInput {
+        surface: &surface,
+        stock: &original,
+        collision: &AcceptAll,
+        tool: &profile,
+        rotary: RotaryMapping::of_profile(&machine),
+        clearance: machine.clearance,
+        max_feeds: machine.max_feeds,
+        tags: &tags,
+        facing: Some(&setup),
+        keep_out: &[],
+        shank: None,
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let stricter = Facing.resolve_parameters(&values(2.)).unwrap();
+    let error = Facing
+        .validate_path(&input, &stricter, &path, &ctx)
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| "accepted".to_owned());
+    assert!(
+        error.contains("Stepdown (band along the tool)") && error.contains("deep along the tool"),
+        "{error}"
+    );
+}
+
+/// Decision 0547 item 2 as the owner answered question 4 (option A, 8 Nov
+/// 2026): with the Part extent the stock rises above the requested area, so
+/// the planner adds bands from the stock's top at the view down to the
+/// area's top, each no deeper than the Stepdown, and says how many passes it
+/// added. Every band then passes the depth check. The Whole stock extent
+/// needs none and says nothing.
+#[test]
+fn req_op_24_req_nfr_07_part_extent_adds_bands_above_the_area() {
+    use openchuck_path::ParameterValue;
+    let values = |extent: &str| {
+        vec![
+            ("shape", ParameterValue::Text("end".into())),
+            ("extent", ParameterValue::Text(extent.into())),
+            ("feed", ParameterValue::Number(600.)),
+            ("plunge_feed", ParameterValue::Number(200.)),
+            ("stepover", ParameterValue::Number(2.)),
+            ("stepdown", ParameterValue::Number(4.)),
+            ("stock_to_leave", ParameterValue::Number(0.2)),
+        ]
+    };
+    let whole = generate_on_round_bar(&values("whole_stock")).unwrap();
+    assert!(
+        !whole
+            .notices
+            .iter()
+            .any(|n| n.topic.as_deref() == Some("Stock above the area")),
+        "{:?}",
+        whole.notices
+    );
+    let part = generate_on_round_bar(&values("part")).unwrap_or_else(|e| panic!("{e}"));
+    let note = part
+        .notices
+        .iter()
+        .find(|n| n.topic.as_deref() == Some("Stock above the area"))
+        .unwrap_or_else(|| panic!("{:?}", part.notices));
+    // The note says how many passes were added, in plain words (several
+    // here, so "passes ... are added").
+    assert!(
+        note.text
+            .contains(" passes from the stock's top down to the area are added, "),
+        "{}",
+        note.text
+    );
+    // The part's top is 7 mm and the stock's 12 mm: the band tips step down
+    // from the stock's top no more than 4 mm at a time.
+    let mut heights: Vec<f64> = part
+        .group
+        .segments
+        .iter()
+        .filter(|s| s.kind == openchuck_types::ir::MoveKind::Cutting)
+        .map(|s| s.end.tip.z)
+        .collect();
+    heights.sort_by(|a, b| b.total_cmp(a));
+    heights.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+    assert!(heights[0] >= 12. - 4. - 1e-9, "{heights:?}");
+    for pair in heights.windows(2) {
+        assert!(pair[0] - pair[1] <= 4. + 1e-9, "{heights:?}");
+    }
+}
+
+/// Decision 0547 item 1: where there is no air beside a band, its move along
+/// X into the face, and back out of it, is written as an entry move at the
+/// plunge feed; the sweep across keeps the cutting feed.
+#[test]
+fn req_op_24_req_op_11_part_extent_side_entry_goes_at_the_plunge_feed() {
+    use openchuck_path::ParameterValue;
+    use openchuck_types::ir::MoveKind;
+    let values = vec![
+        ("shape", ParameterValue::Text("end".into())),
+        ("extent", ParameterValue::Text("part".into())),
+        ("feed", ParameterValue::Number(600.)),
+        ("plunge_feed", ParameterValue::Number(200.)),
+        ("stepover", ParameterValue::Number(2.)),
+        ("stepdown", ParameterValue::Number(4.)),
+        ("stock_to_leave", ParameterValue::Number(0.2)),
+    ];
+    let path = generate_on_round_bar(&values).unwrap_or_else(|e| panic!("{e}"));
+    let mut previous = path.group.start;
+    let (mut along_x, mut across) = (0, 0);
+    for segment in &path.group.segments {
+        let moved_x = (segment.end.tip.x - previous.tip.x).abs() > 1e-9;
+        let moved_y = (segment.end.tip.y - previous.tip.y).abs() > 1e-9;
+        if segment.kind.is_fed() && segment.kind != MoveKind::Plunge {
+            if moved_x && !moved_y {
+                along_x += 1;
+                assert_eq!(segment.kind, MoveKind::LeadIn, "{segment:?}");
+                assert_eq!(segment.contact_feed.unwrap().0, 200.);
+            } else if moved_y && !moved_x {
+                across += 1;
+                assert_eq!(segment.kind, MoveKind::Cutting, "{segment:?}");
+                assert_eq!(segment.contact_feed.unwrap().0, 600.);
+            }
+        }
+        previous = segment.end;
+    }
+    assert!(along_x > 0 && across > 0);
+}
+
+/// Decision 0547 item 3 with TL-05's bounds: a Stepdown (band along the
+/// tool) longer than the flute length, or a Stepover (slice along X) wider
+/// than the tool, is refused naming the setting (NFR-07).
+#[test]
+fn req_op_24_req_nfr_07_end_settings_beyond_the_tool_refuse_naming_them() {
+    use openchuck_path::ParameterValue;
+    for (stepover, stepdown, named) in [
+        (2., FLUTE + 1., "Stepdown (band along the tool)"),
+        (4., 2., "Stepover (slice thickness along X)"),
+    ] {
+        let values = vec![
+            ("shape", ParameterValue::Text("end".into())),
+            ("feed", ParameterValue::Number(600.)),
+            ("plunge_feed", ParameterValue::Number(200.)),
+            ("stepover", ParameterValue::Number(stepover)),
+            ("stepdown", ParameterValue::Number(stepdown)),
+            ("stock_to_leave", ParameterValue::Number(0.2)),
+        ];
+        let error = generate_on_round_bar(&values)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "accepted".to_owned());
+        assert!(error.contains(named), "{error}");
+    }
+}
+
+/// The "Stock above the area" note in the singular: with a 6 mm Stepdown
+/// the 5 mm of round stock above the part (top 12 mm, part top 7 mm) is one
+/// pass per slice and view.
+#[test]
+fn req_op_24_req_nfr_07_one_added_band_is_said_in_the_singular() {
+    use openchuck_path::ParameterValue;
+    let values = vec![
+        ("shape", ParameterValue::Text("end".into())),
+        ("extent", ParameterValue::Text("part".into())),
+        ("feed", ParameterValue::Number(600.)),
+        ("plunge_feed", ParameterValue::Number(200.)),
+        ("stepover", ParameterValue::Number(3.)),
+        ("stepdown", ParameterValue::Number(6.)),
+        ("stock_to_leave", ParameterValue::Number(9.)),
+    ];
+    let path = generate_on_round_bar(&values).unwrap_or_else(|e| panic!("{e}"));
+    let note = path
+        .notices
+        .iter()
+        .find(|n| n.topic.as_deref() == Some("Stock above the area"))
+        .unwrap_or_else(|| panic!("{:?}", path.notices));
+    assert!(
+        note.text
+            .contains(" 1 pass from the stock's top down to the area is added, "),
+        "{}",
+        note.text
+    );
 }

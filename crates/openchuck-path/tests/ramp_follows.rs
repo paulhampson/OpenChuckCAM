@@ -328,6 +328,7 @@ impl Strategy for StepThenRing {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }
@@ -439,6 +440,7 @@ impl Strategy for RingOnAxis {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }
@@ -633,6 +635,7 @@ impl Strategy for NarrowingRings {
                     points,
                     stock: Some(openchuck_path::PassStock(stock.clone())),
                     rapids: Vec::new(),
+                    plunge_fed: Vec::new(),
                 }
             })
             .collect())
@@ -774,6 +777,7 @@ impl Strategy for DropBeforeHead {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }
@@ -859,6 +863,7 @@ impl Strategy for LayerPastTheEnd {
             points,
             stock: Some(openchuck_path::PassStock(stock)),
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }
@@ -1019,6 +1024,7 @@ impl Strategy for Through {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }])
     }
 }

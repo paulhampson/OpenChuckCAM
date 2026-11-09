@@ -174,7 +174,7 @@ impl Extension {
                     name: parameter::EXTEND.to_owned(),
                     reason: format!(
                         "the {which} of the stock is held by the workholding, so {label} cannot \
-                         extend past it (SET-09); extend past the other end only, or not at all"
+                         extend past it; extend past the other end only, or not at all"
                     ),
                 });
             }
@@ -263,6 +263,182 @@ impl Extension {
             .collect()
     }
 
+    /// Ring and spiral passes carried on past the extended ends of the stock
+    /// in their own motion (decision record 0546, the owner's answers Q1 and
+    /// Q2): a pass that starts or ends at an end of the part (`part`, model
+    /// X) runs on, the spiral at its pitch and rings at their spacing joined
+    /// by the operation's own steps, until the tool's tip reaches the
+    /// extended end. Every point is at the height of the pass's end point
+    /// along the tool axis, raised over the target where it stands higher,
+    /// as [`Self::run_out`]'s points are. `step` is the largest A step
+    /// between points, degrees. Gives the passes and a note on what was
+    /// added, or `None` when nothing was.
+    pub(crate) fn run_out_turning(
+        &self,
+        passes: Vec<Pass>,
+        input: &StrategyInput<'_>,
+        (grown, leave): (&RevolvedProfile, f64),
+        part: (f64, f64),
+        turning: Turning,
+        step: f64,
+    ) -> (Vec<Pass>, Option<String>) {
+        let slack = 1e-3;
+        // The most turns added at each end, and the length of path added.
+        let mut turns = (0.0_f64, 0.0_f64);
+        let mut length = 0.0;
+        let passes = passes
+            .into_iter()
+            .map(|mut pass| {
+                let ends = (pass.points.first().copied(), pass.points.last().copied());
+                let (Some(first), Some(last)) = ends else {
+                    return pass;
+                };
+                let towards = |p: CutPoint| -> Option<f64> {
+                    let x = input.rotary.to_axis(p.tip, p.a).along;
+                    match (self.start, self.end) {
+                        (Some(s), _) if x <= part.0 + slack && s < x => Some(s),
+                        (_, Some(e)) if x >= part.1 - slack && e > x => Some(e),
+                        _ => None,
+                    }
+                };
+                let out = |from: CutPoint, to: f64, backwards: bool| {
+                    self.turning(from, to, backwards, input, (grown, leave), turning, step)
+                };
+                let before = towards(first).map(|to| out(first, to, true));
+                let after = towards(last).map(|to| out(last, to, false));
+                if before.is_none() && after.is_none() {
+                    return pass;
+                }
+                for (piece, end, at) in
+                    [(&before, &mut turns.0, first), (&after, &mut turns.1, last)]
+                {
+                    if let Some((points, t)) = piece {
+                        *end = end.max(*t);
+                        let mut previous = at.tip;
+                        for q in points {
+                            length += (q.tip - previous).length();
+                            previous = q.tip;
+                        }
+                    }
+                }
+                let shift = before.as_ref().map_or(0, |(b, _)| b.len());
+                let mut points = before.map_or_else(Vec::new, |(mut b, _)| {
+                    b.reverse();
+                    b
+                });
+                points.append(&mut pass.points);
+                if let Some((mut a, _)) = after {
+                    points.append(&mut a);
+                }
+                pass.points = points;
+                pass.rapids = pass.rapids.iter().map(|i| i + shift).collect();
+                pass.plunge_fed = pass.plunge_fed.iter().map(|i| i + shift).collect();
+                pass
+            })
+            .collect();
+        let note = (turns.0 > 0.0 || turns.1 > 0.0).then(|| {
+            let what = match turning {
+                Turning::Helix { .. } => "the spiral continued at its pitch",
+                Turning::Rings { .. } => "rings at the ring spacing",
+            };
+            format!(
+                "the passes carry on past the part in their own motion \
+                 ({what}) to the extended ends, {:.1} turns at the start end and {:.1} at the \
+                 far end, {length:.0} mm of path in all",
+                turns.0, turns.1
+            )
+        });
+        (passes, note)
+    }
+
+    /// The points from `from` (not included) out to the tip at `to` in the
+    /// pass's own motion, in order going away from `from`: forwards along
+    /// the pass after its end, or backwards before its start (`backwards`),
+    /// where A turns the other way. Gives the points and the turns of A
+    /// they make.
+    #[allow(clippy::too_many_arguments)]
+    fn turning(
+        &self,
+        from: CutPoint,
+        to: f64,
+        backwards: bool,
+        input: &StrategyInput<'_>,
+        (grown, leave): (&RevolvedProfile, f64),
+        turning: Turning,
+        step: f64,
+    ) -> (Vec<CutPoint>, f64) {
+        let rotary = input.rotary;
+        let at = rotary.to_axis(from.tip, from.a);
+        let gap = to - at.along;
+        let spacing = self.radius.clamp(0.1, 1.0);
+        let step = step.max(1e-3);
+        let point = |along: f64, a: f64| {
+            let line = rotary.tool_line(Millimetres(along), Degrees(a), Millimetres(at.across));
+            let floor = input
+                .surface
+                .drop_tool(grown, &line)
+                .map(|c| rotary.to_axis(c.tip, Degrees(a)).height + leave);
+            let height = floor.map_or(at.height, |f| f.max(at.height));
+            let tip = rotary.to_model(
+                AxisPosition {
+                    along,
+                    across: at.across,
+                    height,
+                },
+                Degrees(a),
+            );
+            CutPoint {
+                tip,
+                a: Degrees(a),
+                contact: tip,
+            }
+        };
+        let mut points = Vec::new();
+        match turning {
+            Turning::Helix { pitch, sign } => {
+                // One pitch of X a turn, A the Rotation's way along the pass.
+                let w = if backwards { -sign } else { sign };
+                let total = 360.0 * gap.abs() / pitch;
+                let n = (total / step).ceil().max(1.0) as usize;
+                for k in 1..=n {
+                    let u = k as f64 / n as f64;
+                    points.push(point(at.along + gap * u, from.a.0 + w * total * u));
+                }
+                (points, total / 360.0)
+            }
+            Turning::Rings {
+                spacing: ring_spacing,
+                sign,
+                blend,
+            } => {
+                let w = if backwards { -sign } else { sign };
+                let rings = ((gap.abs() / ring_spacing) * (1.0 - 1e-12)).ceil().max(1.0) as usize;
+                let around = (360.0 / step).ceil().max(1.0) as usize;
+                let (mut x, mut a) = (at.along, from.a.0);
+                for j in 1..=rings {
+                    let next = at.along + gap * j as f64 / rings as f64;
+                    // The step (or blend) to the next ring, then the ring.
+                    let turn = blend.unwrap_or(0.0);
+                    let n = ((next - x).abs() / spacing)
+                        .ceil()
+                        .max((turn / step).ceil())
+                        .max(1.0) as usize;
+                    for k in 1..=n {
+                        let u = k as f64 / n as f64;
+                        points.push(point(x + (next - x) * u, a + w * turn * u));
+                    }
+                    a += w * turn;
+                    x = next;
+                    for k in 1..=around {
+                        points.push(point(x, a + w * 360.0 * k as f64 / around as f64));
+                    }
+                    a += w * 360.0;
+                }
+                (points, rings as f64)
+            }
+        }
+    }
+
     /// The points from `from` (not included) along X to the tip at `to`, at
     /// `from`'s height and A, raised over the target where it stands higher.
     fn line(
@@ -303,6 +479,22 @@ impl Extension {
             })
             .collect()
     }
+}
+
+/// How a pass that turns A runs on past the part (decision record 0546).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Turning {
+    /// A helix of `pitch` mm a turn, A turning the `sign` way (+1 or -1) as
+    /// X increases.
+    Helix { pitch: f64, sign: f64 },
+    /// Whole rings no more than `spacing` apart, joined by steps along X
+    /// with A held or, with `blend`, by helix pieces over that many degrees
+    /// (decision record 0545), A turning the `sign` way.
+    Rings {
+        spacing: f64,
+        sign: f64,
+        blend: Option<f64>,
+    },
 }
 
 #[cfg(test)]

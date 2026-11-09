@@ -1,0 +1,21 @@
+sharp: simulation cell 0.1 mm (default 0.1 mm; about 1.0 x the default's time and 1.0 x its memory)
+warning: Held region (operation 'Finish'): the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left
+warning: Held region (operation 'Finish'): Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
+note: Feed limit (operation 'Rough'): 9269 moves were limited by the machine's feed limits. In the worst case the target was 1000.0 mm/min, but the move was reduced to 209.0 mm/min to stay within the machine's capabilities.
+note: Feed limit (operation 'Finish'): 16593 moves were limited by the machine's feed limits. In the worst case the target was 500.0 mm/min, but the move was reduced to 0.2 mm/min to stay within the machine's capabilities.
+note: Shoulders (operation 'Rough'): the part has a step across the rotary axis (a shoulder facing along X): the tool makes one extra turn round the axis, without moving along it, at X 49.889, so the shoulder keeps only the stock to leave
+note: Rings (operation 'Rough'): each layer is cut in 28 rings no more than 2.1913 mm apart, each a whole turn at one place along the part, joined by steps along it
+note: Rings (operation 'Finish'): helical finishing cut 138 rings, no more than 0.4526 mm apart, each a whole turn at one place along the part, joined by steps along it at A 0
+note: Free ends (operation 'Finish'): the end face at X 61.000 has nothing beyond it: the tool goes down beside it in 4 layers of 1 mm to the rotary axis, turning once round the axis in each
+note: Rotary axis (operation 'Finish'): moves 18747 to 18818 (72 moves): A turns with the contact point at the rotary axis during these moves, so the contact point barely moves and the rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min
+  setup 'Setup 1': 630 x 241 columns, 5.3 MB; material 28502.9 -> 14286.6 mm3
+    operation 'Rough': 9911 moves, 102000 poses, removed 12169.6 mm3
+    operation 'Finish': 18822 moves, 107251 poses, removed 2046.7 mm3
+    against the part: 1578540 surface samples, 1381167 counted
+      most material left: 0.9193 mm at (10.000, 0.438, -6.995)
+      deepest overcut: 0.0480 mm at (46.648, 5.276, -0.575)
+simulated in 48.4 s
+
+real	0m49.672s
+user	1m5.511s
+sys	0m0.263s

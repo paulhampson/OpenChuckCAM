@@ -526,3 +526,281 @@ fn req_op_24_req_nfr_07_a_stock_with_no_known_ends_is_refused_and_box_stock_has_
     assert_eq!(boxed.x_extent(), Some((-3.0, 24.0)));
     assert_eq!(Facing.label(), "Facing");
 }
+
+// ------------------------------------------------- ring and spiral run-outs
+//
+// Decision record 0546 (issue #644; the owner's answers Q1 and Q2, relayed
+// 8 Nov 2026): on helical finishing's ring and spiral passes the run-out
+// past the stock continues the pass's own motion, the spiral at its pitch
+// and rings at the ring spacing joined by the operation's own steps, out to
+// the extended end, instead of a line along X.
+
+use openchuck_path::helical::parameter as helical;
+use openchuck_path::rotary::reversals;
+use openchuck_testkit::engagement::UnrolledStock;
+use openchuck_types::ir::{Segment, ToolPose};
+
+/// The cutting moves of each run of cutting moves, with the pose each
+/// starts from.
+fn cut_runs(p: &GeneratedPath) -> Vec<Vec<(ToolPose, Segment)>> {
+    let mut runs: Vec<Vec<(ToolPose, Segment)>> = Vec::new();
+    let mut prev = p.group.start;
+    let mut cutting = false;
+    for s in &p.group.segments {
+        let now = s.kind == MoveKind::Cutting;
+        if now {
+            if !cutting {
+                runs.push(Vec::new());
+            }
+            if let Some(r) = runs.last_mut() {
+                r.push((prev, *s));
+            }
+        }
+        cutting = now;
+        prev = s.end;
+    }
+    runs
+}
+
+/// Helical finishing on the cylinder, with a 4 mm flat end at a 2 mm
+/// pitch, extended past both ends by 0.5 mm.
+fn helical_extended(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, ParameterValue> {
+    let mut v = values(&[
+        (extend::EXTEND, text(extend::BOTH_ENDS)),
+        (extend::EXTEND_DISTANCE, num(0.5)),
+    ]);
+    for (k, x) in extra {
+        v.insert((*k).to_owned(), x.clone());
+    }
+    v
+}
+
+/// The extended ends: the stock's ends, a tool radius (2) and the distance
+/// (0.5) beyond.
+const REACH: (f64, f64) = (STOCK.0 - 2.5, STOCK.1 + 2.5);
+
+/// Whether a move lies past the part (X 0 to 20) by more than a tool
+/// radius and a millimetre, where only the run-out cuts: the free ends'
+/// passes (decision record 0344) turn A beside the end faces, a radius
+/// past the part.
+fn past_the_part(from: &ToolPose, s: &Segment) -> bool {
+    let (a, b) = (from.tip.x, s.end.tip.x);
+    a.max(b) < -3.0 || a.min(b) > 23.0
+}
+
+#[test]
+fn req_op_24_a_spiral_run_out_continues_the_helix_at_its_pitch() {
+    let f = fixture(&flat(4.0));
+    for rotation in ["positive", "negative"] {
+        let v = helical_extended(&[(helical::ROTATION, text(rotation))]);
+        let p = path(&f, &HelicalFinishing, &v).unwrap();
+        let sign = if rotation == "negative" { -1.0 } else { 1.0 };
+        let mut moves = 0;
+        for run in cut_runs(&p) {
+            for (from, s) in &run {
+                if !past_the_part(from, s) {
+                    continue;
+                }
+                moves += 1;
+                let dx = s.end.tip.x - from.tip.x;
+                let da = s.end.a.0 - from.a.0;
+                // The helix: one pitch (2 mm) of X a turn, the Rotation's
+                // way, never a move along X with A held.
+                assert!(da * sign > 0.0, "{rotation}: A held or reversed ({da})");
+                assert!(
+                    (dx / da * sign - 2.0 / 360.0).abs() < 1e-6,
+                    "{rotation}: lead {} mm a turn",
+                    dx / da * sign * 360.0
+                );
+            }
+        }
+        assert!(moves > 0, "{rotation}: no run-out");
+        let (lo, hi) = cut_x(&p);
+        assert!(
+            (lo - REACH.0).abs() < 1e-6 && (hi - REACH.1).abs() < 1e-6,
+            "{lo} {hi}"
+        );
+        assert!(
+            p.notices.iter().any(|n| n.text.contains("past the part")),
+            "{:?}",
+            p.notices
+        );
+    }
+}
+
+#[test]
+fn req_op_24_a_ring_run_out_adds_rings_out_to_the_extended_end() {
+    let f = fixture(&flat(4.0));
+    for step in [helical::SHARP, helical::BLENDED] {
+        let v = helical_extended(&[
+            (helical::PASS_SHAPE, text(helical::RINGS)),
+            (helical::RING_STEP, text(step)),
+        ]);
+        let p = path(&f, &HelicalFinishing, &v).unwrap();
+        let mut xs: Vec<f64> = Vec::new();
+        for run in cut_runs(&p) {
+            for (from, s) in &run {
+                if !past_the_part(from, s) {
+                    continue;
+                }
+                let dx = s.end.tip.x - from.tip.x;
+                let da = s.end.a.0 - from.a.0;
+                assert!(da >= -1e-9, "{step}: A reversed");
+                if dx.abs() < 1e-9 {
+                    xs.push(s.end.tip.x);
+                } else if step == helical::BLENDED {
+                    // No move along X with A held: a blend.
+                    assert!(da > 1e-9, "{step}: a sharp step past the part");
+                } else {
+                    assert!(da.abs() < 1e-9, "{step}: a sharp step turns A");
+                }
+            }
+        }
+        xs.sort_by(f64::total_cmp);
+        xs.dedup_by(|b, a| (*b - *a).abs() < 1e-9);
+        // Rings no further apart than the 2 mm spacing, out to each
+        // extended end exactly.
+        assert!(xs.len() >= 4, "{step}: {xs:?}");
+        assert!((xs[0] - REACH.0).abs() < 1e-9, "{step}: {xs:?}");
+        assert!((xs[xs.len() - 1] - REACH.1).abs() < 1e-9, "{step}: {xs:?}");
+        for w in xs.windows(2) {
+            assert!(
+                w[1] - w[0] <= 2.0 + 1e-9 || (w[0] < 0.0 && w[1] > 20.0),
+                "{step}: gap {w:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn req_op_24_ring_and_spiral_run_outs_leave_no_skin_past_the_part() {
+    // The stock past the part's ends, beyond the end ring's reach, is
+    // cleared all round to the part's radius (8), graded by the test kit's
+    // independent dexel stock. A line along X at one A, as before, leaves
+    // it standing at every other angle.
+    let f = fixture(&flat(4.0));
+    for shape in [helical::HELIX, helical::RINGS] {
+        let v = helical_extended(&[(helical::PASS_SHAPE, text(shape))]);
+        let p = path(&f, &HelicalFinishing, &v).unwrap();
+        let mut stock = UnrolledStock::new(STOCK, 0.1, 8.0, 12.0);
+        for run in cut_runs(&p) {
+            let tips: Vec<_> = std::iter::once(run[0].0.tip)
+                .chain(run.iter().map(|(_, s)| s.end.tip))
+                .collect();
+            stock.sweep(2.0, &tips, 0.05, 0.0);
+        }
+        for end in [(STOCK.0 + 0.2, -2.5), (22.5, STOCK.1 - 0.2)] {
+            let mut x = end.0;
+            while x <= end.1 {
+                for d in 0..360 {
+                    let h = stock.height_at(x, f64::from(d).to_radians()).unwrap();
+                    assert!(h <= 8.0 + 1e-6, "{shape}: {h} left at X {x}, {d} degrees");
+                }
+                x += 0.25;
+            }
+        }
+    }
+}
+
+#[test]
+fn req_op_15_run_outs_turn_one_way() {
+    let f = fixture(&flat(4.0));
+    for shape in [helical::HELIX, helical::RINGS] {
+        for rotation in ["positive", "negative"] {
+            let v = helical_extended(&[
+                (helical::PASS_SHAPE, text(shape)),
+                (helical::ROTATION, text(rotation)),
+                (helical::RING_STEP, text(helical::BLENDED)),
+            ]);
+            let p = path(&f, &HelicalFinishing, &v).unwrap();
+            for run in cut_runs(&p) {
+                let a: Vec<_> = std::iter::once(run[0].0.a)
+                    .chain(run.iter().map(|(_, s)| s.end.a))
+                    .collect();
+                assert_eq!(reversals(&a, 1e-9), 0, "{shape} {rotation}");
+            }
+        }
+    }
+}
+
+#[test]
+fn req_op_24_axial_and_indexed_run_outs_stay_along_x() {
+    // Their cut runs along X, so their run-out is a line along X at the
+    // pass's A, as before (decision record 0546 item 5).
+    let f = fixture(&flat(4.0));
+    for strategy in [&AxialFinishing as &dyn Strategy, &IndexedFinishing] {
+        let p = path(&f, strategy, &helical_extended(&[])).unwrap();
+        let mut moves = 0;
+        for run in cut_runs(&p) {
+            for (from, s) in &run {
+                if past_the_part(from, s) {
+                    moves += 1;
+                    assert!((s.end.a.0 - from.a.0).abs() < 1e-9, "{}", strategy.name());
+                }
+            }
+        }
+        assert!(moves > 0, "{}", strategy.name());
+    }
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_run_outs_are_identical_at_1_2_and_n_threads() {
+    let f = fixture(&flat(4.0));
+    for shape in [helical::HELIX, helical::RINGS] {
+        let v = helical_extended(&[
+            (helical::PASS_SHAPE, text(shape)),
+            (helical::RING_STEP, text(helical::BLENDED)),
+        ]);
+        let runs = openchuck_testkit::determinism::check(|| {
+            format!("{:?}", path(&f, &HelicalFinishing, &v).unwrap().group).into_bytes()
+        })
+        .unwrap();
+        assert_eq!(runs.len(), 4);
+    }
+}
+
+#[test]
+fn req_op_24_req_op_21_a_ring_run_out_rises_over_a_tab() {
+    use openchuck_path::{CompositeSurface, Solid};
+    use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
+    use std::sync::Arc;
+    let f = fixture(&flat(4.0));
+    let tab = Solid::cylinder(
+        Point3::new(20.0, 0.0, 0.0),
+        UnitVec3::new(Vec3::new(1.0, 0.0, 0.0)).unwrap(),
+        3.0,
+        4.0,
+    )
+    .unwrap();
+    let model: Arc<dyn openchuck_path::SurfaceSource> =
+        Arc::new(MeshSurface::new(&part().mesh(40, 360)).unwrap());
+    let composite = CompositeSurface::new(model, vec![tab]);
+    let input = openchuck_path::StrategyInput {
+        surface: &composite,
+        ..f.input()
+    };
+    for step in [helical::SHARP, helical::BLENDED] {
+        let v = only_known(
+            &HelicalFinishing,
+            &values(&[
+                (extend::EXTEND, text(extend::FAR_END)),
+                (helical::PASS_SHAPE, text(helical::RINGS)),
+                (helical::RING_STEP, text(step)),
+            ]),
+        );
+        let p = run(|ctx| generate(&HelicalFinishing, &input, &v, ctx)).unwrap();
+        assert!(cut_x(&p).1 > STOCK.1, "{step}");
+        let poses: Vec<Pose> = p
+            .group
+            .segments
+            .iter()
+            .filter(|s| s.kind.is_fed())
+            .map(|s| Pose {
+                tip: s.end.tip,
+                axis: s.end.axis.get(),
+            })
+            .collect();
+        let g = max_gouge(&Outline::new(&f.tool), &WithTab, &poses, 0.25);
+        assert!(g.depth < 0.02, "{step}: gouge {} at {:?}", g.depth, g.at);
+    }
+}

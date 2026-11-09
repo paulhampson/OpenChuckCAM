@@ -1,0 +1,2 @@
+Programmed time 30:37 Set
+Tolerance Time 1 Rough Rotary roughing Setup 1 T104 Z1 O-flute 3.175x25 10000 operation 0.01 mm 13:58 2 Finish Helical finishing Setup 1 T204 Z1 ball 3.175x22 12000 tool data: Hardwood 0.01 mm 16:39 Program files No program files were writt

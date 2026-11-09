@@ -54,7 +54,7 @@ pub enum AppError {
     #[error("the project has no setup '{0}' (give its ID or its name)")]
     UnknownSetup(String),
     /// The project has its one setup; more are SET-07 (P2).
-    #[error("more than one setup per project is not supported yet (SET-07)")]
+    #[error("more than one setup per project is not supported yet")]
     OneSetupOnly,
     /// A setup needs a part, so it cannot be added before a model is imported.
     #[error("import a model first: a setup needs a part")]

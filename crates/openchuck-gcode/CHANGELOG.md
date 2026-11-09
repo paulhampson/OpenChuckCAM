@@ -1,8 +1,12 @@
 # Changelog
 
+## 0.54.0
+
+- **Family release (0.54.0, or the next free version, as the Merge Manager sequences it; RAMPENTRY; issues #639, #642; decision 0543, accepted):** `openchuck-path`'s `EntryParameters` gains `allow_single_point_plunge` and loses `back_and_forth`, and `StrategyInput::entry_safety` and the `entry_safety` module are removed (decision 0543 D10), a breaking change; no change to this crate.
+
 ## 0.52.0
 
-- **Family release (0.52.0, or the next free version, as the Merge Manager sequences it; RAMPENTRY; issues #639, #642; decision 0543, proposed):** `openchuck-path`'s `EntryParameters` gains `allow_single_point_plunge` and loses `back_and_forth`, and `StrategyInput::entry_safety` and the `entry_safety` module are removed (decision 0543 D10), a breaking change; no change to this crate.
+- **Family release (0.52.0, or the next free version, as the Merge Manager sequences it; PATHFEED; issue #641; decision 0547, accepted):** `openchuck-path`'s `Pass` gains the public field `plunge_fed` and `facing::end::EndPassPlan` the public field `passes_above_area`, a breaking change; no change to this crate.
 
 ## 0.51.0
 

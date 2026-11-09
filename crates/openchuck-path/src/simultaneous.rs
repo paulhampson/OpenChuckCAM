@@ -301,6 +301,7 @@ impl Strategy for SimultaneousFinishing {
             ),
         ]
         .into_iter()
+        .chain(crate::helical::ring_step_specs())
         .chain(adaptive::specs())
         .chain(std::iter::once(crate::order::spec()))
         .chain(std::iter::once(crate::axial::link_height_spec()))
@@ -333,7 +334,7 @@ impl Strategy for SimultaneousFinishing {
                 .parameters
                 .retain(|p| p.name != parameter::PASS_SHAPE);
         }
-        schema
+        crate::helical::ring_step_schema_for(schema, values)
     }
 
     fn honours_region(&self) -> bool {
@@ -827,6 +828,7 @@ fn run(
                 axial_seed,
                 leave,
                 tolerance,
+                blend: crate::helical::ring_blend(parameters)?,
             },
             &mut findings,
             context,
@@ -1509,6 +1511,9 @@ struct RingSettings<'f> {
     axial_seed: f64,
     leave: f64,
     tolerance: f64,
+    /// Blended steps between rings, over this many degrees (decision record
+    /// 0545), or `None` for sharp steps.
+    blend: Option<f64>,
 }
 
 /// The rings' passes, the X of the faces whose inside corners a round end
@@ -1626,9 +1631,46 @@ fn ring_passes(
         let (Some(&next), Some((phi, th))) = (xs.get(k + 1), ring_end) else {
             continue;
         };
+        let length = next - x;
+        if let Some(blend) = r.blend {
+            // The blend (decision record 0545 item 4): a short spiral-pattern
+            // track from the drive angle the ring ended at to `blend`
+            // further round, driven as the spiral is, from the A the ring
+            // ended at, split where the section changes zone.
+            let track = Track {
+                x0: x,
+                x1: next,
+                th0: th,
+                th1: th - sense * r.rotation * blend,
+                seeds: ((blend / r.step).ceil().max((length / r.axial_seed).ceil())).max(1.0)
+                    as usize,
+                samples: ((blend / SAMPLE_ANGLE)
+                    .ceil()
+                    .max((length / SAMPLE_LENGTH).ceil()))
+                .max(1.0) as usize,
+                zone,
+                contour: None,
+            };
+            let pieces = if plan.zones.len() > 1 || off_axis {
+                split(&track, plan.zones)
+            } else {
+                vec![track]
+            };
+            let mut pin = Some(phi);
+            for piece in &pieces {
+                let axis = plan.axis_plan_from(piece, r.lead, r.max_tilt, pin, findings);
+                crate::helical::join(
+                    &mut passes,
+                    plan.track_passes(piece, &axis, r.lead, findings, context)?,
+                );
+                pin = axis.phi_at(1.0);
+                held = pin;
+                drive = pin.map(|_| piece.th1);
+            }
+            continue;
+        }
         // The step: A held at the ring's end, driven along X at the angle
         // the ring ended at, split where the section changes zone.
-        let length = next - x;
         let step = Track {
             x0: x,
             x1: next,
@@ -1654,11 +1696,25 @@ fn ring_passes(
             crate::helical::join(&mut passes, cut?);
         }
     }
-    let note = format!(
-        "simultaneous finishing cut {} rings, no more than {gap:.4} mm apart, each a whole turn \
-         at one place along the part, joined by steps along it with A held still",
-        xs.len()
-    );
+    let note = match r.blend {
+        None => format!(
+            "simultaneous finishing cut {} rings, no more than {gap:.4} mm apart, each a whole \
+             turn at one place along the part, joined by steps along it with A held still",
+            xs.len()
+        ),
+        Some(_) => {
+            let b = plan.input.surface.bounds();
+            let radius = [b.min.y, b.max.y, b.min.z, b.max.z]
+                .into_iter()
+                .fold(0.0_f64, |m, v| m.max(v.abs()));
+            format!(
+                "simultaneous finishing cut {} rings, no more than {gap:.4} mm apart, each a \
+                 whole turn at one place along the part{}",
+                xs.len(),
+                crate::helical::blend_words(r.blend, gap, radius)
+            )
+        }
+    };
     Ok(RingsCut {
         passes,
         corners,
@@ -2507,6 +2563,7 @@ impl Plan<'_> {
                                     points: std::mem::take(&mut points),
                                     stock: None,
                                     rapids: Vec::new(),
+                                    plunge_fed: Vec::new(),
                                 });
                             }
                         }
@@ -2522,6 +2579,7 @@ impl Plan<'_> {
                     points,
                     stock: None,
                     rapids: Vec::new(),
+                    plunge_fed: Vec::new(),
                 });
             }
         }

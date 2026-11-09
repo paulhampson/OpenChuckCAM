@@ -64,6 +64,15 @@ pub mod parameter {
 pub struct Facing;
 
 impl Strategy for Facing {
+    fn limits_descent_feed(&self, parameters: &Parameters) -> bool {
+        // Flat and Round rough the stock in layers; End and Box sides cut
+        // at one height per pass (decision record 0548).
+        matches!(
+            parameters.text(parameter::SHAPE),
+            Ok(parameter::FLAT | parameter::ROUND)
+        )
+    }
+
     fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
         // Facing holds its Stepdown and each End view to the flutes itself
         // (decision records 0252 and 0504).
@@ -147,6 +156,7 @@ impl Strategy for Facing {
              stock as it turns. Rings cuts each layer one full turn at a time at a fixed place \
              along the stock, with a short step along it between turns.",
         ));
+        parameters.extend(crate::helical::ring_step_specs());
         // End and Box passes carry no stock of their own, so they link at
         // the retract height unless asked to stay low (decision 0496's
         // choice; issue #499, the owner's decision D1: retract by default).
@@ -217,13 +227,15 @@ impl Strategy for Facing {
         }
         if shape == parameter::END {
             for spec in &mut schema.parameters {
-                if spec.name == roughing::STEPDOWN {
-                    spec.label = "Axial stepdown".into();
-                    spec.description="Maximum axial slice thickness, distributed equally to the exact end target; bounded by the tool's diameter and declared limits.".into();
-                }
+                // Stepover is across the tool and Stepdown along it, as the
+                // tool's cutting data defines them (decision record 0547).
                 if spec.name == crate::params::names::STEPOVER {
-                    spec.label = "Flute band spacing".into();
-                    spec.description="Maximum spacing along the flute direction between end-facing bands. Must not exceed the active flute length; axial slice depth is separate.".into();
+                    spec.label = "Stepover (slice thickness along X)".into();
+                    spec.description = "The most the end is cut back along X in one slice: a width across the tool, distributed equally to the exact end target. At most the tool's diameter.".into();
+                }
+                if spec.name == roughing::STEPDOWN {
+                    spec.label = "Stepdown (band along the tool)".into();
+                    spec.description = "The most each band reaches along the tool: a depth along the flutes. At most the flute length.".into();
                 }
             }
         }
@@ -236,7 +248,9 @@ impl Strategy for Facing {
         }
         // Adaptive spacing for the flat shape's lines along the axis only
         // (decision record 0239 item 2; OI-1453).
-        crate::adaptive::schema_for_lines(schema, values, shape == parameter::FLAT)
+        let schema = crate::adaptive::schema_for_lines(schema, values, shape == parameter::FLAT);
+        // Steps between rings only with Rings (decision record 0545).
+        crate::helical::ring_step_schema_for(schema, values)
     }
 
     fn passes(
@@ -302,8 +316,14 @@ impl Facing {
             {
                 return Err(crate::error::PathError::Strategy("Stock-edge extension for this new Facing construction is not yet supported; no distance was reinterpreted. Disable extension or use legacy Flat/Round.".into()));
             }
+            let mut notices = Vec::new();
             let mut passes = if parameters.text(parameter::SHAPE)? == parameter::END {
-                end::plan_end(setup, &end::EndFacingParameters::read(parameters)?, context)?.passes
+                let plan =
+                    end::plan_end(setup, &end::EndFacingParameters::read(parameters)?, context)?;
+                if let Some(note) = above_area_note(&plan, parameters)? {
+                    notices.push(note);
+                }
+                plan.passes
             } else {
                 plan::plan_box_sides(
                     setup,
@@ -319,7 +339,7 @@ impl Facing {
             }
             return Ok(StrategyOutput {
                 passes,
-                notices: Vec::new(),
+                notices,
                 unreached: Vec::new(),
                 shank_breaks: Vec::new(),
             });
@@ -385,6 +405,47 @@ impl Facing {
 
 /// End and Box links between passes stay low where they can (decision 0496;
 /// issue #499). A saved operation without the choice retracts, as before.
+/// The information note for the bands End facing adds above the requested
+/// area (decision record 0547, question 4): how many passes, and about how
+/// long they take at the cutting feed, from their own lengths. None when
+/// there are none.
+fn above_area_note(
+    plan: &end::EndPassPlan,
+    parameters: &Parameters,
+) -> Result<Option<crate::Notice>> {
+    if plan.passes_above_area.is_empty() {
+        return Ok(None);
+    }
+    let feed = parameters.number(crate::params::names::FEED)?;
+    let length: f64 = plan
+        .passes_above_area
+        .iter()
+        .filter_map(|i| plan.passes.get(*i))
+        .map(|pass| {
+            pass.points
+                .windows(2)
+                .map(|w| match w {
+                    [a, b] => a.tip.distance(b.tip),
+                    _ => 0.,
+                })
+                .sum::<f64>()
+        })
+        .sum();
+    let minutes = if feed > 0. { length / feed } else { 0. };
+    let count = plan.passes_above_area.len();
+    Ok(Some(
+        crate::Notice::information(format!(
+            "the stock rises above the requested area, so {count} {} from the stock's top down \
+             to the area {} added, each no deeper than the Stepdown (band along the tool); \
+             they take about {:.0} s more at the cutting feed",
+            if count == 1 { "pass" } else { "passes" },
+            if count == 1 { "is" } else { "are" },
+            60. * minutes
+        ))
+        .about(crate::notice::topic::STOCK_ABOVE_THE_AREA),
+    ))
+}
+
 fn low_links(parameters: &Parameters) -> Result<bool> {
     use crate::axial::parameter::{LINK_HEIGHT, LOW};
     Ok(parameters.get(LINK_HEIGHT).is_some() && parameters.text(LINK_HEIGHT)? == LOW)

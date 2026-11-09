@@ -226,7 +226,7 @@ Every new test is timed uninstrumented; the changed crates' line coverage is che
 
 ### As built (lane RAMPENTRY, PR 1; 8 and 9 Nov 2026)
 
-Environment: managed Linux container, Rust 1.97.0, cargo-nextest, 4 cores, debug test profile. Branch `claude/lane-rampentry-pr1`, merged with `main` after the records pull request #646. Synthetic fixtures and the repository's public examples only; no machine or air cut (NFR-12).
+Environment: managed Linux container, Rust 1.97.0, cargo-nextest, 4 cores, debug test profile. Branch `claude/lane-rampentry-pr1`, merged with `main` after the records pull request #646, and at release with `main` `1f2c0be6` (PATHFEED 0.52.0, RINGSTEP 0.53.0): library family **0.54.0**. At that merge, main's `Pass::plunge_fed` (decision 0547) is carried through the face-nub split (a pass with plunge-fed points is not split); RINGSTEP's ring steps needed no change. No stored golden program changes. Synthetic fixtures and the repository's public examples only; no machine or air cut (NFR-12).
 
 **Reproduction first.** The probes of issue #639 (and #640) were re-run in release mode on `main` `1f3675d` before any change: every line of their output matched the issues. Issue #642 was reproduced by tests written first and seen failing on `main` (`entry_link_stock.rs`: the lead-in's and the ramp's sideways rapid at a low link height enter a block of stock beside the first cut point).
 

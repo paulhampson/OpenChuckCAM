@@ -276,7 +276,7 @@ pub fn duplicate_operation(project: &Project, operation: OperationId) -> Result<
 
 /// The tooltip of a disabled "add setup" control once the project has its
 /// one setup (decision record 0144).
-pub const ONE_SETUP_REASON: &str = "More than one setup per project is not supported yet (SET-07)";
+pub const ONE_SETUP_REASON: &str = "More than one setup per project is not supported yet";
 
 /// The tooltip of a disabled "add setup" control while the project has no
 /// model (decision record 0144).
