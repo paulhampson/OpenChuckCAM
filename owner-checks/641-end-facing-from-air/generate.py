@@ -2,7 +2,7 @@
 """Writes the owner-check project for issue #641 (decision 0547: End facing enters from air
 beside the stock and checks its engagement):
 
-    python3 owner-checks/rc/641-end-facing-from-air/generate.py
+    python3 owner-checks/641-end-facing-from-air/generate.py
 
 It writes project/ beside this script: a copy of the user guide's tutorial project
 (testdata/examples/baluster/baluster-project) whose stock is 3 mm longer (65 mm from X -1, so
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ownercheck as oc  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
