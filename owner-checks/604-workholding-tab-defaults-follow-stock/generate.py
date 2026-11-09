@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Writes the owner-check project for issue #604 (the workholding defaults after a stock change):
 
-    python3 owner-checks/rc/604-tab-defaults-follow-stock/generate.py
+    python3 owner-checks/604-workholding-tab-defaults-follow-stock/generate.py
 
 It writes project/ beside this script: an unchanged copy of the user guide's tutorial project,
 testdata/examples/baluster/baluster-project (the public baluster, a roughing and a finishing
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ownercheck as oc  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
