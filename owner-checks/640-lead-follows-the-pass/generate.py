@@ -6,7 +6,7 @@ stays in the plane of the cut):
 
 It writes project/ beside this script: the user guide's tutorial project
 (testdata/examples/baluster/baluster-project: the public baluster) with the public STEP fixture
-testdata/step/valid/cylinder.step added as a second model, and three operations, all with
+testdata/step/valid/cylinder.step added as a second model, and four operations, all with
 Entry Lead:
 
 1. "Finish rings, lead": helical finishing in Rings with the 3.175 mm ball, on "Setup 1, no
@@ -18,10 +18,10 @@ Entry Lead:
    lead's arc starts in the stock beyond the cylinder's end, so the descent to it would cut
    straight down, and the operation is refused naming the passes;
 3. "Axial lead, through air": as 2, on "Setup 3, cylinder in flush stock" (the stock starts at
-   the cylinder's end, X 0): the descent is through air, and it generates.
-
-With the tutorial's grip, the rings pass starts with a short cut along X before its first ring
-and keeps the line lead; that case waits for pull request #664 and is not part of this check.
+   the cylinder's end, X 0): the descent is through air, and it generates;
+4. "Finish rings, lead, with grip": as 1, on "Setup 4, with grip" (the tutorial's setup as it
+   is, the chuck holding 8 mm): with decision 0550 (#664) the rings start on a whole ring at the
+   held region's edge, so the lead turns into that ring.
 
 Written for this repository (lane OWNERCHECKS2); AGPL-3.0-or-later, as the rest of the
 repository. Only public material is used.
@@ -43,6 +43,7 @@ CYLINDER_ID = "0c0c0640-0000-4000-8000-000000000011"
 SETUP1 = "57ad6798-2544-4dfb-90a0-caf67ec69484"
 SETUP2 = "0c0c0640-0000-4000-8000-000000000002"
 SETUP3 = "0c0c0640-0000-4000-8000-000000000003"
+SETUP4 = "0c0c0640-0000-4000-8000-000000000004"
 FLAT = "c0de0001-0000-4000-8000-000000000104"
 NOCENTRE = "0c0c0640-0000-4000-8000-000000000105"
 BALL = "c0de0001-0000-4000-8000-000000000204"
@@ -53,6 +54,7 @@ OPS = [
     ("V", "Finish rings, lead", SETUP1, "helical_finishing", BALL, RINGS),
     ("W", "Axial lead, through stock", SETUP2, "axial_finishing", NOCENTRE, LINE),
     ("X", "Axial lead, through air", SETUP3, "axial_finishing", NOCENTRE, LINE),
+    ("Y", "Finish rings, lead, with grip", SETUP4, "helical_finishing", BALL, RINGS),
 ]
 CYLINDER_MODEL = f"""
 [[models]]
@@ -111,6 +113,9 @@ def main():
     if grip not in setup or 'name = "Setup 1"' not in setup:
         raise SystemExit("the tutorial's setup is not as expected")
     oc.write(path, setup.replace(grip, "").replace('name = "Setup 1"', 'name = "Setup 1, no grip"'))
+    oc.write(out / f"setups/{SETUP4}.toml",
+             setup.replace(SETUP1, SETUP4).replace('order = "V"', 'order = "Y"')
+             .replace('name = "Setup 1"', 'name = "Setup 4, with grip"'))
     oc.write(out / f"setups/{SETUP2}.toml",
              cylinder_setup(SETUP2, "W", "Setup 2, cylinder in long stock", "-10.0", "62.0"))
     oc.write(out / f"setups/{SETUP3}.toml",

@@ -1,0 +1,13 @@
+schema = 25
+id = "0c0c0550-0000-4000-8000-000000000301"
+order = "V"
+name = "Finish rings, sharp"
+setup = "57ad6798-2544-4dfb-90a0-caf67ec69484"
+strategy = "helical_finishing"
+tool = "c0de0001-0000-4000-8000-000000000204"
+selections = []
+
+[parameters]
+adaptive_spacing = false
+pass_shape = "rings"
+ring_step = "sharp"
