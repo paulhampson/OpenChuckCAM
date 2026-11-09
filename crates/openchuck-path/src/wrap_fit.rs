@@ -130,6 +130,7 @@ pub(crate) fn fit_curve(
                             points: std::mem::take(&mut points),
                             stock: None,
                             rapids: Vec::new(),
+                            plunge_fed: Vec::new(),
                         });
                     }
                 }
@@ -142,6 +143,7 @@ pub(crate) fn fit_curve(
                 points,
                 stock: None,
                 rapids: Vec::new(),
+                plunge_fed: Vec::new(),
             });
         }
         context.report(
