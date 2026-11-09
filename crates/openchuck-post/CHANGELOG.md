@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.51.0
+
+- **Family release (0.51.0, or the next free version, as the Merge Manager sequences it; MSGREVIEW step 3; issue #567; decision 0536, accepted):** `openchuck-path` removes `flutes::WARNING_LEAD` and adds the `topic` module, a breaking change; no change to this crate.
+
 ## 0.50.0
 
 - **Family release (0.50.0, or the next free version, as the Merge Manager sequences it; MSGREVIEW step 1; issue #567; decision 0536, accepted):** `openchuck-path` replaces `PathNote` and `PathWarning` with one `Notice` type, a breaking change; no change to this crate.

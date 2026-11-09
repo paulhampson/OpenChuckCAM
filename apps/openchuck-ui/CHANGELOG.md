@@ -1,7 +1,15 @@
 # Changelog
 
+## Unreleased (MSGSTEP5, decision 0536 step 5)
+
+- MSGSTEP5 (decision 0536 section 8; OI-2098; UI-09, UI-12): the status line that was never drawn is gone. "Saved …", "Opened …", "Added …" and "Copied n models into the project folder" are finished entries in the Jobs tab with how long ago, never messages. A recovered checkpoint not yet saved is a warning in Messages with Save; tool numbers the export changed and the project has not saved are a warning with Save and Undo; a pick dropped because the geometry changed is an error on its selection set (Reselect) or workholding (Edit workholding); dropping a model with no project open is an error dialog.
+- MSGSTEP5 (decision 0536 step 5; NFR-07, UI-12): an error dialog's title names the action that failed ("Save failed", "Undo failed") and its text takes the one form, led by that action ("Save: …"). The recovery notices in Messages are led by "Recovery:" and stay warnings, except a checkpoint that could not be written, which is an error with Save until a later one is written. The settings notice is led by "Settings:".
+- MSGSTEP5 (OI-2097; NFR-12): "No overcut" reads "No overcut found at the simulation's resolution" in the Results tab and on the command line, and "No overcut at this point" on the probe; the Facing result line in the Simulate results says "; the simulation shows what it removed" only for a simulated run (the owner's answer of 8 Nov 2026).
+
 ## Unreleased
 
+- MSGREVIEW (issue #635; UI-12): a warning or a refusal under a field spans the inspector's width as one block under the field, the warning shape just before its first line, for every kind of field; it no longer sits alone at the label column with its text on the line below.
+- MSGREVIEW (decision 0536 step 3; issue #567; UI-12): every message reads "<Topic> (<context>): <text>". "Show setting" opens the operation at the very setting its message names, and marks a tick box, a choice or the face rows as it marks a number (`field_row::Mark`, `field_row::marked`). The view's notes read under "View", and a workholding draft that is not applied under "Workholding (setup '<name>')".
 - MSGREVIEW (decision 0536 step 2; issue #567; UI-12): each line of the Results tab takes its message's level. An operation's warning is one Warning line in the form of decision 0522, not also a "move 0" note; the run's own warnings are Warning lines; the notes are Information. A rapid that removes material is listed once.
 - MSGREVIEW (issue #611; decision 0539, accepted; UI-25): when Apply of the workholding section is refused, only the finding that refuses (a tab outside the end zones) is shown as an error and marks its tab as failing. A warning found with it (an automatic tab with no room, tabs that overlap, a tab shorter than a tool) stays a warning, in amber with the Warning mark, on its own row. Test `req_ui_25_a_refused_apply_keeps_each_finding_at_its_own_level`.
 

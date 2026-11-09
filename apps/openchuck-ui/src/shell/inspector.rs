@@ -22,6 +22,7 @@ use openchuck_app::tool_library;
 use openchuck_app::{Command, SetOptionsShown};
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
+use crate::failure::Failure;
 use crate::field_row::{self, Outcome, TextRow};
 use crate::form_panel;
 use crate::machine_panel::MachinePanel;
@@ -175,7 +176,7 @@ impl Shell {
                         .new_selection(ui, app, self.viewport.view())
                         .or_else(|| self.selection.options(ui, app));
                     if let Some(error) = error {
-                        self.dialog = Some(Dialog::Error(error));
+                        self.dialog = Some(Dialog::Error(Failure::new("New selection", error)));
                     }
                 }
             }
@@ -261,7 +262,7 @@ impl Shell {
                 .set_section(ui, app, &s)
                 .or_else(|| self.selection.options(ui, app));
             if let Some(error) = error {
-                self.dialog = Some(Dialog::Error(error));
+                self.dialog = Some(Dialog::Error(Failure::new("Selection set", error)));
             }
         }
     }
@@ -495,7 +496,7 @@ impl Shell {
                     Some(key) => self
                         .form
                         .result(&key, Err(form_panel::refusal(&e.to_string()))),
-                    None => self.dialog = Some(Dialog::Error(e.to_string())),
+                    None => self.dialog = Some(Dialog::Error(Failure::new("Change setting", e))),
                 },
             }
         }
@@ -576,12 +577,12 @@ impl Shell {
         if let Some(prepared) = outcome.replaced
             && let Err(e) = app.replace_model(id, prepared)
         {
-            self.dialog = Some(Dialog::Error(format!("The file was not replaced: {e}")));
+            self.dialog = Some(Dialog::Error(Failure::new("Replace model file", e)));
         }
         if let Some(command) = outcome.command {
             match app.execute(command) {
                 Ok(()) => self.rebuild_scene(false),
-                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+                Err(e) => self.dialog = Some(Dialog::Error(Failure::new("Change model", e))),
             }
         } else if self
             .app
@@ -899,7 +900,7 @@ impl Shell {
             }
         };
         if let Err(e) = command.and_then(|c| app.execute(c)) {
-            self.dialog = Some(Dialog::Error(e.to_string()));
+            self.dialog = Some(Dialog::Error(Failure::new("Change tool", e)));
         }
     }
 
@@ -1146,7 +1147,7 @@ impl Shell {
             None => Ok(()),
         };
         if let Err(e) = result {
-            self.dialog = Some(Dialog::Error(e.to_string()));
+            self.dialog = Some(Dialog::Error(Failure::new("Change selections", e)));
         }
         match banner_action {
             Some(BannerAction::Reselect(set)) => self.message_action(MessageAction::Reselect(set)),

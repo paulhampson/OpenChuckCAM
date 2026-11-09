@@ -512,7 +512,7 @@ fn req_nfr_12_req_gc_07_req_ui_12_the_feed_summary_matches_the_per_move_notes_by
         let run = app.regenerate().unwrap();
         for (id, limit) in &run.feed_limits {
             let name = &app.project().operation(*id).unwrap().name;
-            let prefix = format!("operation '{name}': ");
+            let prefix = format!("Feed limit (operation '{name}'): ");
             let notes = run
                 .notes
                 .iter()

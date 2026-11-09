@@ -83,7 +83,7 @@ pub(super) fn validate_setup(setup: &FacingSetup<'_>, context: &JobContext<'_>) 
         .ok_or_else(|| refuse("the whole source has no established projection bound"))?;
     if source_error > 0. {
         return Err(refuse(
-            "nominal Facing completion currently requires exact placed triangles; nonzero source projection uncertainty is not certified",
+            "nominal Facing completion currently requires exact placed triangles; nonzero source projection uncertainty is not checked",
         ));
     }
     for (lo, hi) in setup.held.iter().flatten() {
@@ -138,7 +138,7 @@ pub(super) fn box_sides(
             .levels(outer, face.target.offset, settings.stepdown)?;
         if levels.is_empty() {
             return Err(refuse(
-                "an already satisfied Box plane has no verified removal evidence",
+                "an already satisfied Box plane has no checked removal evidence",
             ));
         }
         let mut level = 0usize;

@@ -85,7 +85,8 @@ impl Step {
 /// colour and, for a user who cannot tell colours apart, its shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StepHealth {
-    /// Good to go: green, a filled circle.
+    /// Nothing to report: green, a filled circle. It never says the program
+    /// is right for the machine (NFR-12; decision record 0536, OI-2097).
     Good,
     /// Something is stale or needs attention: amber, a triangle outline.
     Attention,
@@ -107,7 +108,7 @@ impl StepHealth {
     /// The words for the legend and the tooltip.
     pub fn name(self) -> &'static str {
         match self {
-            Self::Good => "Good to go",
+            Self::Good => "Nothing to report",
             Self::Attention => "Needs attention",
             Self::Error => "Error to fix",
         }
@@ -324,8 +325,44 @@ impl Severity {
     }
 }
 
-/// What a message's action link does. The front end carries it out.
+/// Where a setting a message names lives (decision record 0536 section 4):
+/// the item whose inspector or window holds it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SettingPlace {
+    /// An operation's parameter, in its inspector.
+    Operation(OperationId),
+    /// A tool's field, in the tool library.
+    Tool(ToolId),
+    /// A setup's field (its stock, clearance or machine), in the Setup step.
+    Setup(SetupId),
+    /// The post's setting, in the export dialog.
+    Post,
+}
+
+/// A setting for "Show setting" to open, scroll to and mark, for every kind
+/// of field: numbers, text, tick boxes and drop-down lists (decision record
+/// 0536 section 4).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SettingRef {
+    /// The item that holds it.
+    pub place: SettingPlace,
+    /// Its key: the name the item's form gives the field (an operation
+    /// parameter such as `tolerance`, or a tool or setup field).
+    pub key: String,
+}
+
+impl SettingRef {
+    /// The parameter `key` of `operation`.
+    pub fn operation(operation: OperationId, key: impl Into<String>) -> Self {
+        Self {
+            place: SettingPlace::Operation(operation),
+            key: key.into(),
+        }
+    }
+}
+
+/// What a message's action link does. The front end carries it out.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MessageAction {
     /// Reopen a historical export result; the index is stable for this project session.
     ReviewExport(usize),
@@ -339,9 +376,10 @@ pub enum MessageAction {
     EditWorkholding(SetupId),
     /// Generate the stale operations.
     Generate,
-    /// Select the operation and mark, in its inspector, the setting its
-    /// warning names, so the user can change it (decision record 0175).
-    ShowSetting(OperationId),
+    /// Open the item that holds the setting the message names, scroll to the
+    /// setting and mark it, so the user can change it (decision records 0175
+    /// and 0536 section 4).
+    ShowSetting(SettingRef),
     /// Open another project that has kept recovery data, so its own
     /// recovery choices are offered there (PRJ-08; decision 0460). The index
     /// is the front end's list of such projects for this run.
@@ -359,6 +397,12 @@ pub enum MessageAction {
         /// The area's number, from 1.
         area: u8,
     },
+    /// Save the project, for changes that are lost unless saved (a recovered
+    /// checkpoint, changed tool numbers; decision record 0536 section 8).
+    Save,
+    /// Undo the last command, for a change the message warns of (changed
+    /// tool numbers; decision record 0536 section 8).
+    Undo,
 }
 
 /// The words of "Show in view N" for the areas a warning offers it for.
@@ -372,7 +416,7 @@ const SHOW_IN_VIEW: [&str; crate::unreached::LISTED_AREAS] = [
 
 impl MessageAction {
     /// The link's words.
-    pub fn label(self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             Self::ReviewExport(_) => "Show result",
             Self::Show(_) => "Show",
@@ -383,11 +427,13 @@ impl MessageAction {
             Self::ShowSetting(_) => "Show setting",
             Self::OpenRecovery(_) => "Open project",
             Self::LocateRecovery(_) => "Locate folder",
-            Self::ShowInView { area, .. } => usize::from(area)
+            Self::ShowInView { area, .. } => usize::from(*area)
                 .checked_sub(1)
                 .and_then(|i| SHOW_IN_VIEW.get(i))
                 .copied()
                 .unwrap_or("Show in view"),
+            Self::Save => "Save",
+            Self::Undo => "Undo",
         }
     }
 }
@@ -1902,23 +1948,19 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     state: ItemState::Warning,
                     cause: format!(
                         "{NEEDS_ACKNOWLEDGING}{}",
-                        sentence(&crate::operation::warning_text(project, o, &c.sentence()))
+                        sentence(&crate::operation::operation_notice(project, o, c))
                     ),
                     progress: None,
                 },
                 None => ItemStatus::new(
                     ItemState::Warning,
-                    sentence(&crate::operation::warning_text(
-                        project,
-                        o,
-                        &first.sentence(),
-                    )),
+                    sentence(&crate::operation::operation_notice(project, o, first)),
                 ),
             };
             for warning in &made.warnings {
                 // The warning of unreachable areas offers a link for each
                 // area it lists (decision record 0515 item 5).
-                let views = if crate::unreached::lists_areas(&warning.sentence()) {
+                let views = if crate::unreached::lists_areas(&warning.text) {
                     (1..=made.unreached.min(crate::unreached::LISTED_AREAS))
                         .filter_map(|n| u8::try_from(n).ok())
                         .map(|area| MessageAction::ShowInView {
@@ -1931,12 +1973,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 };
                 let message = Message::new(
                     Severity::Warning,
-                    crate::operation::warning_text(project, o, &warning.sentence()),
+                    crate::operation::operation_notice(project, o, warning),
                     Some((item, label.clone())),
-                    Some(if warning.setting.is_some() {
-                        MessageAction::ShowSetting(o.id)
-                    } else {
-                        MessageAction::Show(item)
+                    Some(match &warning.setting {
+                        Some(key) => MessageAction::ShowSetting(SettingRef::operation(o.id, key)),
+                        None => MessageAction::Show(item),
                     }),
                 )
                 .with_views(views);
@@ -2264,7 +2305,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     Severity::Warning,
                     text.clone(),
                     Some((target, s.name.clone())),
-                    Some(action),
+                    Some(action.clone()),
                 );
                 messages.push(if collision {
                     message.to_acknowledge()
@@ -2819,6 +2860,14 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_12_save_and_undo_links_name_their_actions_in_plain_words() {
+        // Decision record 0536 section 8: a recovered checkpoint offers
+        // "Save"; changed tool numbers offer "Save" and "Undo".
+        assert_eq!(MessageAction::Save.label(), "Save");
+        assert_eq!(MessageAction::Undo.label(), "Undo");
+    }
+
+    #[test]
     fn req_prj_08_recovery_lines_name_their_actions_in_plain_words() {
         // Decision 0460 item 1: another project's kept recovery data is a
         // Messages line whose action opens that project or locates it.
@@ -2867,7 +2916,7 @@ mod tests {
             MessageAction::ReviewSetup(setup),
             MessageAction::EditWorkholding(setup),
             MessageAction::Generate,
-            MessageAction::ShowSetting(OperationId::new()),
+            MessageAction::ShowSetting(SettingRef::operation(OperationId::new(), "tolerance")),
         ]
         .iter()
         .map(|a| a.label())
@@ -3190,12 +3239,14 @@ mod tests {
         // Decision 0538: the operation's mark says the warning needs
         // acknowledging, and Messages lists it first among the warnings,
         // whatever order the path gave them in.
-        let collision = "Flute length: the stock stands up to 3.000 mm above the tool's tip.";
+        let collision = "the stock stands up to 3.000 mm above the tool's tip.";
         let (dir, app, op) = warned_app(
             "collision-mark",
             vec![
-                openchuck_path::Notice::warning("an ordinary warning."),
+                openchuck_path::Notice::warning("an ordinary warning.")
+                    .about(openchuck_path::topic::OVERCUT),
                 openchuck_path::Notice::warning(collision)
+                    .about(openchuck_path::topic::FLUTE_LENGTH)
                     .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision),
             ],
         );
@@ -3216,11 +3267,9 @@ mod tests {
             .collect();
         assert!(warnings[0].to_acknowledge, "{warnings:?}");
         assert!(warnings[0].text.starts_with("Flute length"), "{warnings:?}");
-        assert!(
-            warnings
-                .iter()
-                .any(|m| m.text == "An ordinary warning." && !m.to_acknowledge)
-        );
+        assert!(warnings.iter().any(|m| m.text
+            == "Overcut (operation 'Walls'): an ordinary warning."
+            && !m.to_acknowledge));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -3290,6 +3339,7 @@ mod tests {
                 },
                 warnings: vec![
                     openchuck_path::Notice::warning(message.to_owned())
+                        .about(openchuck_path::topic::OVERCUT)
                         .with_setting("tolerance".to_owned()),
                 ],
             }],
@@ -3303,9 +3353,18 @@ mod tests {
         let warning = overview
             .messages
             .iter()
-            .find(|m| m.severity == Severity::Warning && m.text == message)
+            .find(|m| {
+                m.severity == Severity::Warning
+                    && m.text == format!("Overcut (operation 'Walls'): {message}")
+            })
             .unwrap_or_else(|| panic!("{:?}", overview.messages));
-        assert_eq!(warning.action, Some(MessageAction::ShowSetting(op)));
+        assert_eq!(
+            warning.action,
+            Some(MessageAction::ShowSetting(SettingRef::operation(
+                op,
+                "tolerance"
+            )))
+        );
         assert_eq!(warning.source, Some(ItemRef::Operation(op)));
         assert_eq!(app.operation_warning_settings(op), ["tolerance"]);
         // Raising the tolerance changes the operation: the path is stale, and

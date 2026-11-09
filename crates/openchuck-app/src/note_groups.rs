@@ -2,7 +2,8 @@
 //! Repeated notes about consecutive moves, grouped where the results are
 //! shown so they can be read (issue 255; decision record 0218).
 //!
-//! The engine reports one note per move ("operation 'Roughing': move 2: the
+//! The engine reports one note per move, shown in the one form of decision
+//! record 0536 section 3 ("Feed limit (operation 'Roughing'): move 2: the
 //! machine's feed limits slow this move: the contact feed is 972.9 mm/min,
 //! not 1000.0"), and those notes stay as they are (GC-07, NFR-06): the
 //! grouping reads them and changes none. Consecutive notes of the same
@@ -71,7 +72,9 @@ struct Parsed {
 const SLOT: char = '\u{0}';
 
 /// Reads "<prefix>move <n>: <sentence>" or "<prefix>move <n> <sentence>",
-/// where the prefix is empty or ends with ": ".
+/// where the prefix is empty or ends with ": ": the lead-in of the one form
+/// ("Feed limit (operation 'Roughing'): ") or "operation '<name>': " for a
+/// note without a topic.
 fn parse(note: &str) -> Option<Parsed> {
     let mut from = 0;
     while let Some(found) = note.get(from..)?.find("move ") {
@@ -270,10 +273,11 @@ pub struct Information {
 }
 
 /// The information of `run`, its operations named as they are in `project`.
-/// The per-move feed-limit notes of an operation are left out only when it
-/// has a summary line and no other operation of the run has its name: notes
-/// carry only the name, so those of a shared name cannot be told apart, and
-/// none is hidden (NFR-12).
+/// The per-move feed-limit notes of an operation ("Feed limit (operation
+/// '<name>'): move N: ...") are left out only when it has a summary line and
+/// no other operation of the run has its name: notes carry only the name,
+/// so those of a shared name cannot be told apart, and none is hidden
+/// (NFR-12).
 pub fn information(run: &crate::Regeneration, project: &openchuck_project::Project) -> Information {
     let mut summaries = Vec::new();
     let mut summarised = Vec::new();
@@ -296,7 +300,11 @@ pub fn information(run: &crate::Regeneration, project: &openchuck_project::Proje
             .count()
             > 1;
         if !shared {
-            summarised.push(format!("operation '{made_as}': "));
+            let context = crate::lead_in::Context::operation(made_as);
+            summarised.push(format!(
+                "{}: ",
+                crate::lead_in::lead_in(openchuck_path::topic::FEED_LIMIT, &context)
+            ));
         }
     }
     let notes = run
@@ -349,17 +357,23 @@ impl FeedLimit {
         } else {
             "In the worst case the target was"
         };
-        format!(
-            "{moves} during '{operation}' {was} limited by the machine's feed limits. \
-             {case} {:.1} mm/min, but the move was reduced to {:.1} mm/min to stay within \
-             the machine's capabilities.",
-            self.worst_target, self.worst_feed
+        // In the one form, under the topic of the per-move notes it stands
+        // for (decision record 0536 section 3).
+        crate::lead_in::in_form(
+            openchuck_path::topic::FEED_LIMIT,
+            &crate::lead_in::Context::operation(operation),
+            &format!(
+                "{moves} {was} limited by the machine's feed limits. {case} {:.1} mm/min, but \
+                 the move was reduced to {:.1} mm/min to stay within the machine's \
+                 capabilities.",
+                self.worst_target, self.worst_feed
+            ),
         )
     }
 }
 
 /// The feed-limit summary of one operation's path notes (the engine's own
-/// wording, before the operation's name is put in front); `None` when none
+/// wording, before the lead-in is put in front); `None` when none
 /// slowed it. The notes are read, never changed (GC-07). The caller holds
 /// the operation's id, so a rename or a shared name cannot mix operations
 /// up (issue 418).
@@ -403,8 +417,8 @@ mod tests {
         moves
             .map(|m| {
                 format!(
-                    "operation 'Roughing': move {m}: the machine's feed limits slow this \
-                     move: the contact feed is {feed:.1} mm/min, not 1000.0"
+                    "Feed limit (operation 'Roughing'): move {m}: the machine's feed limits \
+                     slow this move: the contact feed is {feed:.1} mm/min, not 1000.0"
                 )
             })
             .collect()
@@ -418,8 +432,8 @@ mod tests {
         assert_eq!(groups.len(), 1);
         assert_eq!(
             groups[0].text,
-            "operation 'Roughing': moves 2 to 11 (10 moves): the machine's feed limits slow \
-             these moves: the contact feed is 972.9 mm/min, not 1000.0"
+            "Feed limit (operation 'Roughing'): moves 2 to 11 (10 moves): the machine's feed \
+             limits slow these moves: the contact feed is 972.9 mm/min, not 1000.0"
         );
         // Every note is kept, in order, to be shown when the group is opened.
         assert_eq!(groups[0].notes, notes);
@@ -458,8 +472,12 @@ mod tests {
                 .replace("'Roughing'", "'Finishing'")
                 .replace("move 2", "move 6"),
         );
-        // Other wording.
-        notes.push("operation 'Roughing': move 7: the move leaves the travel by 2.0 mm".to_owned());
+        // Other wording, under another topic.
+        notes.push(
+            "Rotary axis (operation 'Roughing'): move 7: A turns with the contact point at the \
+             rotary axis during this move"
+                .to_owned(),
+        );
         // A note with no move, and a single note, are shown as they are.
         notes.push("operation 'Roughing': the feed comes from the operation".to_owned());
         let groups = group_notes(&notes);
@@ -600,14 +618,15 @@ mod tests {
         };
         assert_eq!(
             many.describe_for("Roughing"),
-            "6 moves during 'Roughing' were limited by the machine's feed limits. In the \
+            "Feed limit (operation 'Roughing'): 6 moves were limited by the machine's feed \
+             limits. In the \
              worst case the target was 1000.0 mm/min, but the move was reduced to 999.1 \
              mm/min to stay within the machine's capabilities."
         );
         let one = FeedLimit { moves: 1, ..many };
         let line = one.describe_for("Finishing");
         assert!(
-            line.starts_with("1 move during 'Finishing' was limited"),
+            line.starts_with("Feed limit (operation 'Finishing'): 1 move was limited"),
             "{line}"
         );
         assert!(line.contains("The target was 1000.0 mm/min"), "{line}");

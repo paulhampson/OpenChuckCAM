@@ -41,7 +41,7 @@ use openchuck_types::units::Degrees;
 use crate::curves::{CurveSource, EdgeChain, MeshFeatureEdges};
 use crate::cutter;
 use crate::error::{PathError, Result};
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use crate::parallel;
 use crate::params::{
     EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit,
@@ -905,18 +905,21 @@ pub fn follow_chains(
 
     let closed = cuts.iter().filter(|c| c.closed).count();
     let full = plan.levels.last().copied().unwrap_or(0.0);
-    let mut notes = vec![format!(
-        "edge following: {} chains ({} open, {} closed), {} passes, {} mm deep in {} level{}; \
-         the tool cuts a line {:.3} mm wide at that depth",
-        cuts.len(),
-        cuts.len() - closed,
-        closed,
-        passes.len(),
-        trim(full),
-        plan.levels.len(),
-        if plan.levels.len() == 1 { "" } else { "s" },
-        plan.width_at_depth,
-    )];
+    let mut notes = vec![
+        Notice::information(format!(
+            "{} chains ({} open, {} closed), {} passes, {} mm deep in {} \
+             level{}; the tool cuts a line {:.3} mm wide at that depth",
+            cuts.len(),
+            cuts.len() - closed,
+            closed,
+            passes.len(),
+            trim(full),
+            plan.levels.len(),
+            if plan.levels.len() == 1 { "" } else { "s" },
+            plan.width_at_depth,
+        ))
+        .about(topic::EDGE_FOLLOWING),
+    ];
     // Selected chains left uncut are a warning (decision record 0536 step 2).
     let mut warnings = Vec::new();
     if sideless > 0 {
@@ -925,15 +928,18 @@ pub fn follow_chains(
              {} not cut",
             if sideless == 1 { "" } else { "s" },
             if sideless == 1 { "it is" } else { "they are" },
-        )));
+        )).about(topic::CHAINS_LEFT_OUT));
     }
     if plan.carve {
-        notes.push(format!(
-            "edge following: carving {} lines across each chain, the outer ones {:.3} mm either \
-             side of it",
-            plan.offsets.len(),
-            plan.offsets.last().copied().unwrap_or(0.0)
-        ));
+        notes.push(
+            Notice::information(format!(
+                "carving {} lines across each chain, the outer ones {:.3} mm \
+                 either side of it",
+                plan.offsets.len(),
+                plan.offsets.last().copied().unwrap_or(0.0)
+            ))
+            .about(topic::EDGE_FOLLOWING),
+        );
     }
     Ok(StrategyOutput {
         passes,
