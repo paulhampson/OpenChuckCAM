@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The unreachable areas in the view (OP-20, UI-11, UI-12, NFR-15; decision
-//! record 0515; issue #416): the dot layer, the Show menu's tick, the
+//! record 0515; issue #416): the hatch layer, the Show menu's tick, the
 //! markers and the legend, and the camera's turn to an area with its undo.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
@@ -86,7 +86,7 @@ fn shown(viewport: &Viewport, operation: OperationId, name: &str) -> ShownOperat
     }
 }
 
-/// UI-11, decision 0515 items 3 and 4: the areas are dots on their
+/// UI-11, decision 0515 items 3 and 4: the areas are hatched on their
 /// triangles in a layer of their own, drawn in the part's frame with a
 /// transparent fill; the Show menu's "Unreachable areas" (menu only, on by
 /// default) hides them and their legend rows, and Simulate's tick boxes do
@@ -116,13 +116,13 @@ fn req_ui_11_the_unreachable_areas_tick_hides_them() {
     for (mesh, area) in layer.meshes.iter().zip(&ops[0].areas) {
         assert_eq!(mesh.indices.len(), 3 * area.triangles.len());
         assert_eq!(mesh.slot, openchuck_viewport::Slot::Part);
-        assert_eq!(mesh.colour[3], 0.0, "nothing is filled, only dotted");
+        assert_eq!(mesh.colour[3], 0.0, "nothing is filled, only hatched");
         let hatch = mesh.hatch.unwrap();
-        assert_eq!(hatch.colour, roles::AREA_DOT_CORE);
+        assert_eq!(hatch.colour, roles::AREA_HATCH_CORE);
         assert_eq!(
             hatch.kind,
-            HatchKind::Dots {
-                ring: roles::AREA_DOT_RING
+            HatchKind::Surface {
+                ring: roles::AREA_HATCH_CASING
             }
         );
         assert!(!mesh.translucent && !mesh.outline_only && mesh.outline.is_none());
@@ -151,7 +151,7 @@ fn req_ui_11_the_unreachable_areas_tick_hides_them() {
         viewport.set_visibility(show);
         assert_eq!(drawn(&viewport), Some(true), "{step:?}");
     }
-    // Nothing to show: no dots, no rows.
+    // Nothing to show: no hatch, no rows.
     viewport.set_unreached(None, Vec::new());
     assert!(viewport.layer(Layer::Areas).unwrap().meshes.is_empty());
     assert!(viewport.unreached_legend().is_empty());
