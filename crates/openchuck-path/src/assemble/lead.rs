@@ -39,20 +39,36 @@ use crate::strategy::{CutPoint, StrategyInput};
 pub(super) enum End {
     /// The pass ends here by turning A, the way `sign` says (+1 or -1) as
     /// the pass runs; `closed` when that end is a full ring or a spiral, so
-    /// the stretch beside it is the pass's own cut.
-    Turning { sign: f64, closed: bool },
+    /// the stretch beside it is the pass's own cut. On a full ring, `behind`
+    /// is the ring's own point on the other side of the end (the one before
+    /// the first point, or after the last), so the cut's direction at the
+    /// end is read from both sides of it.
+    Turning {
+        sign: f64,
+        closed: bool,
+        behind: Option<CutPoint>,
+    },
     /// A line, or a single point: today's lead (decision 0026).
     Other,
 }
 
-fn of_start(shape: Start) -> End {
+/// How the pass of `points` (read from the end in question) starts there.
+fn of_start(shape: Start, points: &[CutPoint]) -> End {
     match shape {
-        Start::FullRing { sign, .. } | Start::Spiral { sign } => {
-            End::Turning { sign, closed: true }
-        }
+        Start::FullRing { sign, end } => End::Turning {
+            sign,
+            closed: true,
+            behind: end.checked_sub(1).and_then(|k| points.get(k)).copied(),
+        },
+        Start::Spiral { sign } => End::Turning {
+            sign,
+            closed: true,
+            behind: None,
+        },
         Start::PartialRing { sign, .. } => End::Turning {
             sign,
             closed: false,
+            behind: None,
         },
         Start::Line { .. } | Start::SinglePoint => End::Other,
     }
@@ -60,7 +76,7 @@ fn of_start(shape: Start) -> End {
 
 /// How the pass of `points` starts.
 pub(super) fn first_end(b: &Builder<'_>, points: &[CutPoint], rapids: &[usize], tol: f64) -> End {
-    of_start(pass_shape::start(&b.rotary, points, rapids, tol))
+    of_start(pass_shape::start(&b.rotary, points, rapids, tol), points)
 }
 
 /// How the pass of `points` ends, with the sign of the way A turns as the
@@ -76,10 +92,18 @@ pub(super) fn last_end(b: &Builder<'_>, points: &[CutPoint], rapids: &[usize], t
         .map(|&r| n - r)
         .collect();
     back.sort_unstable();
-    match of_start(pass_shape::start(&b.rotary, &reversed, &back, tol)) {
-        End::Turning { sign, closed } => End::Turning {
+    match of_start(
+        pass_shape::start(&b.rotary, &reversed, &back, tol),
+        &reversed,
+    ) {
+        End::Turning {
+            sign,
+            closed,
+            behind,
+        } => End::Turning {
             sign: -sign,
             closed,
+            behind,
         },
         End::Other => End::Other,
     }
@@ -125,12 +149,14 @@ impl Entry {
         b: &Builder<'_>,
         points: &[CutPoint],
         rapids: &[usize],
-    ) -> Option<f64> {
+    ) -> Option<(f64, Option<CutPoint>)> {
         if self.style != EntryStyle::Lead {
             return None;
         }
         match first_end(b, points, rapids, self.tolerance) {
-            End::Turning { sign, .. } if !self.on_axis(b, points.first()) => Some(sign),
+            End::Turning { sign, behind, .. } if !self.on_axis(b, points.first()) => {
+                Some((sign, behind))
+            }
             _ => None,
         }
     }
@@ -138,25 +164,39 @@ impl Entry {
     /// The lead-in arc of a pass that starts by turning A the way `sign`
     /// says: from one lead radius back and one above, round to the first
     /// point, tangent to the cut there (0544 item 1).
-    pub(super) fn arc_in(&self, b: &Builder<'_>, points: &[CutPoint], sign: f64) -> TurnLead {
-        self.arc(b, points.iter(), sign, true)
+    pub(super) fn arc_in(
+        &self,
+        b: &Builder<'_>,
+        points: &[CutPoint],
+        sign: f64,
+        behind: Option<CutPoint>,
+    ) -> TurnLead {
+        self.arc(b, points.iter(), sign, behind, true)
     }
 
     /// The lead-out arc of a pass that ends by turning A the way `sign`
     /// says: from the last point, tangent to the cut, round to one lead
     /// radius on and one above.
-    pub(super) fn arc_out(&self, b: &Builder<'_>, points: &[CutPoint], sign: f64) -> TurnLead {
-        self.arc(b, points.iter().rev(), sign, false)
+    pub(super) fn arc_out(
+        &self,
+        b: &Builder<'_>,
+        points: &[CutPoint],
+        sign: f64,
+        behind: Option<CutPoint>,
+    ) -> TurnLead {
+        self.arc(b, points.iter().rev(), sign, behind, false)
     }
 
     /// The arc at the end of the pass that `points` starts from (the pass
     /// forwards for a lead-in, backwards for a lead-out). `sign` is the way
-    /// A turns as the pass runs.
+    /// A turns as the pass runs; `behind` is a full ring's own point on the
+    /// other side of the end (see [`End::Turning`]).
     fn arc<'p>(
         &self,
         b: &Builder<'_>,
         mut points: impl Iterator<Item = &'p CutPoint>,
         sign: f64,
+        behind: Option<CutPoint>,
         entering: bool,
     ) -> TurnLead {
         let Some(end) = points.next() else {
@@ -181,6 +221,33 @@ impl Entry {
                 if entering { d } else { (-d.0, -d.1) }
             })
         });
+        // On a full ring the cut goes on round on the other side of the end,
+        // so its direction there is the mean of the chords on both sides
+        // (the chord on one side alone tilts towards that side's curve: at
+        // the bottom of a dip in the cut it would point up, and the arc
+        // would come in below the cut behind the end). That point is a whole
+        // turn away by its A; it is read at the A just past the end.
+        let other = behind.and_then(|q| {
+            let turn = 360.0 * (q.a.0 - end.a.0).signum();
+            let q = CutPoint {
+                a: Degrees(q.a.0 - turn),
+                ..q
+            };
+            let (s, h) = unrolled(&q);
+            let n = s.hypot(h);
+            (n > 1e-6).then(|| {
+                let d = (-s / n, -h / n);
+                if entering { d } else { (-d.0, -d.1) }
+            })
+        });
+        let along = match (along, other) {
+            (Some(f), Some(g)) => {
+                let (x, y) = (f.0 + g.0, f.1 + g.1);
+                let n = x.hypot(y);
+                (n > 1e-6).then(|| (x / n, y / n)).or(Some(f))
+            }
+            (f, _) => f,
+        };
         // A cut that only moves the tip up or down has no way round: the
         // lead meets it as if it went round level.
         let d = along.filter(|d| d.0 > 1e-6).unwrap_or((1.0, 0.0));
@@ -345,8 +412,12 @@ impl Entry {
         points: &[CutPoint],
         rapids: &[usize],
     ) -> Option<CutPoint> {
-        let sign = self.turning_lead_in(b, points, rapids)?;
-        let (pos, a) = self.arc_in(b, points, sign).moves.first().copied()?;
+        let (sign, behind) = self.turning_lead_in(b, points, rapids)?;
+        let (pos, a) = self
+            .arc_in(b, points, sign, behind)
+            .moves
+            .first()
+            .copied()?;
         let tip = b.rotary.to_model(pos, a);
         Some(CutPoint {
             tip,
@@ -370,6 +441,7 @@ impl Entry {
         points: &[CutPoint],
         rapids: &[usize],
         sign: f64,
+        behind: Option<CutPoint>,
     ) -> Result<()> {
         let Some(head) = points.first() else {
             return Ok(());
@@ -378,7 +450,7 @@ impl Entry {
             first_end(b, points, rapids, self.tolerance),
             End::Turning { closed: true, .. }
         );
-        let lead = self.arc_in(b, points, sign);
+        let lead = self.arc_in(b, points, sign, behind);
         self.check_turning(b, input, stock, pass, "lead-in", &lead, closed)?;
         let Some(&(start, a)) = lead.moves.first() else {
             return Ok(());
@@ -391,6 +463,14 @@ impl Entry {
         let pose = b.pose(over, a);
         b.push(MoveKind::Rapid, pose, None, None)?;
         let stop = stop_height(b, stock, common, start.height);
+        // Where the stock stands above the arc's start (finishing with stock
+        // left above the part, for example), the plunge to it cuts on its way
+        // down, so a host that knows the tool cannot plunge refuses it; the
+        // descent through air at the approach distance does not count
+        // (decision 0544 item 7, `GeneratedPath::straight_plunges`).
+        if stop > start.height + common.approach_distance.0 + EPS {
+            b.straight_plunges.push(pass);
+        }
         rapid_to(b, stop)?;
         let tip = b.rotary.to_model(start, a);
         let pose = b.pose(tip, a);
@@ -422,7 +502,12 @@ impl Entry {
         points: &[CutPoint],
         rapids: &[usize],
     ) -> Option<Result<()>> {
-        let End::Turning { sign, closed } = last_end(b, points, rapids, self.tolerance) else {
+        let End::Turning {
+            sign,
+            closed,
+            behind,
+        } = last_end(b, points, rapids, self.tolerance)
+        else {
             return None;
         };
         if self.on_axis(b, points.last()) {
@@ -434,7 +519,7 @@ impl Entry {
             return Some(Ok(()));
         }
         Some((|| {
-            let lead = self.arc_out(b, points, sign);
+            let lead = self.arc_out(b, points, sign, behind);
             self.check_turning(b, input, stock, pass, "lead-out", &lead, closed)?;
             for (pos, a) in &lead.moves {
                 let tip = b.rotary.to_model(*pos, *a);

@@ -144,10 +144,11 @@ impl Entry {
         match self.style {
             EntryStyle::Plunge => plunge(b, stock, common, head),
             EntryStyle::Lead => match self.turning_lead_in(b, points, rapids) {
-                Some(sign) => {
-                    self.turning_lead_in_moves(b, input, stock, common, pass, points, rapids, sign)
-                }
+                Some((sign, behind)) => self.turning_lead_in_moves(
+                    b, input, stock, common, pass, points, rapids, sign, behind,
+                ),
                 None if self.starts_on_axis(b, points, rapids) => {
+                    b.straight_plunges.push(pass);
                     lead::note_axis_start(b, pass);
                     plunge(b, stock, common, head)
                 }

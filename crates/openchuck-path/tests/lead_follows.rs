@@ -194,9 +194,10 @@ fn assert_turning_lead_in(f: &Fixture, lead: &Lead) -> f64 {
         assert!(da * sign >= -1e-9, "A turns the pass's way only: {da}");
         p = s.end;
     }
-    // The arc starts one lead radius (the tool radius, 3 mm) above.
+    // The arc starts well above the cut: one lead radius (the tool radius,
+    // 2 or 3 mm in these tests) above it where the cut is level.
     let start = f.rotary.to_axis(lead.moves[0].end.tip, lead.moves[0].end.a);
-    assert!(start.height > goal.height + 2.0, "{}", start.height);
+    assert!(start.height > goal.height + 1.0, "{}", start.height);
     // Tangent where it meets the cut: the last arc move and the first cut
     // move point the same way in the unrolled frame, to within the angle of
     // one arc segment.
@@ -239,7 +240,7 @@ fn assert_turning_lead_out(f: &Fixture, lead: &Lead) {
         p = s.end;
     }
     let end = f.rotary.to_axis(p.tip, p.a);
-    assert!(end.height > goal.height + 2.0, "it rises: {}", end.height);
+    assert!(end.height > goal.height + 1.0, "it rises: {}", end.height);
     let rho = goal.across.hypot(goal.height);
     let out = unrolled(f, last, lead.moves[0].end, rho);
     let along = unrolled(f, *previous, last, rho);
@@ -518,14 +519,16 @@ fn req_op_11_a_single_point_pass_under_lead_is_plunged_with_a_note_naming_it() {
     );
 }
 
-/// One pass at `x` that turns A from 0 to `a_end` degrees in 2 degree
-/// steps, dropped onto the part, or held at `height` above the axis when
+/// One pass at `x` that turns A from 0 to `a_end` degrees in steps of
+/// `step` degrees, dropped onto the part, or held at `height` above the axis when
 /// set; it carries `stock` when set, as roughing does. Not a product
 /// strategy.
 #[derive(Debug)]
 struct Arc {
     x: f64,
     a_end: f64,
+    /// Degrees between points.
+    step: f64,
     height: Option<f64>,
     stock: Option<openchuck_path::AnalyticStock>,
 }
@@ -553,10 +556,10 @@ impl Strategy for Arc {
         _p: &Parameters,
         _context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        let steps = (self.a_end / 2.0).round() as u32;
+        let steps = (self.a_end / self.step).round() as u32;
         let points = (0..=steps)
             .filter_map(|j| {
-                let a = Degrees(f64::from(j) * 2.0);
+                let a = Degrees(f64::from(j) * self.step);
                 match self.height {
                     Some(height) => {
                         let tip = input.rotary.to_model(
@@ -614,6 +617,7 @@ fn req_op_11_req_op_15_a_partial_ring_gets_the_lead_in_the_plane_of_the_cut_at_b
     let s = Arc {
         x: 20.0,
         a_end: 180.0,
+        step: 2.0,
         height: None,
         stock: None,
     };
@@ -634,6 +638,7 @@ fn req_op_11_req_op_14_in_roughing_a_lead_beside_a_partial_ring_through_uncut_st
     let s = Arc {
         x: 20.0,
         a_end: 180.0,
+        step: 2.0,
         height: None,
         stock: Some(openchuck_path::AnalyticStock::Cylinder {
             radius: 16.0,
@@ -678,6 +683,7 @@ fn req_op_11_req_nfr_07_a_turning_lead_that_would_cut_the_finished_surface_is_re
     let s = Arc {
         x: 20.0,
         a_end: 360.0,
+        step: 2.0,
         height: None,
         stock: None,
     };
@@ -700,6 +706,7 @@ fn req_op_11_a_turning_pass_with_its_tip_on_the_rotary_axis_is_plunged_with_a_no
     let s = Arc {
         x: 20.0,
         a_end: 90.0,
+        step: 2.0,
         height: Some(0.0),
         stock: None,
     };
@@ -708,6 +715,9 @@ fn req_op_11_a_turning_pass_with_its_tip_on_the_rotary_axis_is_plunged_with_a_no
     assert_eq!(kinds.iter().filter(|k| **k == MoveKind::Plunge).count(), 1);
     assert!(!kinds.contains(&MoveKind::LeadIn));
     assert!(!kinds.contains(&MoveKind::LeadOut));
+    // A straight plunge into the stock, which a host refuses for a tool
+    // that cannot plunge (decision 0544 item 7).
+    assert_eq!(path.straight_plunges, vec![0]);
     // One note says so, in its own words (not "a single point"), and no
     // second note for its end.
     let lead: Vec<&str> = path
@@ -800,4 +810,77 @@ impl Strategy for Inward {
             ..Pass::default()
         }])
     }
+}
+
+#[test]
+fn req_op_11_a_turning_lead_s_plunge_counts_only_where_it_goes_into_the_stock() {
+    // The rings stub on a 15 mm round part with a 6 mm ball: each arc starts
+    // 3 mm up, at 18 mm from the axis. In stock 16 mm from the axis the
+    // descent to it is through air, so nothing plunges into the stock; in
+    // stock 22 mm from the axis it goes 4 mm down through the stock.
+    let cyl = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let mut v = ring_values(10.0, 12.0, 2.0, 0.0);
+    v.insert(names::ENTRY.into(), t("lead"));
+    for (stock, plunges) in [(16.0, vec![]), (22.0, vec![0, 1])] {
+        let f = Fixture::new(
+            MeshSurface::new(&cyl.mesh(3, 360)).unwrap(),
+            stock,
+            &ball(6.0),
+        );
+        let path = make(&f, &Rings, &v, &[]).unwrap();
+        assert_eq!(lead_ins(&path).len(), 2, "stock {stock}");
+        assert_eq!(path.straight_plunges, plunges, "stock {stock}");
+    }
+}
+
+/// A square bar along X, `half` from the axis to each face: the tool is
+/// lowest over the middle of a face and the cut rises on both sides of it.
+struct SquareBar {
+    half: f64,
+    length: f64,
+}
+
+impl RadialPart for SquareBar {
+    fn name(&self) -> &'static str {
+        "square_bar"
+    }
+    fn x_range(&self) -> (f64, f64) {
+        (0.0, self.length)
+    }
+    fn radius_at(&self, _x: f64, angle: f64) -> f64 {
+        self.half / angle.cos().abs().max(angle.sin().abs())
+    }
+}
+
+#[test]
+fn req_op_11_req_op_15_a_ring_that_starts_over_the_middle_of_a_flat_face_gets_its_lead() {
+    // A ring at A = 0 starts where the tool is lowest, over the middle of a
+    // face, and the cut rises on both sides of its first point. The cut's
+    // direction there is read from both sides of the point (the ring goes
+    // on round behind it), so the arc meets it level and stays above the
+    // cut behind it. Read from the chord ahead alone (10 degrees here, as a
+    // coarse angle step gives), it would come in tilted up and cut below
+    // the cut behind the point, and be refused.
+    let part = SquareBar {
+        half: 5.0,
+        length: 40.0,
+    };
+    let f = Fixture::new(
+        MeshSurface::new(&part.mesh(40, 720)).unwrap(),
+        10.0,
+        &ball(4.0),
+    );
+    let s = Arc {
+        x: 20.0,
+        a_end: 360.0,
+        step: 10.0,
+        height: None,
+        stock: None,
+    };
+    let path = make(&f, &s, &lead_values(), &[]).unwrap_or_else(|e| panic!("{e}"));
+    assert_turning_lead_in(&f, &lead_ins(&path)[0]);
+    assert_turning_lead_out(&f, &lead_outs(&path)[0]);
 }
