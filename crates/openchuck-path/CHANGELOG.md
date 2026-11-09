@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RINGSTEP; decision 0550, accepted)
+
+- **Changed output (RINGSTEP; decision 0550, accepted; found on #640):** helical finishing's and rest machining's rings start on a whole ring at a held region's keep-out edge, as roughing's do (`helical::ring_span`), instead of with a short cut along X (or a piece of a blend) that the keep-out left of the step into the first ring outside it. Ring operations with a held region over an end of the part change, Sharp included, saved ones too; without one the output is unchanged. No golden program uses rings.
+
 ## 0.54.0
 
 - **Breaking, changed output (0.54.0, or the next free version, as the Merge Manager sequences it; RAMPENTRY; issues #639 and #642; decision 0543, accepted, the owner's answers of 8 Nov 2026 relayed; decision 0544 item 6):** every ramp entry follows the pass's own toolpath.
