@@ -1168,3 +1168,28 @@ fn req_op_11_req_nfr_07_the_path_lists_the_passes_entered_by_a_straight_plunge_i
     let path = run(|ctx| generate(&rings, &nub, &v, ctx)).unwrap();
     assert!(!path.straight_plunges.is_empty());
 }
+
+/// Decision record 0644: a ramp entry refusal names its check and the
+/// setting its first remedy changes, so the application shows it in the one
+/// form and links to the setting.
+#[test]
+fn req_ui_12_ramp_entry_refusals_carry_their_topic_and_setting() {
+    let f = cylinder();
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let short = Through(vec![(20.0, 0.0), (20.5, 0.0)]);
+    let mut input = f.input();
+    input.keep_out = &[];
+    match run(|ctx| generate(&short, &input, &v, ctx)).unwrap_err() {
+        openchuck_path::PathError::Refused {
+            topic,
+            text,
+            setting,
+        } => {
+            assert_eq!(topic, openchuck_path::topic::RAMP_ENTRY);
+            assert!(text.starts_with("pass 1 starts with a stretch"), "{text}");
+            assert_eq!(setting.as_deref(), Some(names::ENTRY));
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}

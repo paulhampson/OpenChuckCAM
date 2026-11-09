@@ -1213,11 +1213,15 @@ fn clear_traverse(
         return Ok(());
     }
     if top >= probe - EPS {
-        return Err(PathError::Strategy(format!(
-            "Entry: the move to an entry's start would pass through stock that reaches \
+        return Err(PathError::refused(
+            crate::topic::ENTRY,
+            format!(
+                "the move to an entry's start would pass through stock that reaches \
              {top:.3} mm from the rotary axis, at or above the retract height of {probe:.3} mm. \
              Raise the setup's clearance, or set Entry to Plunge."
-        )));
+            ),
+        )
+        .with_setting(crate::params::names::ENTRY));
     }
     b.retract(needed.min(probe))?;
     b.raised_entries += 1;
