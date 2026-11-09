@@ -270,12 +270,18 @@ pub(crate) fn named(
 /// Why writing is refused while the possible collisions `found` are not
 /// acknowledged (decision record 0538).
 pub fn collision_refusal(found: &[String]) -> String {
+    // Each message ends with a full stop (decision record 0536 section 3);
+    // in the list they are joined by semicolons and the sentence ends once.
+    let listed: Vec<&str> = found
+        .iter()
+        .map(|message| message.trim_end().trim_end_matches('.'))
+        .collect();
     format!(
         "This result has {} possible collision{} that must be acknowledged before the files are \
          written: {}. Read them, then acknowledge them to write the files.",
         found.len(),
         if found.len() == 1 { "" } else { "s" },
-        found.join("; ")
+        listed.join("; ")
     )
 }
 
@@ -740,4 +746,42 @@ pub(crate) fn write_bytes(
         written.push(path);
     }
     Ok(written)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn req_gc_16_req_ui_12_the_acknowledgement_refusal_ends_each_sentence_once() {
+        // OWNERCHECKS2 on main 0d640692: each message ends with a full stop
+        // since decision 0536 step 4, so the refusal read "... before
+        // running.. Read them ..." and, with several, "... running.; ...".
+        let flute = "Flute length (operation 'Rough', tool 'T1'): the stock stands 3.000 mm \
+                     above the flutes. Check the clearance on your machine before running."
+            .to_owned();
+        let tab = "Tab length (operation 'Rough', tool 'T1'): tab 1 is shorter than the tool. \
+                   Use a smaller tool, or make the tab longer."
+            .to_owned();
+        let one = collision_refusal(std::slice::from_ref(&flute));
+        assert_eq!(
+            one,
+            "This result has 1 possible collision that must be acknowledged before the files are \
+             written: Flute length (operation 'Rough', tool 'T1'): the stock stands 3.000 mm \
+             above the flutes. Check the clearance on your machine before running. Read them, \
+             then acknowledge them to write the files."
+        );
+        let several = collision_refusal(&[flute, tab]);
+        for refusal in [&one, &several] {
+            assert!(!refusal.contains(".."), "{refusal}");
+            assert!(!refusal.contains(".;"), "{refusal}");
+        }
+        assert!(
+            several.contains("before running; Tab length (operation 'Rough'"),
+            "{several}"
+        );
+        assert!(several.ends_with(
+            "make the tab longer. Read them, then acknowledge them to write the files."
+        ));
+    }
 }

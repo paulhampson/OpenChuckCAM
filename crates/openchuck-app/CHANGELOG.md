@@ -4,6 +4,10 @@
 
 - **Changed output for new operations:** `Application::add_operation_on` writes `ring_step = blended` into a new operation of every strategy that has **Steps between rings** (helical finishing, rest machining, rotary roughing, Facing and simultaneous finishing), so a new ring operation blends its steps; an operation saved without it keeps sharp steps and its G-code (decision 0545 item 1, the owner's choice D3).
 
+## Unreleased (MSGREVIEW, a fix after decision 0536 step 4)
+
+- **Fixed (OWNERCHECKS2; issue #567):** `collision_refusal` no longer doubles a full stop. Since decision 0536 step 4 every message ends with one, so the refusal read "... before running.. Read them ..." and, with several collisions, "... running.; ...". Each message's closing full stop is now left out of the list, which ends the sentence once.
+
 ## Unreleased (MSGREVIEW, decision 0536 step 4)
 
 - **Changed (decision 0536 step 4, accepted; issue #567):** every message the overview builds takes the one form, "<Topic> (<items>): <text>": the export result, failed jobs, refusals, selection sets, enclosed material, the machine profile, the tool length, the setup checks, the workholding and the model's file, mesh check, units, notes and import. `lead_in::in_form` writes the text as a clause (`lead_in::clause`) ending with a full stop. `Message::new` is private; `Message::about` builds a message, and `Message::formed` one from a text already in the form. New topics in `lead_in::topic` (`ALL` lists them); Tab clearance names the tool. The export checks name a setup's possible collision as an operation's ("... A possible collision: acknowledge it before the files are written"); `OutputReport::body` is the report after its topic.
