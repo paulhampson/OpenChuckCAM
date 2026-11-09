@@ -16,7 +16,8 @@ ball for finishing), all with a 3 degree ramp unless named otherwise:
 3. "Rough spiral, steeper": as 2 with Steeper ramp near the axis on (Maximum ramp angle 15);
 4. "Finish rings, ramp": helical finishing in Rings, Entry Ramp, Allow single-point plunge on
    (a ring on the rotary axis at the end face: the tool descends there while the part turns);
-5. "Finish rings, lead": helical finishing in Rings, Entry Lead.
+5. "Finish rings, lead": helical finishing in Rings, Entry Lead, on "Setup 2, no grip" (the
+   same stock with no held region).
 
 Written for this repository (lane OWNERCHECKS2); AGPL-3.0-or-later, as the rest of the
 repository. Only public material is used.
@@ -48,6 +49,10 @@ OPS = [
      {**FINISH, "entry": '"ramp"', "ramp_angle": "3.0", "allow_single_point_plunge": "true"}),
     ("ZA", "Finish rings, lead", "helical_finishing", BALL, {**FINISH, "entry": '"lead"'}),
 ]
+# The lead check runs on a second setup with the same stock and no grip (the coordinator's
+# instruction of 9 Nov 2026: with the grip, the pass starts with a short cut along X, a case
+# left to the owner's decision under decision 0544 L2).
+SETUP2_ID = "0c0c0639-0000-4000-8000-000000000002"
 
 
 def main():
@@ -57,10 +62,18 @@ def main():
     shutil.copytree(START, out)
     shutil.rmtree(out / "operations")
     (out / "operations").mkdir()
+    setup = (out / f"setups/{SETUP_ID}.toml").read_text(encoding="utf-8")
+    grip = "\n[workholding.start]\nlength = 8.0\n"
+    if grip not in setup:
+        raise SystemExit("the tutorial's setup is not as expected")
+    setup2 = (setup.replace(grip, "").replace(SETUP_ID, SETUP2_ID)
+              .replace('order = "V"', 'order = "W"').replace('name = "Setup 1"', 'name = "Setup 2, no grip"'))
+    oc.write(out / f"setups/{SETUP2_ID}.toml", setup2)
     for i, (order, name, strategy, tool, params) in enumerate(OPS, start=1):
         op = f"0c0c0639-0000-4000-8000-0000000003{i:02d}"
+        setup_id = SETUP2_ID if name == "Finish rings, lead" else SETUP_ID
         oc.write(out / f"operations/{op}.toml",
-                 oc.operation_toml(op, order, name, SETUP_ID, strategy, tool, params))
+                 oc.operation_toml(op, order, name, setup_id, strategy, tool, params))
     print(f"wrote {out}")
 
 

@@ -9,8 +9,9 @@ Expected: 1 Rough rings, ramp: generated (single points plunged, as Allow
 single-point plunge asks). 2 Rough spiral, ramp: refused, "... 17.6
 turns, more than the 10 allowed ...". 3 Rough spiral, steeper: generated,
 the ramp near the axis steeper. 4 Finish rings, ramp: generated, the tool
-descends on the axis while the part turns. 5 Finish rings, lead:
-generated, the lead turns with the part at the ring's X.
+descends on the axis while the part turns. 5 Finish rings, lead (on
+Setup 2, no grip): generated, the lead turns with the part at the ring's X
+(the case with the grip waits for the owner's decision).
 Each ramp comes down over the pass, around the ring at its X; nothing runs
 along X towards the chuck.
 Old behaviour: the new settings unknown; ramps and leads along X refused
