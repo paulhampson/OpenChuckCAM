@@ -622,9 +622,10 @@ impl Strategy for PencilFinishing {
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
         if region.is_some() {
-            return Err(PathError::Strategy(format!(
-                "the strategy '{NAME}' cannot yet be limited to a region"
-            )));
+            return Err(PathError::refused(
+                crate::topic::REGION,
+                format!("the strategy '{NAME}' cannot yet be limited to a region"),
+            ));
         }
         let leave = parameters.number(names::STOCK_TO_LEAVE)?;
         let tolerance = parameters.number(names::TOLERANCE)?;
@@ -669,11 +670,15 @@ impl Strategy for PencilFinishing {
             } else {
                 "no concave crease turns"
             };
-            return Err(PathError::Strategy(format!(
-                "pencil clean-up has no inside corner to follow: {what} {angle} degrees or \
+            return Err(PathError::refused(
+                crate::topic::PENCIL,
+                format!(
+                    "pencil clean-up has no inside corner to follow: {what} {angle} degrees or \
                  more; lower {}",
-                pencil_parameter::CREASE_ANGLE
-            )));
+                    pencil_parameter::CREASE_ANGLE
+                ),
+            )
+            .with_setting(pencil_parameter::CREASE_ANGLE));
         }
         let radius = input.tool.cutting_radius();
         let samples: Vec<Vec<(Point3, Vec3)>> =
@@ -700,12 +705,11 @@ impl Strategy for PencilFinishing {
                 context,
             )?;
             if map.is_empty() {
-                return Err(PathError::Strategy(rest::nothing_left(
-                    "pencil clean-up",
-                    min_remaining,
-                    leave,
-                    &map,
-                )));
+                return Err(PathError::refused(
+                    crate::topic::PENCIL,
+                    rest::nothing_left("pencil clean-up", min_remaining, leave, &map),
+                )
+                .with_setting(rest::parameter::MIN_REMAINING));
             }
             Some(map)
         } else {
@@ -783,7 +787,8 @@ impl Strategy for PencilFinishing {
             }));
         }
         if passes.is_empty() {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::PENCIL,
                 "pencil clean-up found material left but the tool cannot rest in any \
                  corner that holds it"
                     .to_owned(),

@@ -115,7 +115,8 @@ impl RemainingMap {
         context: &JobContext<'_>,
     ) -> Result<Self> {
         if !(probe.is_finite() && probe >= 0.0 && spacing > 0.0 && reach > 0.0) {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::REST_MACHINING,
                 "remaining-material detection needs a threshold of zero or more and a \
                  positive spacing and reach"
                     .to_owned(),
@@ -148,11 +149,14 @@ impl RemainingMap {
             // spacing cannot help, and fewer samples than triangles would
             // miss whole faces.
             if total <= mesh.triangles.len() as f64 {
-                return Err(PathError::Strategy(format!(
-                    "remaining-material detection needs at least one sample per triangle, and \
+                return Err(PathError::refused(
+                    crate::topic::REST_MACHINING,
+                    format!(
+                        "remaining-material detection needs at least one sample per triangle, and \
                      the part has {} triangles, more than the {MAX_SAMPLES:.0} allowed",
-                    mesh.triangles.len()
-                )));
+                        mesh.triangles.len()
+                    ),
+                ));
             }
             spacing *= 1.25;
         }
@@ -431,9 +435,10 @@ impl Strategy for RestMachining {
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
         if region.is_some() {
-            return Err(PathError::Strategy(format!(
-                "the strategy '{NAME}' cannot yet be limited to a region"
-            )));
+            return Err(PathError::refused(
+                crate::topic::REGION,
+                format!("the strategy '{NAME}' cannot yet be limited to a region"),
+            ));
         }
         let stepover = parameters.number(names::STEPOVER)?;
         let tolerance = parameters.number(names::TOLERANCE)?;
@@ -451,7 +456,8 @@ impl Strategy for RestMachining {
         let (x0, x1) = (bounds.min.x, bounds.max.x);
         let length = x1 - x0;
         if length.is_nan() || length <= 0.0 {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::REST_MACHINING,
                 "the part has no length along the rotary axis to clean".to_owned(),
             ));
         }
@@ -468,12 +474,11 @@ impl Strategy for RestMachining {
         let probe = leave + min_remaining;
         let map = RemainingMap::detect(input.surface, input.stock, probe, spacing, reach, context)?;
         if map.is_empty() {
-            return Err(PathError::Strategy(nothing_left(
-                "rest machining",
-                min_remaining,
-                leave,
-                &map,
-            )));
+            return Err(PathError::refused(
+                crate::topic::REST_MACHINING,
+                nothing_left("rest machining", min_remaining, leave, &map),
+            )
+            .with_setting(parameter::MIN_REMAINING));
         }
 
         let turns = length / stepover;
@@ -618,7 +623,8 @@ impl Strategy for RestMachining {
         )?;
         passes.extend(free.passes);
         if passes.is_empty() {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::REST_MACHINING,
                 "rest machining found material left but the tool cannot reach any of it: the \
                  tool is too large for the places that need cleaning"
                     .to_owned(),
