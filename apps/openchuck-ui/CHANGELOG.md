@@ -4,6 +4,12 @@
 
 - **Added:** **Steps between rings** reads Sharp or Blended in the inspector.
 
+## Unreleased (MSGSTEP5, decision 0536 step 5)
+
+- MSGSTEP5 (decision 0536 section 8; OI-2098; UI-09, UI-12): the status line that was never drawn is gone. "Saved …", "Opened …", "Added …" and "Copied n models into the project folder" are finished entries in the Jobs tab with how long ago, never messages. A recovered checkpoint not yet saved is a warning in Messages with Save; tool numbers the export changed and the project has not saved are a warning with Save and Undo; a pick dropped because the geometry changed is an error on its selection set (Reselect) or workholding (Edit workholding); dropping a model with no project open is an error dialog.
+- MSGSTEP5 (decision 0536 step 5; NFR-07, UI-12): an error dialog's title names the action that failed ("Save failed", "Undo failed") and its text takes the one form, led by that action ("Save: …"). The recovery notices in Messages are led by "Recovery:" and stay warnings, except a checkpoint that could not be written, which is an error with Save until a later one is written. The settings notice is led by "Settings:".
+- MSGSTEP5 (OI-2097; NFR-12): "No overcut" reads "No overcut found at the simulation's resolution" in the Results tab and on the command line, and "No overcut at this point" on the probe; the Facing result line in the Simulate results says "; the simulation shows what it removed" only for a simulated run (the owner's answer of 8 Nov 2026).
+
 ## Unreleased
 
 - MSGREVIEW (issue #635; UI-12): a warning or a refusal under a field spans the inspector's width as one block under the field, the warning shape just before its first line, for every kind of field; it no longer sits alone at the label column with its text on the line below.

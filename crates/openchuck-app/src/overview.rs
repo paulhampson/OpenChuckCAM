@@ -85,7 +85,8 @@ impl Step {
 /// colour and, for a user who cannot tell colours apart, its shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StepHealth {
-    /// Good to go: green, a filled circle.
+    /// Nothing to report: green, a filled circle. It never says the program
+    /// is right for the machine (NFR-12; decision record 0536, OI-2097).
     Good,
     /// Something is stale or needs attention: amber, a triangle outline.
     Attention,
@@ -107,7 +108,7 @@ impl StepHealth {
     /// The words for the legend and the tooltip.
     pub fn name(self) -> &'static str {
         match self {
-            Self::Good => "Good to go",
+            Self::Good => "Nothing to report",
             Self::Attention => "Needs attention",
             Self::Error => "Error to fix",
         }
@@ -396,6 +397,12 @@ pub enum MessageAction {
         /// The area's number, from 1.
         area: u8,
     },
+    /// Save the project, for changes that are lost unless saved (a recovered
+    /// checkpoint, changed tool numbers; decision record 0536 section 8).
+    Save,
+    /// Undo the last command, for a change the message warns of (changed
+    /// tool numbers; decision record 0536 section 8).
+    Undo,
 }
 
 /// The words of "Show in view N" for the areas a warning offers it for.
@@ -425,6 +432,8 @@ impl MessageAction {
                 .and_then(|i| SHOW_IN_VIEW.get(i))
                 .copied()
                 .unwrap_or("Show in view"),
+            Self::Save => "Save",
+            Self::Undo => "Undo",
         }
     }
 }
@@ -2848,6 +2857,14 @@ mod tests {
         assert_eq!(short_mm(26.0), "26");
         assert_eq!(short_mm(12.5), "12.5");
         assert_eq!(short_mm(0.1234), "0.123");
+    }
+
+    #[test]
+    fn req_ui_12_save_and_undo_links_name_their_actions_in_plain_words() {
+        // Decision record 0536 section 8: a recovered checkpoint offers
+        // "Save"; changed tool numbers offer "Save" and "Undo".
+        assert_eq!(MessageAction::Save.label(), "Save");
+        assert_eq!(MessageAction::Undo.label(), "Undo");
     }
 
     #[test]

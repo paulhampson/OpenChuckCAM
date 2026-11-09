@@ -1283,12 +1283,12 @@ fn req_ui_07_req_ui_04_keep_placement_rebuilds_before_resuming_a_direction_pick(
     assert!(
         picked.contains(&0),
         "the intended face must survive rotation: {picked:?}; guard={}, scene={}, selected={:?}, \
-         entries={:?}, status={}, texts={:?}",
+         entries={:?}, dropped={:?}, texts={:?}",
         rig.shell.edit_guard.active(),
         rig.shell.scene_job.is_some(),
         rig.shell.selected,
         crate::pending_edits::entries(&rig.ctx),
-        rig.shell.status,
+        rig.shell.dropped_pick,
         rig.texts()
     );
     assert_eq!(picked.len(), 2);
