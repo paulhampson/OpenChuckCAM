@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased (MSGREVIEW, decision 0644, proposed; decision 0536 step 6; issue #567)
+## 0.55.0 (provisional, as the Merge Manager sequences it; MSGREVIEW, decision 0644, proposed; decision 0536 step 6; issue #567)
 
-- **Added (a minor version at release, as the Merge Manager sequences it):** `PathError::Refused { topic, text, setting }`, a refusal by a named check with the operation setting to change, built with `PathError::refused(topic, text)` and `.with_setting(key)`; it displays as "<topic>: <text>". New topics in `openchuck_path::topic`: End facing, Facing completion, Facing motion, Box facing, Facing check, Facing extent, Surface, Region, Lead entry, Helix entry, Setting, Stock to leave, Stock, Toolpath, Facing, Rotary roughing, Axial finishing, Helical finishing, Simultaneous 4-axis finishing and Radial drilling.
+- **Breaking, changed output (0.55.0, or the next free version):** `PathError::Refused { topic, text, setting }`, a refusal by a named check with the operation setting to change, built with `PathError::refused(topic, text)` and `.with_setting(key)`; it displays as "<topic>: <text>". New topics in `openchuck_path::topic`: End facing, Facing completion, Facing motion, Box facing, Facing check, Facing extent, Surface, Region, Lead entry, Helix entry, Setting, Stock to leave, Stock, Toolpath, Facing, Rotary roughing, Axial finishing, Helical finishing, Simultaneous 4-axis finishing and Radial drilling.
 - **Changed:** every strategy refusal is a `PathError::Refused` with its check's topic, and with the setting where its text names one; the words of each text are kept ([the list](../../docs/archive/0644-refusals-take-the-one-form/after.md)). "Facing final validation: …" refusals read "Facing check: …". A connection refusal reads "Links: cannot connect safely: …", without the operation's name, and `connect_group`'s private checks no longer take the group. A host that matched `PathError::Strategy` for these refusals matches `PathError::Refused` (`PathError` is `#[non_exhaustive]`). `PathError::Strategy` remains for the registry's errors, and `Surface`, `Region` and `RotaryLimit` for the geometry's own.
 
 ## 0.54.0
