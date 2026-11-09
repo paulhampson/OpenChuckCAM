@@ -112,6 +112,7 @@ pub mod strategy;
 pub mod surface;
 pub mod swarf;
 pub mod unroll;
+mod words;
 mod wrap_fit;
 
 pub use assemble::{
@@ -153,3 +154,4 @@ pub use surface::{
     SurfaceSource, Uv,
 };
 pub use swarf::Swarf;
+pub use words::counted;

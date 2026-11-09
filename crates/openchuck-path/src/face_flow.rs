@@ -2042,14 +2042,18 @@ fn assemble(
         };
         let mut note = format!(
             "face {} is cut from its guide, edge{plural} {edges} ({:.1} mm long), towards {towards} \
-             in {geometric} passes up to {:.3} mm apart along the face",
-            cut.id.0, cut.guide_length, cut.spacing
+             in {} up to {:.3} mm apart along the face",
+            cut.id.0,
+            cut.guide_length,
+            crate::counted(geometric, "pass", "passes"),
+            cut.spacing
         );
         if cut.dropped_short > 0 {
             note.push_str(&format!(
-                "; {} passes nearest the point are left out, being shorter than the tool's \
+                "; {} nearest the point {} left out, being shorter than the tool's \
                  diameter",
-                cut.dropped_short
+                crate::counted(cut.dropped_short, "pass", "passes"),
+                if cut.dropped_short == 1 { "is" } else { "are" }
             ));
         }
         face_notes.push(note);
@@ -2079,10 +2083,9 @@ fn assemble(
     }
     notes.push(
         Notice::information(format!(
-            "cuts {} passes on {} face{}",
-            out_passes.len(),
-            face_notes.len(),
-            if face_notes.len() == 1 { "" } else { "s" }
+            "cuts {} on {}",
+            crate::counted(out_passes.len(), "pass", "passes"),
+            crate::counted(face_notes.len(), "face", "faces")
         ))
         .about(topic::FACE_FLOW),
     );

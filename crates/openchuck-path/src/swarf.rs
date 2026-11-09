@@ -1008,13 +1008,13 @@ impl FacePath {
         };
         format!(
             "face {}: rulings along {} (the straight-line fit misses by {:.4} mm, limit \
-             {tolerance} mm), the normal twists {:.2} degrees along a ruling, {} poses, the tool \
+             {tolerance} mm), the normal twists {:.2} degrees along a ruling, {}, the tool \
              cuts at most {:.4} mm beyond the stock to leave.{}{left}{}",
             self.number,
             self.family.name(),
             fit.residual,
             self.twist,
-            self.poses().count(),
+            crate::counted(self.poses().count(), "pose", "poses"),
             self.gouge,
             self.describe_tilt(),
             self.limits.describe()

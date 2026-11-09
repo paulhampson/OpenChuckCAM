@@ -1336,7 +1336,11 @@ fn req_gc_10_cli_checks_a_chunk_against_the_original_source_range() {
         "6:8".as_ref(),
     ]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
-    assert!(out.stdout.contains("reached all 1 moves"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("reached all 1 move ("),
+        "{}",
+        out.stdout
+    );
     std::fs::write(&report, text.replace("\"feed\":60", "\"feed\":61")).unwrap();
     let out = run(&[
         "gcode-sim".as_ref(),

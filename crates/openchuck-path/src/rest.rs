@@ -636,11 +636,11 @@ impl Strategy for RestMachining {
         let mut notes = vec![
             Notice::information(format!(
                 "{} of {} points sampled on the part have more than {} mm of \
-                 material left; {} passes cut where it is left",
+                 material left; {} cut where it is left",
                 map.len(),
                 map.tested(),
                 min_remaining,
-                passes.len()
+                crate::counted(passes.len(), "pass", "passes")
             ))
             .about(topic::REST_MACHINING),
         ];
@@ -716,10 +716,10 @@ fn wall_note(rings: &[f64], target: f64) -> Option<Notice> {
     };
     Some(
         Notice::information(format!(
-            "rest machining added {} rings between X {first:.3} and {last:.3}{apart} where its \
+            "rest machining added {} between X {first:.3} and {last:.3}{apart} where its \
              tool's side meets a wall with material left, so that a steep wall keeps about \
              {target} mm or less between them",
-            rings.len()
+            crate::counted(rings.len(), "ring", "rings")
         ))
         .about(topic::RINGS),
     )

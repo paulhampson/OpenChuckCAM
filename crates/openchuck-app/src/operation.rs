@@ -4464,7 +4464,7 @@ mod tests {
         let summary = path
             .notes
             .iter()
-            .find(|n| n.text.contains(" chains ("))
+            .find(|n| n.text.contains(" open, ") && n.text.contains(" closed)"))
             .unwrap_or_else(|| panic!("{:?}", path.notes));
         assert_eq!(
             summary.topic.as_deref(),

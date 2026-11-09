@@ -1805,10 +1805,8 @@ pub fn setup_row(project: &Project, setup: &openchuck_project::Setup, part: Setu
             let chip = match (held, tabs) {
                 (0, 0) => "None".to_owned(),
                 (h, 0) => format!("{h} held"),
-                (0, 1) => "1 tab".to_owned(),
-                (0, t) => format!("{t} tabs"),
-                (h, 1) => format!("{h} held · 1 tab"),
-                (h, t) => format!("{h} held · {t} tabs"),
+                (0, t) => openchuck_path::counted(t, "tab", "tabs"),
+                (h, t) => format!("{h} held · {}", openchuck_path::counted(t, "tab", "tabs")),
             };
             row(part.name().to_owned(), Some(chip))
         }

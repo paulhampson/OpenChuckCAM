@@ -47,3 +47,40 @@
 "crates/openchuck-path/src/strategy.rs" = 2
 "crates/openchuck-path/src/surface.rs" = 3
 "crates/openchuck-path/src/unroll.rs" = 19
+
+# [plural_counts]: a format placeholder straight before a plural noun ("{layers} layers",
+# "{} moves") in a product file's string literals (decision record 0644, after OWNERCHECKS2
+# read "in 1 layers of 1 mm"). A count that can be one is written with
+# `openchuck_path::counted`, which gives "1 layer" and "3 layers". What is left is never one:
+# refusals for a count that is too many, a branch that runs only for two or more ("{} entries
+# start higher", a long pass list, "Copied {n} models"), a mesh's, a G-code file's or a drawn
+# path's own size, the points sampled on a part and a configured limit of points, the word
+# "turns" as a verb or a fractional number of turns, a selection set's role name, and the
+# action log's internal line. The count only falls.
+
+[plural_counts]
+"apps/openchuck-cli/src/main.rs" = 1
+"apps/openchuck-ui/src/export_panel.rs" = 1
+"apps/openchuck-ui/src/export_panel/preview.rs" = 1
+"apps/openchuck-ui/src/playback_panel.rs" = 2
+"apps/openchuck-ui/src/shell.rs" = 2
+"crates/openchuck-app/src/action_log.rs" = 1
+"crates/openchuck-app/src/note_groups.rs" = 1
+"crates/openchuck-app/src/selection.rs" = 1
+"crates/openchuck-path/src/adaptive.rs" = 1
+"crates/openchuck-path/src/assemble.rs" = 4
+"crates/openchuck-path/src/assemble/entry.rs" = 7
+"crates/openchuck-path/src/assemble/lead.rs" = 1
+"crates/openchuck-path/src/axial.rs" = 3
+"crates/openchuck-path/src/edge_following.rs" = 2
+"crates/openchuck-path/src/extend.rs" = 1
+"crates/openchuck-path/src/face_flow.rs" = 1
+"crates/openchuck-path/src/faces.rs" = 2
+"crates/openchuck-path/src/helical.rs" = 1
+"crates/openchuck-path/src/pencil.rs" = 1
+"crates/openchuck-path/src/rest.rs" = 3
+"crates/openchuck-path/src/rotary.rs" = 1
+"crates/openchuck-path/src/roughing.rs" = 14
+"crates/openchuck-path/src/wrap_fit.rs" = 1
+"crates/openchuck-project/src/model.rs" = 1
+"crates/openchuck-project/src/tools/library.rs" = 1

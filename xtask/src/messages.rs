@@ -23,6 +23,15 @@
 //!   0644). The string literals are scanned and counted per file in the same
 //!   way, against the `[ids]` baseline.
 //!
+//! - **A count agrees with its noun.** A count that can be one is written
+//!   with `openchuck_path::counted`, which gives "1 layer" and "3 layers";
+//!   a text that prints `{layers} layers` reads "1 layers" when there is
+//!   one (decision record 0644, after OWNERCHECKS2). The string literals
+//!   are scanned for a format placeholder followed by a plural noun of
+//!   [`PLURAL_NOUNS`] (`{} rings`, `{n} moves`) and counted per file in
+//!   the same way, against the `[plural_counts]` baseline: what is left is
+//!   a count that is never one ("... is too many", a mesh's own size).
+//!
 //! Test code is not scanned: files under `tests/`, files named `tests.rs`
 //! or ending in `_tests.rs`, and everything after a file's `#[cfg(test)]`
 //! module.
@@ -63,6 +72,87 @@ pub const CLAIMS: &[&str] = &[
 pub const ID_PREFIXES: &[&str] = &[
     "COL", "GC", "IMP", "INT", "NFR", "OP", "PRJ", "SET", "SIM", "SUG", "TL", "UI", "VC", "OI",
 ];
+
+/// The plural nouns a count is checked before: a placeholder followed by
+/// one of them is a count that reads wrongly when it is one.
+pub const PLURAL_NOUNS: &[&str] = &[
+    "layers",
+    "rings",
+    "moves",
+    "turns",
+    "passes",
+    "points",
+    "faces",
+    "edges",
+    "holes",
+    "tabs",
+    "chains",
+    "sets",
+    "positions",
+    "lines",
+    "legs",
+    "operations",
+    "reversals",
+    "entries",
+    "segments",
+    "links",
+    "plunges",
+    "steps",
+    "bands",
+    "slices",
+    "areas",
+    "nubs",
+    "tools",
+    "files",
+    "models",
+    "setups",
+    "creases",
+];
+
+/// How many counts before a plural noun the string literals of `code` hold
+/// (decision record 0644).
+pub fn plural_count(code: &str) -> usize {
+    string_literals(code).iter().map(|l| plurals_in(l)).sum()
+}
+
+/// The counts in one text written as it is in the source: a format
+/// placeholder (`{}`, `{n}`, `{:.0}`), one space and a noun of
+/// [`PLURAL_NOUNS`] as a whole word. A line continuation (a backslash, the
+/// line break and the indent after it) is read as nothing, as the compiler
+/// reads it.
+pub fn plurals_in(text: &str) -> usize {
+    let mut joined = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' && chars.peek() == Some(&'\n') {
+            while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                chars.next();
+            }
+        } else {
+            joined.push(c);
+        }
+    }
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let mut n = 0;
+    for (at, _) in joined.match_indices("} ") {
+        let head = &joined[..at];
+        let Some(open) = head.rfind('{') else {
+            continue;
+        };
+        // An escaped brace (`{{`) is no placeholder.
+        if head[..open].ends_with('{') || head[open..].contains('}') {
+            continue;
+        }
+        let rest = &joined[at + 2..];
+        if PLURAL_NOUNS
+            .iter()
+            .any(|noun| rest.starts_with(noun) && !rest[noun.len()..].starts_with(is_word))
+        {
+            n += 1;
+        }
+    }
+    n
+}
 
 /// How many references to a requirement, an open item or a decision record
 /// the string literals of `code` hold (decision record 0644).
@@ -291,11 +381,12 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
 /// The counts of every product source file under the scanned folders, by
 /// path from `root` with forward slashes: messages built with
 /// `Message::new`, claim words, and references to a requirement, decision
-/// record or open item.
+/// record or open item, and counts before a plural noun.
 #[allow(clippy::type_complexity)]
 pub fn all_counts(
     root: &Path,
 ) -> Result<(
+    BTreeMap<String, usize>,
     BTreeMap<String, usize>,
     BTreeMap<String, usize>,
     BTreeMap<String, usize>,
@@ -313,6 +404,7 @@ pub fn all_counts(
     let mut built = BTreeMap::new();
     let mut claims = BTreeMap::new();
     let mut ids = BTreeMap::new();
+    let mut plurals = BTreeMap::new();
     for path in files {
         let text = std::fs::read_to_string(&path)
             .with_context(|| format!("cannot read {}", path.display()))?;
@@ -332,10 +424,14 @@ pub fn all_counts(
         }
         let n = id_count(code);
         if n > 0 {
-            ids.insert(name, n);
+            ids.insert(name.clone(), n);
+        }
+        let n = plural_count(code);
+        if n > 0 {
+            plurals.insert(name, n);
         }
     }
-    Ok((built, claims, ids))
+    Ok((built, claims, ids, plurals))
 }
 
 /// The findings of `found` against `allowed`: a file over its baseline, and
@@ -381,12 +477,12 @@ pub fn table(baseline: &toml::Table, key: &str) -> Result<BTreeMap<String, usize
     Ok(out)
 }
 
-/// Runs both message rules on the workspace at `root`.
+/// Runs the message rules on the workspace at `root`.
 pub fn check(root: &Path) -> Result<Findings> {
     let text = std::fs::read_to_string(root.join(BASELINE))
         .with_context(|| format!("cannot read {BASELINE}"))?;
     let baseline: toml::Table = toml::from_str(&text).context(BASELINE)?;
-    let (built, claims, ids) = all_counts(root)?;
+    let (built, claims, ids, plurals) = all_counts(root)?;
     let mut findings = compare(
         "messages built with Message::new",
         "build a message with Message::about, which writes the form `<Topic> (<context>): <text>` (decision 0536)",
@@ -404,6 +500,12 @@ pub fn check(root: &Path) -> Result<Findings> {
         "a user reads what to change, not where the rule came from: no requirement, decision or OI number in a text (decision 0644)",
         &ids,
         &table(&baseline, "ids")?,
+    ));
+    findings.extend(compare(
+        "counts before a plural noun",
+        "a count that can be one is written with openchuck_path::counted, so one reads \"1 layer\", not \"1 layers\" (decision 0644)",
+        &plurals,
+        &table(&baseline, "plural_counts")?,
     ));
     Ok(findings)
 }
@@ -442,7 +544,7 @@ mod tests {
     #[test]
     fn req_nfr_12_no_product_text_claims_safety() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let (_, claims, _) = all_counts(&root).unwrap();
+        let (_, claims, _, _) = all_counts(&root).unwrap();
         assert!(claims.is_empty(), "{claims:?}");
         let text = std::fs::read_to_string(root.join(BASELINE)).unwrap();
         let baseline: toml::Table = toml::from_str(&text).unwrap();
@@ -508,6 +610,27 @@ mod tests {
         assert_eq!(ids_in("a STOP-1 tool, T1-2, op-14, 3 decisions"), 0);
         let code = "let s = format!(\"a (OP-14) b\");\n// OP-15 in a comment\n";
         assert_eq!(id_count(code), 1);
+    }
+
+    #[test]
+    fn req_ui_12_a_count_before_a_plural_noun_is_counted() {
+        // Decision record 0644: OWNERCHECKS2 found "in 1 layers of 1 mm".
+        assert_eq!(
+            plurals_in("beside it in {layers} layers of {stepdown} mm"),
+            1
+        );
+        assert_eq!(plurals_in("cut {} rings, {:.0} moves and {n} passes"), 3);
+        // Over a line continuation, as the compiler reads it.
+        assert_eq!(plurals_in("cut {} \\\n                 rings"), 1);
+        // No placeholder, an escaped brace, another word or a longer word.
+        assert_eq!(
+            plurals_in("3 layers, {{x}} layers, {} layered, {} layer"),
+            0
+        );
+        assert_eq!(plurals_in("{} concave creases, {} linesmen"), 0);
+        let code = "let s = format!(\"{} moves\");\n// {} moves in a comment\n\
+                    let t = counted(n, \"move\", \"moves\");\n";
+        assert_eq!(plural_count(code), 1);
     }
 
     #[test]

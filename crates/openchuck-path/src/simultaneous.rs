@@ -1703,9 +1703,9 @@ fn ring_passes(
     }
     let note = match r.blend {
         None => format!(
-            "simultaneous finishing cut {} rings, no more than {gap:.4} mm apart, each a whole \
+            "simultaneous finishing cut {}, no more than {gap:.4} mm apart, each a whole \
              turn at one place along the part, joined by steps along it with A held still",
-            xs.len()
+            crate::counted(xs.len(), "ring", "rings")
         ),
         Some(_) => {
             let b = plan.input.surface.bounds();
@@ -1713,9 +1713,9 @@ fn ring_passes(
                 .into_iter()
                 .fold(0.0_f64, |m, v| m.max(v.abs()));
             format!(
-                "simultaneous finishing cut {} rings, no more than {gap:.4} mm apart, each a \
+                "simultaneous finishing cut {}, no more than {gap:.4} mm apart, each a \
                  whole turn at one place along the part{}",
-                xs.len(),
+                crate::counted(xs.len(), "ring", "rings"),
                 crate::helical::blend_words(r.blend, gap, radius)
             )
         }

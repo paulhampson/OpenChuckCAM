@@ -1372,9 +1372,9 @@ impl<'a> Job<'a> {
         };
         let passes = self.layers(&place, coarse, context)?;
         let note = Notice::information(format!(
-            "each layer is cut in {} rings no more than {gap:.4} mm apart, each a whole turn at \
+            "each layer is cut in {} no more than {gap:.4} mm apart, each a whole turn at \
              one place along the part, joined by steps along it{}",
-            xs.len(),
+            crate::counted(xs.len(), "ring", "rings"),
             crate::helical::blend_words(blend, gap, self.r_top)
         ))
         .about(topic::RINGS);

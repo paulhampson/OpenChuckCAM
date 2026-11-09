@@ -801,11 +801,11 @@ impl Strategy for PencilFinishing {
             ""
         };
         let note = format!(
-            "{} concave creases{from}, {} passes; it follows creases only and \
+            "{}{from}, {}; it follows creases only and \
              leaves the part's end faces as earlier operations left them: face them with helical \
              finishing, rest machining or Facing",
-            creases.len(),
-            passes.len()
+            crate::counted(creases.len(), "concave crease", "concave creases"),
+            crate::counted(passes.len(), "pass", "passes")
         );
         Ok(StrategyOutput {
             passes,

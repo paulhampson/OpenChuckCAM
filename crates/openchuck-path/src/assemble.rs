@@ -887,9 +887,10 @@ pub(crate) fn assemble_limited(
         b.notes.insert(
             0,
             Notice::information(format!(
-                "{kept_high} of {asked_low} links between passes could not be lowered \
+                "{kept_high} of {} between passes could not be lowered \
                  (stock, a held region or the retract height leaves no room) and retract \
-                 as usual"
+                 as usual",
+                crate::counted(asked_low, "link", "links")
             ))
             .about(topic::LINKS),
         );

@@ -589,8 +589,9 @@ fn run(cli: Cli) -> Result<()> {
             if !long.is_empty() {
                 // A warning only: the project is valid (OI-35).
                 eprintln!(
-                    "warning: {} items have long order keys; renumbering their list would shorten them",
-                    long.len()
+                    "warning: {} {} long order keys; renumbering their list would shorten them",
+                    openchuck_app::path::counted(long.len(), "item", "items"),
+                    if long.len() == 1 { "has" } else { "have" }
                 );
             }
             if problems > 0 {
@@ -674,9 +675,9 @@ fn run(cli: Cli) -> Result<()> {
             for report in &result.reports {
                 match &report.comparison {
                     Ok(c) => println!(
-                        "  {}: {} moves; replay matches the toolpath (tip {:.4} mm, A {:.4} deg; cut {:.1} s, toolpath {:.1} s)",
+                        "  {}: {}; replay matches the toolpath (tip {:.4} mm, A {:.4} deg; cut {:.1} s, toolpath {:.1} s)",
                         report.file,
-                        report.moves,
+                        openchuck_app::path::counted(report.moves, "move", "moves"),
                         c.max_position_error,
                         c.max_a_error,
                         c.gcode_cut_seconds,
@@ -854,9 +855,9 @@ fn run(cli: Cli) -> Result<()> {
                 compare_simulator(&replayed, &sim, tolerance)?
             };
             println!(
-                "{}: the simulator reached all {} moves (largest difference {:.4}, {:.1} s of motion) and reported no fault",
+                "{}: the simulator reached all {} (largest difference {:.4}, {:.1} s of motion) and reported no fault",
                 program.display(),
-                found.moves,
+                openchuck_app::path::counted(found.moves, "move", "moves"),
                 found.max_error,
                 found.seconds
             );
@@ -1448,8 +1449,11 @@ fn print_simulation(
         );
         for op in &setup.operations {
             println!(
-                "    operation '{}': {} moves, {} poses, removed {:.1} mm3",
-                op.operation, op.moves, op.poses, op.removed_volume
+                "    operation '{}': {}, {}, removed {:.1} mm3",
+                op.operation,
+                openchuck_app::path::counted(op.moves, "move", "moves"),
+                openchuck_app::path::counted(op.poses, "pose", "poses"),
+                op.removed_volume
             );
             for cut in &op.rapid_cuts {
                 failures += 1;
@@ -1496,8 +1500,9 @@ fn print_simulation(
         if d.overcut_count > 0 {
             failures += d.overcut_places.len();
             println!(
-                "      OVERCUT beyond {} mm (one cell) at {} samples; places:",
-                d.overcut_limit, d.overcut_count
+                "      OVERCUT beyond {} mm (one cell) at {}; places:",
+                d.overcut_limit,
+                openchuck_app::path::counted(d.overcut_count, "sample", "samples")
             );
             for p in &d.overcut_places {
                 println!("        {:.4} mm at {}", -p.value, at(p));
@@ -1592,7 +1597,11 @@ fn run_library(path: &Path, action: LibraryAction, threads: Threads, create: boo
                 .collect::<std::result::Result<Vec<_>, String>>()
                 .map_err(anyhow::Error::msg)?;
             let written = library.export(&ids, &to)?;
-            println!("{}: {} tools written", to.display(), written.len());
+            println!(
+                "{}: {} written",
+                to.display(),
+                openchuck_app::path::counted(written.len(), "tool", "tools")
+            );
         }
         LibraryAction::Profile { tool, file } => {
             let profile = load_tool_profile(&file)?;

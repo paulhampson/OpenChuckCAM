@@ -369,8 +369,9 @@ pub(crate) fn free_ends(
         out.notes.push(
             Notice::information(format!(
                 "the end face at X {face:.3} has nothing beyond it: the tool goes down beside \
-                 it in {layers} layers of {stepdown} mm to the rotary axis, turning once round \
-                 the axis in each"
+                 it in {} of {stepdown} mm to the rotary axis, turning once round \
+                 the axis in each",
+                crate::counted(layers, "layer", "layers")
             ))
             .about(topic::FREE_ENDS),
         );
@@ -572,10 +573,10 @@ pub(crate) fn layers(
             "the setup's own stock, with no earlier operation in this setup"
         };
         Notice::information(format!(
-            "up to {} layers of {stepdown} mm above a finish allowance of \
+            "up to {} of {stepdown} mm above a finish allowance of \
              {allowance} mm, then the final pass on the surface; the layers start from {from}, \
              so the depth of each cut is not uniform and no engagement is promised",
-            heights.len()
+            crate::counted(heights.len(), "layer", "layers")
         ))
         .about(topic::FINISHING_LAYERS)
     });

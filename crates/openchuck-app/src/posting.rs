@@ -622,8 +622,9 @@ pub(crate) fn short_block_note(project: &Project, report: &ShortBlockReport) -> 
         .map_or(report.operation.as_str(), |o| o.name.as_str());
     let action = match report.settings.mode {
         openchuck_types::machine::ShortBlockMode::SlowDown => format!(
-            "Slow down lengthened {} moves and added {:.3} s",
-            report.slowed_moves, report.added_seconds
+            "Slow down lengthened {} and added {:.3} s",
+            openchuck_path::counted(report.slowed_moves, "move", "moves"),
+            report.added_seconds
         ),
         _ => format!(
             "Report leaves the program unchanged; slowdown would add {:.3} s",
@@ -631,19 +632,14 @@ pub(crate) fn short_block_note(project: &Project, report: &ShortBlockReport) -> 
         ),
     };
     let text = format!(
-        "{} windows below {:.3} ms averaged over {} {} (limit from {}, window from {}, mode from {}); {} moves below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
-        report.affected_windows,
+        "{} below {:.3} ms averaged over {} (limit from {}, window from {}, mode from {}); {} below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
+        openchuck_path::counted(report.affected_windows, "window", "windows"),
         report.settings.min_block_ms,
-        report.settings.block_window,
-        if report.settings.block_window == 1 {
-            "block"
-        } else {
-            "blocks"
-        },
+        openchuck_path::counted(report.settings.block_window, "block", "blocks"),
         report.sources.min_block_ms.as_str(),
         report.sources.block_window.as_str(),
         report.sources.mode.as_str(),
-        report.short_moves,
+        openchuck_path::counted(report.short_moves, "move", "moves"),
         report.longest_run,
         report.worst_window_ms,
         report.effective_feed

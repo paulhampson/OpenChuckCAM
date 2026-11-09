@@ -475,14 +475,14 @@ fn passes(
             };
             let text = match blend {
                 None => format!(
-                    "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a \
+                    "helical finishing cut {}, no more than {spacing:.4} mm apart, each a \
                      whole turn at one place along the part, joined by steps along it at A {start}",
-                    xs.len()
+                    crate::counted(xs.len(), "ring", "rings")
                 ),
                 Some(_) => format!(
-                    "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a \
+                    "helical finishing cut {}, no more than {spacing:.4} mm apart, each a \
                      whole turn at one place along the part{}",
-                    xs.len(),
+                    crate::counted(xs.len(), "ring", "rings"),
                     blend_words(blend, spacing, radius)
                 ),
             };

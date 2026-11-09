@@ -1640,8 +1640,8 @@ impl ToolLibraryWindow {
                 };
                 let files = library::export_tools(lib, &[], &folder).map_err(text)?;
                 Ok(Some(format!(
-                    "Exported {} tools to {}.",
-                    files.len(),
+                    "Exported {} to {}.",
+                    openchuck_app::path::counted(files.len(), "tool", "tools"),
                     folder.display()
                 )))
             }
@@ -1962,8 +1962,11 @@ fn list(
             if !problems.is_empty() {
                 ui.add_space(8.0);
                 ui.label(
-                    RichText::new(format!("{} files could not be read:", problems.len()))
-                        .color(DARK.warning),
+                    RichText::new(format!(
+                        "{} could not be read:",
+                        openchuck_app::path::counted(problems.len(), "file", "files")
+                    ))
+                    .color(DARK.warning),
                 );
                 for p in problems {
                     ui.label(RichText::new(p).small().color(DARK.muted));
