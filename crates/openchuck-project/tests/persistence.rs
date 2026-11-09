@@ -2226,7 +2226,9 @@ fn req_op_24_req_prj_04_req_gc_07_older_end_facing_operations_keep_their_slice_a
     // in the new meaning). Other shapes and strategies are unchanged.
     let mut p = sample();
     let number = |x: f64| ParameterValue::Number(x);
-    let cases: [(u128, &str, Option<&str>, Option<f64>, Option<f64>); 5] = [
+    // (operation, strategy, shape, stored stepover, stored stepdown)
+    type Case<'a> = (u128, &'a str, Option<&'a str>, Option<f64>, Option<f64>);
+    let cases: [Case<'_>; 5] = [
         (201, "facing", Some("end"), Some(2.2225), Some(2.0)),
         (202, "facing", Some("end"), None, Some(1.5)),
         (203, "facing", Some("end"), Some(3.0), None),

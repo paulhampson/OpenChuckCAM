@@ -128,4 +128,27 @@ Every test is timed uninstrumented; none is expected to approach a minute.
 
 ## Verification
 
-Measured on `main` `1f3675d` (8 Nov 2026), Linux x86_64 container, release build, with a throwaway example (`crates/openchuck-app/examples/probe_pathfeed.rs`, not committed) using only the public Baluster example and the #499 box set-up. Generation only (`start_regenerate`) for the engagement figures; the post-time refusals are from `start_regenerate_with_post` with the LinuxCNC post. Nothing was run on a machine.
+**Before building.** The measurements in "Context" were taken on `main` `1f3675d` (8 Nov 2026), Linux x86_64 container, release build, with a throwaway example (`crates/openchuck-app/examples/probe_pathfeed.rs`, never committed) using only the public Baluster example and the #499 box set-up: engagement from generation alone (`start_regenerate`); the post-time refusals from `start_regenerate_with_post` with the LinuxCNC post.
+
+**As built (lane PATHFEED, #641; branch `claude/lane-pathfeed-641-wip`, on `main` `645256c3`).** Each test was written from this record before the code and watched failing on the code before it, except where noted. Times are uninstrumented (`cargo nextest run`), Linux x86_64 container.
+
+| Item | Test | What it checks | Seconds |
+| --- | --- | --- | ---: |
+| 3 | `facing_end_plan::req_op_24_req_tl_05_end_reads_stepover_across_and_stepdown_along_the_tool` | Stepover is the slice along X, Stepdown the band; a Stepdown of 7 mm on a 3 mm tool is not refused | 0.007 |
+| 3 | `facing_end_plan::req_op_24_req_op_16_end_labels_name_the_slice_and_the_band` | The two End labels | 0.007 |
+| 3 | `req_op_24_req_prj_04_req_gc_07_older_end_facing_operations_keep_their_slice_and_band` (`openchuck-project`) | A schema 27 End operation's stored values are exchanged, one stored value moves alone, Flat and roughing are untouched | 0.014 |
+| 3 | `facing_end_plan::req_op_24_req_nfr_07_end_settings_beyond_the_tool_refuse_naming_them` | A Stepdown longer than the flutes, or a Stepover wider than the tool, refuses naming it (pins the new wording; the refusals existed) | 0.008 |
+| 1 | `facing_end_plan::req_op_24_req_op_11_end_band_enters_from_air_beside_the_stock` | With air beside the band, both legs along X are the approach distance beside the box stock and only the sweep across crosses it (failed on the old shape) | 0.007 |
+| 1 | `facing_end_plan::req_op_24_req_op_11_part_extent_band_keeps_its_side_entry` | With a Part extent the legs stay at the band's edges, inside the stock, marked plunge-fed | 0.007 |
+| 1 | `facing_end_plan::req_op_24_req_op_11_part_extent_side_entry_goes_at_the_plunge_feed` | Those legs are written `LeadIn` at the plunge feed; the sweep across keeps the cutting feed | 0.011 |
+| 2 | `facing_end_plan::req_op_24_req_nfr_07_end_engagement_over_the_stepdown_refuses_naming_it` | A path planned with a 4 mm Stepdown, checked against 2 mm, refuses naming the Stepdown | 0.017 |
+| 2, Q4 | `facing_end_plan::req_op_24_req_nfr_07_part_extent_adds_bands_above_the_area` | Part extent on taller stock: bands step down from the stock's top by at most the Stepdown, with the "Stock above the area" note; Whole stock has no note (failed: a 9 mm first band against 4 mm) | 0.015 |
+| 4 | `facing_approach::req_op_24_req_nfr_05_whole_number_of_slices_posts_with_both_posts` (`openchuck-app`) | The Baluster on its round stock, exactly 3 mm to remove at a 1 mm slice, posts with both posts (refused on `main`) | 14.4 |
+
+Existing tests changed to the new pass shape or meaning, each still checking what it checked: `req_op_24_end_flank_uses_equal_axial_slices_and_top_first_flute_bands`, `req_op_14_req_nfr_12_end_air_point_keeps_the_approach_distance_from_the_end_face` (now from the stock, not only the end face), `req_op_24_req_op_14_end_slice_starts_and_ends_with_the_complete_tool_outside_stock`, `req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool_clearance` (a rapid may now come down beside the round stock, the whole tool outside it; the deliberate rapid into the stock is still refused), `req_op_24_stored_end_settings_control_axial_depth_flute_spacing_and_start_view`, and `operation::req_op_24_req_ui_07_facing_forms_show_only_the_selected_modes_settings` (the labels).
+
+Results: `openchuck-path`, `openchuck-app`, `openchuck-project` and `openchuck-cli` 1,982 of 1,982 passed (2,707 s, 46 slow, all existing). No stored golden program is an End facing job, so none changed. `cargo fmt`, `cargo clippy --workspace --all-targets` (clean), `cargo xtask deps` (with the message and topic rules), `licences`, `records`, `trace` and `messages` pass. Paths are deterministic at 1, 2 and N threads with both posts (`facing::integration_tests::req_op_24_req_gc_07_req_nfr_06_facing_paths_and_both_posts_are_identical_at_one_two_available_threads`, on the Part-extent project that now has the added bands).
+
+Line coverage of the changed files on these crates' Facing, migration and descent tests (a lower bound): `facing.rs` 92.3 %, `facing/end.rs` 89.1 %, `facing/end/routing.rs` 90.2 %, `facing/validation/end_layers.rs` 84.7 %. Changed lines not run: the defensive branches for an empty point window, the band budget, no stock between a band's heights, a malformed operation file in the 27 to 28 step, and the post-assembly refusal of a slice deeper than the Stepover (the planner never makes one; item 4's allowance is tested through the post). The instrumented build was cleaned afterwards.
+
+Not verified: no LinuxCNC replay was run for the new End programs, and nothing was run on a machine. Generated G-code remains the user's to verify before it is run (NFR-12).

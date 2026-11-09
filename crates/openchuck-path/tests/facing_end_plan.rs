@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! End candidates use true flank geometry, equal axial slices and finite
 //! flute bands. These checks do not certify assembled motion clearance.
-#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::float_cmp,
+    clippy::panic
+)]
 use openchuck_path::facing::end::{EndFacingParameters, plan_end};
 use openchuck_path::facing::extents::FacingExtent;
 use openchuck_path::facing::plan::FacingSetup;
@@ -1831,4 +1836,30 @@ fn req_op_24_req_op_11_part_extent_side_entry_goes_at_the_plunge_feed() {
         previous = segment.end;
     }
     assert!(along_x > 0 && across > 0);
+}
+
+/// Decision 0547 item 3 with TL-05's bounds: a Stepdown (band along the
+/// tool) longer than the flute length, or a Stepover (slice along X) wider
+/// than the tool, is refused naming the setting (NFR-07).
+#[test]
+fn req_op_24_req_nfr_07_end_settings_beyond_the_tool_refuse_naming_them() {
+    use openchuck_path::ParameterValue;
+    for (stepover, stepdown, named) in [
+        (2., FLUTE + 1., "Stepdown (band along the tool)"),
+        (4., 2., "Stepover (slice thickness along X)"),
+    ] {
+        let values = vec![
+            ("shape", ParameterValue::Text("end".into())),
+            ("feed", ParameterValue::Number(600.)),
+            ("plunge_feed", ParameterValue::Number(200.)),
+            ("stepover", ParameterValue::Number(stepover)),
+            ("stepdown", ParameterValue::Number(stepdown)),
+            ("stock_to_leave", ParameterValue::Number(0.2)),
+        ];
+        let error = generate_on_round_bar(&values)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "accepted".to_owned());
+        assert!(error.contains(named), "{error}");
+    }
 }
