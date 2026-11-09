@@ -147,7 +147,6 @@ impl Fixture {
             },
             max_feeds: machine.max_feeds,
             tags: &tag,
-            entry_safety: None,
             facing: None,
             keep_out: &[],
             shank: None,

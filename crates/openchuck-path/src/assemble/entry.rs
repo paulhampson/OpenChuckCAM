@@ -24,17 +24,16 @@
 //! fit is refused with a message that names the style and the size it needs;
 //! it never changes style on its own.
 
-use std::cell::RefCell;
 use std::f64::consts::{FRAC_PI_2, TAU};
 
 use openchuck_types::ir::MoveKind;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use super::ramp_refusal;
+use super::pass_shape::{self, Start};
+use super::ring_ramp::{self, RingRamp};
 use super::{Builder, EPS, View};
 use crate::cutter::{self, ToolLine};
-use crate::entry_safety::{Blocked, Refused};
 use crate::error::{PathError, Result};
 use crate::helical::CHORD_FACTOR;
 use crate::parallel;
@@ -45,17 +44,23 @@ use crate::strategy::{CutPoint, StrategyInput};
 /// The most segments one entry may take.
 const MAX_SEGMENTS: usize = 100_000;
 
-/// The most positions checked along a ramp, which is one straight move: they
-/// are at most a quarter of the tool radius apart until this many.
-const MAX_RAMP_CHECKS: usize = 20_000;
-
 /// A horizontal direction in the fixed frame: (along, across).
 type Dir = (f64, f64);
 
-pub(super) struct Entry<'a> {
-    sweep: Option<RefCell<crate::entry_safety::SweepSession<'a>>>,
+pub(super) struct Entry {
     style: EntryStyle,
-    back_and_forth: bool,
+    /// A single-point pass under a ramp is plunged (decision 0543 D7).
+    single_point_plunge: bool,
+    /// A ring or spiral ramp past 10 turns uses a steeper angle (decision
+    /// 0543 section 4, point 3).
+    steeper_near_axis: bool,
+    /// The tangent of the steepest angle it may use.
+    tan_max: f64,
+    /// Roughing rings round the axis no wider than the nub are plunged
+    /// (decision 0543 section 4, point 3): the nub's radius, or `None`.
+    nub_radius: Option<f64>,
+    /// The tool's cutting radius.
+    tool_radius: f64,
     ramp_tan: f64,
     helix_radius: f64,
     lead_radius: f64,
@@ -64,11 +69,14 @@ pub(super) struct Entry<'a> {
     chord: f64,
     /// The profile grown by the stock to leave; `None` for a plain plunge.
     grown: Option<RevolvedProfile>,
+    /// A height above all the stock (the retract height), from which the
+    /// stock under a ramp's path is probed.
+    probe_height: f64,
 }
 
-impl<'a> Entry<'a> {
+impl Entry {
     pub(super) fn new(
-        input: &StrategyInput<'a>,
+        input: &StrategyInput<'_>,
         common: &CommonParameters,
         e: &EntryParameters,
     ) -> Result<Self> {
@@ -79,16 +87,19 @@ impl<'a> Entry<'a> {
             _ => Some(cutter::grow_profile(input.tool, leave)?),
         };
         Ok(Self {
-            sweep: (e.style == EntryStyle::Ramp && e.back_and_forth)
-                .then(|| {
-                    input
-                        .entry_safety
-                        .map(crate::entry_safety::SweepSession::new)
-                        .map(RefCell::new)
-                })
-                .flatten(),
             style: e.style,
-            back_and_forth: e.back_and_forth,
+            single_point_plunge: e.allow_single_point_plunge,
+            steeper_near_axis: e.steeper_near_axis,
+            tan_max: e.ramp_angle_max.0.max(e.ramp_angle.0).to_radians().tan(),
+            nub_radius: (e.style == EntryStyle::Ramp && e.plunge_face_nubs).then(|| {
+                let diameter = 2.0 * radius;
+                0.5 * if e.face_nub_diameter.0 > 0.0 {
+                    e.face_nub_diameter.0.min(diameter)
+                } else {
+                    diameter
+                }
+            }),
+            tool_radius: radius,
             ramp_tan: e.ramp_angle.0.to_radians().tan(),
             helix_radius: e.helix_diameter * radius,
             lead_radius: if e.lead_radius.0 > 0.0 {
@@ -100,6 +111,10 @@ impl<'a> Entry<'a> {
             tolerance: common.tolerance.get().0,
             chord: CHORD_FACTOR * common.tolerance.get().0,
             grown,
+            probe_height: match common.retract {
+                crate::params::Retract::Clearance => input.clearance.radius.0,
+                crate::params::Retract::SafeZ => input.clearance.safe_z.0,
+            },
         })
     }
 
@@ -113,18 +128,18 @@ impl<'a> Entry<'a> {
         common: &CommonParameters,
         pass: usize,
         points: &[CutPoint],
-        context: &openchuck_types::job::JobContext<'_>,
+        rapids: &[usize],
     ) -> Result<()> {
         let Some(head) = points.first() else {
             return Ok(());
         };
+        if let Some(plan) = self.ring_plan(b, input, stock, common, pass, points, rapids)? {
+            return self.ring_ramp(b, input, common, pass, &plan);
+        }
         match self.style {
             EntryStyle::Plunge => plunge(b, stock, common, head),
             EntryStyle::Lead => self.lead_in(b, input, stock, common, pass, head, points),
-            EntryStyle::Ramp if self.back_and_forth => {
-                self.repeated_ramp(b, input, stock, common, pass, head, points, context)
-            }
-            EntryStyle::Ramp => self.ramp(b, input, stock, common, pass, head, points),
+            EntryStyle::Ramp => self.ramp(b, input, stock, common, pass, head, points, rapids),
             EntryStyle::Helix => self.helix(b, input, stock, common, pass, head, points),
         }
     }
@@ -209,6 +224,7 @@ impl<'a> Entry<'a> {
         // no line to lead along: it is entered by a plunge (issue 199,
         // decision 0204).
         let Some(d) = direction_at_start(b, points) else {
+            b.straight_plunges.push(pass);
             return plunge(b, stock, common, head);
         };
         let r = self.lead_radius;
@@ -234,6 +250,16 @@ impl<'a> Entry<'a> {
             let Some(start) = positions.first().copied() else {
                 continue;
             };
+            // The move across at the link's height is checked against
+            // the stock along its whole line first (issue #642).
+            super::clear_traverse(
+                b,
+                stock,
+                start,
+                head.a,
+                common.approach_distance.0,
+                self.probe_height,
+            )?;
             let here = b.at();
             let above = AxisPosition {
                 height: here.height,
@@ -275,178 +301,11 @@ impl<'a> Entry<'a> {
         ))
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn repeated_ramp(
-        &self,
-        b: &mut Builder<'_>,
-        input: &StrategyInput<'_>,
-        stock: View<'_>,
-        common: &CommonParameters,
-        pass: usize,
-        head: &CutPoint,
-        points: &[CutPoint],
-        context: &openchuck_types::job::JobContext<'_>,
-    ) -> Result<()> {
-        let safety = self
-            .sweep
-            .as_ref()
-            .ok_or_else(|| PathError::Strategy(ramp_refusal::missing_inputs()))?;
-        let mut safety = safety.borrow_mut();
-        let d = direction_at_start(b, points)
-            .ok_or_else(|| PathError::Strategy(ramp_refusal::no_direction(pass, points.len())))?;
-        let goal = b.rotary.to_axis(head.tip, head.a);
-        let radius = input
-            .stock
-            .max_radius()
-            .ok_or_else(|| PathError::Strategy(ramp_refusal::no_stock_size()))?;
-        let top =
-            stop_height(b, stock, common, goal.height).max(radius + common.approach_distance.0);
-        if top > b.at().height + EPS {
-            // The first pass starts at the safe Z; the others at the height
-            // their links retract to.
-            let field = match common.retract {
-                _ if pass == 0 => "Safe Z",
-                crate::params::Retract::Clearance => "Safe radius",
-                crate::params::Retract::SafeZ => "Safe Z",
-            };
-            return Err(PathError::Strategy(ramp_refusal::above_clearance(
-                pass,
-                top,
-                b.at().height,
-                field,
-            )));
-        }
-        let rise = top - goal.height;
-        if rise <= EPS {
-            return Err(PathError::Strategy(ramp_refusal::nothing_to_descend(
-                pass,
-                goal.height - radius,
-            )));
-        }
-        let length = 2.0 * input.tool.cutting_radius();
-        let angle = self.ramp_tan.atan().to_degrees();
-        let position = |distance: f64, height: f64| {
-            b.rotary.to_model(
-                AxisPosition {
-                    along: goal.along - d.0 * distance,
-                    across: goal.across - d.1 * distance,
-                    height,
-                },
-                head.a,
-            )
-        };
-        let pose = |distance: f64, height: f64| openchuck_types::ir::ToolPose {
-            tip: position(distance, height),
-            axis: b.rotary.tool_axis(head.a),
-            a: head.a,
-        };
-        let refused = |refused: Refused| match refused {
-            Refused::Blocked(blocked) => PathError::Strategy(ramp_refusal::blocked(pass, blocked)),
-            Refused::Error(error) => error,
-        };
-        let mut budget = 100_000;
-        // Prove the complete corridor at target depth before planning any leg.
-        // Every descending leg, reversal and final connection is checked again.
-        safety
-            .verify(
-                pose(0.0, goal.height),
-                pose(length, goal.height),
-                self.leave,
-                self.tolerance,
-                &mut budget,
-                context,
-            )
-            .map_err(|error| match error {
-                Refused::Blocked(blocked) => {
-                    PathError::Strategy(ramp_refusal::corridor(length, blocked))
-                }
-                Refused::Error(error) => error,
-            })?;
-        let legs = super::ramp::plan(rise, length, length, angle, || {
-            context.cancel.is_cancelled()
-        })
-        .map_err(|e| match e {
-            super::ramp::Refusal::Cancelled => PathError::Cancelled,
-            refusal => PathError::Strategy(ramp_refusal::plan(pass, refusal, rise, length, angle)),
-        })?;
-        let mut motions = Vec::new();
-        let mut previous = b.pose;
-        let start = pose(0.0, top);
-        safety
-            .verify(
-                previous,
-                start,
-                self.leave,
-                self.tolerance,
-                &mut budget,
-                context,
-            )
-            .map_err(refused)?;
-        motions.push((MoveKind::Rapid, start));
-        previous = start;
-        let mut height = top;
-        for leg in legs {
-            context.check_cancelled()?;
-            height = (height - leg.drop).max(goal.height);
-            let end = pose(leg.to, height);
-            safety
-                .verify(
-                    previous,
-                    end,
-                    self.leave,
-                    self.tolerance,
-                    &mut budget,
-                    context,
-                )
-                .map_err(refused)?;
-            motions.push((MoveKind::LeadIn, end));
-            previous = end;
-        }
-        let end = pose(0.0, goal.height);
-        safety
-            .verify(
-                previous,
-                end,
-                self.leave,
-                self.tolerance,
-                &mut budget,
-                context,
-            )
-            .map_err(refused)?;
-        motions.push((MoveKind::LeadIn, end));
-        // Retain the existing target/refusal checks for approach, every leg,
-        // reversal and final connection, in addition to the continuous proof.
-        // Chunking bounds cancellation latency in the older parallel query.
-        let mut previous = b.pose;
-        for (_, end) in &motions {
-            let from = b.rotary.to_axis(previous.tip, head.a);
-            let to = b.rotary.to_axis(end.tip, head.a);
-            let distance = (to.along - from.along).hypot(to.across - from.across);
-            let positions =
-                lerp_positions(from, to, distance / (0.25 * input.tool.cutting_radius()));
-            if positions.len() > budget {
-                return Err(PathError::Strategy(ramp_refusal::blocked(
-                    pass,
-                    Blocked::Budget,
-                )));
-            }
-            budget -= positions.len();
-            for chunk in positions.chunks(64) {
-                context.check_cancelled()?;
-                if let Some(g) = self.gouge(b, input, head.a, chunk) {
-                    return Err(self.ramp_refused(input, pass, g));
-                }
-            }
-            previous = *end;
-        }
-        // All geometry is established before any part of this entry is emitted.
-        for (kind, end) in motions {
-            context.check_cancelled()?;
-            b.push(kind, end, None, kind.is_fed().then_some(common.plunge_feed))?;
-        }
-        Ok(())
-    }
-
+    /// A ramp that follows the pass's own toolpath (decision 0543): over a
+    /// line or a partial ring, back and forth; a pass that starts as a ring
+    /// or a spiral is ramped round the axis before it reaches here
+    /// ([`Self::ring_plan`]), and comes here only when it starts above the
+    /// stock, with nothing to descend into.
     #[allow(clippy::too_many_arguments)]
     fn ramp(
         &self,
@@ -457,63 +316,204 @@ impl<'a> Entry<'a> {
         pass: usize,
         head: &CutPoint,
         points: &[CutPoint],
+        rapids: &[usize],
     ) -> Result<()> {
-        let name = "ramp";
-        let goal = b.rotary.to_axis(head.tip, head.a);
-        let top = stop_height(b, stock, common, goal.height);
-        let rise = top - goal.height;
-        if rise <= EPS {
-            return plunge(b, stock, common, head);
+        let shape = pass_shape::start(&b.rotary, points, rapids, self.tolerance);
+        // A pass that turns A with its tip on the rotary axis does not move
+        // relative to the part: like a single point, it has no path to
+        // follow (decision 0543 D7).
+        let on_axis = matches!(shape, Start::FullRing { .. } | Start::Spiral { .. }) && {
+            let at = b.rotary.to_axis(head.tip, head.a);
+            at.across.hypot(at.height) <= self.tolerance
+        };
+        match shape {
+            // Reached only when there is nothing to descend into
+            // (`ring_plan` plans the descent on the axis otherwise).
+            _ if on_axis => plunge(b, stock, common, head),
+            Start::SinglePoint => self.single_point(b, stock, common, pass, head),
+            Start::FullRing { .. } | Start::Spiral { .. } => plunge(b, stock, common, head),
+            Start::Line { end } => {
+                // A line shorter than the minimum (the step before a ring,
+                // say) is followed on along the pass, up to its first rapid,
+                // so the ramp goes back and forth over the pass's own path
+                // past it, A reversing during the entry only (decision 0543
+                // D3).
+                let path: Vec<(AxisPosition, Degrees)> = points
+                    .iter()
+                    .take(end + 1)
+                    .map(|p| (b.rotary.to_axis(p.tip, p.a), p.a))
+                    .collect();
+                if travel_of(&path) < input.tool.cutting_radius() {
+                    let last = (1..points.len())
+                        .find(|k| rapids.contains(k))
+                        .map_or(points.len().saturating_sub(1), |k| k - 1);
+                    self.follow(b, input, stock, common, pass, points, last.max(end), true)
+                } else {
+                    self.follow(b, input, stock, common, pass, points, end, false)
+                }
+            }
+            Start::PartialRing { end, .. } => {
+                self.follow(b, input, stock, common, pass, points, end, true)
+            }
         }
-        // As for the lead-in: a pass of one cut point has no line to ramp
-        // along (issue 199, decision 0204).
-        let Some(d) = direction_at_start(b, points) else {
-            return plunge(b, stock, common, head);
-        };
-        let run = rise / self.ramp_tan;
-        let start = AxisPosition {
-            along: goal.along - d.0 * run,
-            across: goal.across - d.1 * run,
-            height: top,
-        };
-        let positions = lerp_positions(start, goal, run / (0.25 * input.tool.cutting_radius()));
-        if let Some(g) = self.gouge(b, input, head.a, &positions) {
-            return Err(self.refuse(
-                input,
-                pass,
-                name,
-                &format!(
-                    "a run of {run:.3} mm to descend {rise:.3} mm at {:.2} degrees",
-                    self.ramp_tan.atan().to_degrees()
-                ),
-                g,
-            ));
-        }
-        // Across at the link height, down to the start of the ramp, then
-        // along it.
-        let here = b.at();
-        let over = AxisPosition {
-            height: here.height,
-            ..start
-        };
-        let tip = b.rotary.to_model(over, head.a);
-        let pose = b.pose(tip, head.a);
-        b.push(MoveKind::Rapid, pose, None, None)?;
-        let travel = here.height - top;
-        if let Some(hit) = super::footprint_entry(b, stock, b.at(), head.a, here.height, travel)
-            && hit < travel - 1e-6
-        {
+    }
+
+    /// A pass with no path to follow: refused unless Allow single-point
+    /// plunge is on, then plunged and named in a note (decision 0543 D7, the
+    /// owner's answer).
+    fn single_point(
+        &self,
+        b: &mut Builder<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        head: &CutPoint,
+    ) -> Result<()> {
+        if !self.single_point_plunge {
             return Err(PathError::Strategy(format!(
-                "pass {}: the ramp starts {run:.3} mm back from the first cut point, where the \
-                 stock is {:.3} mm higher than the {top:.3} mm the rapid stops at; use a \
-                 steeper angle, another entry style or a larger approach distance",
-                pass + 1,
-                travel - hit
+                "Ramp entry: pass {} is a single point, so there is no path for the ramp to \
+                 follow. Turn on Allow single-point plunge, or set Entry to Plunge or Helix.",
+                pass + 1
             )));
         }
-        rapid_to(b, top)?;
-        let pose = b.pose(head.tip, head.a);
-        b.push(MoveKind::LeadIn, pose, None, Some(common.plunge_feed))
+        b.single_point_plunges.push(pass);
+        b.straight_plunges.push(pass);
+        plunge(b, stock, common, head)
+    }
+
+    /// The back-and-forth ramp over the pass's own path up to `end`, from
+    /// the approach distance above the highest stock under the stretch it
+    /// uses (decision 0543 D3, D4, D5).
+    #[allow(clippy::too_many_arguments)]
+    fn follow(
+        &self,
+        b: &mut Builder<'_>,
+        input: &StrategyInput<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        points: &[CutPoint],
+        end: usize,
+        arc: bool,
+    ) -> Result<()> {
+        let path: Vec<(AxisPosition, Degrees)> = points
+            .iter()
+            .take(end + 1)
+            .map(|p| (b.rotary.to_axis(p.tip, p.a), p.a))
+            .collect();
+        let Some(&(goal, a0)) = path.first() else {
+            return Ok(());
+        };
+        let head = CutPoint {
+            tip: b.rotary.to_model(goal, a0),
+            a: a0,
+            contact: b.rotary.to_model(goal, a0),
+        };
+        let low = path
+            .iter()
+            .map(|(p, _)| p.height)
+            .fold(f64::INFINITY, f64::min);
+        let total = travel_of(&path);
+        let approach = common.approach_distance.0;
+        // The stock over the first point: none means nothing to descend into.
+        let here = stock_top_along(b, stock, &path, 0.0, self.probe_height);
+        if here <= goal.height + EPS {
+            return plunge(b, stock, common, &head);
+        }
+        // D5: the highest stock under the stretch the ramp uses, which
+        // depends on how high it starts: a few rounds settle it.
+        let mut top = here + approach;
+        for _ in 0..8 {
+            let reach = ((top - low) / self.ramp_tan).min(total);
+            let next = stock_top_along(b, stock, &path, reach, self.probe_height) + approach;
+            if next <= top + EPS {
+                break;
+            }
+            top = next;
+        }
+        let minimum = input.tool.cutting_radius();
+        let (moves, steep) = super::path_ramp::back_and_forth(&path, top, self.ramp_tan, minimum)
+            .map_err(|refusal| {
+            let what = if arc { "stretch" } else { "line" };
+            PathError::Strategy(match refusal {
+                super::path_ramp::Refusal::TooShort { length } => format!(
+                    "Ramp entry: pass {} starts with a {what} of {length:.3} mm, shorter than the \
+                     {minimum:.3} mm (the tool radius) a ramp needs to go back and forth over. \
+                     Set Entry to Plunge or Helix.",
+                    pass + 1
+                ),
+                super::path_ramp::Refusal::TooManyLegs { legs } => format!(
+                    "Ramp entry: pass {} would need {legs} legs to ramp down its {what} of \
+                     {total:.3} mm, more than the {} allowed. Raise Ramp angle, or set Entry to \
+                     Plunge or Helix.",
+                    pass + 1,
+                    super::path_ramp::MAX_LEGS
+                ),
+            })
+        })?;
+        self.emit(b, input, common, pass, &moves, MoveKind::LeadIn)?;
+        if steep {
+            b.steep_ramps.push(pass);
+        }
+        if arc {
+            let reversals = moves
+                .windows(3)
+                .filter(|w| match w {
+                    [p, q, r] => (q.1.0 - p.1.0) * (r.1.0 - q.1.0) < 0.0,
+                    _ => false,
+                })
+                .count();
+            if reversals > 0 {
+                b.reversed_ramps.push((pass, reversals));
+            }
+        }
+        Ok(())
+    }
+
+    /// Emits the moves of a ramp that follows the toolpath: up to its start
+    /// if the tool is lower, to its start's angle and position at the
+    /// tool's height, down to the start, then along it. Every position is
+    /// checked against the finished surface first: on the pass's own path
+    /// this is defensive (decision 0543 section 3).
+    fn emit(
+        &self,
+        b: &mut Builder<'_>,
+        input: &StrategyInput<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        moves: &[(AxisPosition, Degrees)],
+        kind: MoveKind,
+    ) -> Result<()> {
+        let Some(&(start, a)) = moves.first() else {
+            return Ok(());
+        };
+        let found = moves
+            .iter()
+            .find_map(|(pos, a)| self.gouge(b, input, *a, std::slice::from_ref(pos)));
+        if let Some(g) = found {
+            return Err(PathError::Strategy(format!(
+                "Ramp entry: pass {} ramps over its own path, yet the tool would cut {:.3} mm \
+                 into the finished surface at X {:.3} mm. This should not happen: please report \
+                 it as a defect, and set Entry to Plunge or Helix meanwhile.",
+                pass + 1,
+                g.depth,
+                g.x
+            )));
+        }
+        if start.height > b.at().height + EPS {
+            b.retract(start.height)?;
+        }
+        let height = b.at().height;
+        let over = b.rotary.to_model(AxisPosition { height, ..start }, a);
+        let pose = b.pose(over, a);
+        b.push(MoveKind::Rapid, pose, None, None)?;
+        rapid_to(b, start.height)?;
+        for (pos, a) in moves.iter().skip(1) {
+            let tip = b.rotary.to_model(*pos, *a);
+            let pose = b.pose(tip, *a);
+            b.push(kind, pose, None, Some(common.plunge_feed))?;
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -586,6 +586,404 @@ impl<'a> Entry<'a> {
         b.push(MoveKind::LeadIn, pose, None, Some(common.plunge_feed))
     }
 
+    /// The ramp round the ring the pass starts with, when the entry is a
+    /// ramp and the pass starts as a closed ring (decision 0543 section 2);
+    /// `None` otherwise.
+    #[allow(clippy::too_many_arguments)]
+    fn ring_plan(
+        &self,
+        b: &Builder<'_>,
+        input: &StrategyInput<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        points: &[CutPoint],
+        rapids: &[usize],
+    ) -> Result<Option<RingRamp>> {
+        if self.style != EntryStyle::Ramp {
+            return Ok(None);
+        }
+        let shape = pass_shape::start(&b.rotary, points, rapids, self.tolerance);
+        if let (Some(head), Start::FullRing { sign, .. } | Start::Spiral { sign }) =
+            (points.first(), shape)
+        {
+            let at = b.rotary.to_axis(head.tip, head.a);
+            if at.across.hypot(at.height) <= self.tolerance {
+                // An end-face ring: the tip descends on the axis while A
+                // turns (decision 0543 section 4, point 2, option (b)).
+                let radius = input.tool.cutting_radius();
+                let (planned, tan, at_max) = self.steepen(|tan| {
+                    ring_ramp::plan_on_axis(
+                        b,
+                        stock,
+                        common.approach_distance.0,
+                        tan,
+                        at,
+                        head.a.0,
+                        sign,
+                        self.probe_height,
+                        radius,
+                        self.angle_step(radius).to_degrees(),
+                    )
+                });
+                return match planned {
+                    Ok(plan) => self.in_a_range(input, pass, plan).map(Some),
+                    Err(ring_ramp::Refusal::NothingToDescend) => Ok(None),
+                    Err(ring_ramp::Refusal::TooManyTurns { turns, .. }) => {
+                        Err(PathError::Strategy(format!(
+                            "Ramp entry: pass {} starts on the rotary axis, where the tool \
+                             descends while the part turns; {}, measured at the tool's radius \
+                             of {radius:.3} mm, that takes {turns:.1} turns, more than the {:.0} \
+                             allowed. {}",
+                            pass + 1,
+                            angle_words(tan, at_max),
+                            ring_ramp::MAX_TURNS,
+                            fix_words(at_max)
+                        )))
+                    }
+                };
+            }
+        }
+        let (planned, tan, at_max) = match shape {
+            Start::FullRing { end, sign } => self.steepen(|tan| {
+                ring_ramp::plan(
+                    b,
+                    stock,
+                    common.approach_distance.0,
+                    tan,
+                    points,
+                    end,
+                    sign,
+                    self.probe_height,
+                )
+            }),
+            Start::Spiral { sign } => {
+                let Some(head) = points.first() else {
+                    return Ok(None);
+                };
+                let at = b.rotary.to_axis(head.tip, head.a);
+                let step = self.angle_step(at.across.hypot(at.height)).to_degrees();
+                self.steepen(|tan| {
+                    ring_ramp::plan_spiral(
+                        b,
+                        stock,
+                        common.approach_distance.0,
+                        tan,
+                        at,
+                        head.a.0,
+                        sign,
+                        self.probe_height,
+                        step,
+                        |a| self.touch_height(b, input, at, Degrees(a)),
+                    )
+                })
+            }
+            _ => return Ok(None),
+        };
+        let plan = match planned {
+            Ok(plan) => plan,
+            Err(ring_ramp::Refusal::NothingToDescend) => return Ok(None),
+            Err(ring_ramp::Refusal::TooManyTurns { radius, turns }) => {
+                return Err(PathError::Strategy(format!(
+                    "Ramp entry: pass {} turns round the part with its tip {radius:.3} mm from \
+                     the rotary axis, so {} a ramp round it would take {turns:.1} turns, more \
+                     than the {:.0} allowed. {}",
+                    pass + 1,
+                    angle_words(tan, at_max),
+                    ring_ramp::MAX_TURNS,
+                    fix_words(at_max)
+                )));
+            }
+        };
+        self.in_a_range(input, pass, plan).map(Some)
+    }
+
+    /// The radius of the nubs plunged, or 0 when that is off.
+    pub(super) fn nub_radius(&self) -> f64 {
+        self.nub_radius.unwrap_or(0.0)
+    }
+
+    /// The stretch along X of a nub pass (decision 0543 section 4, point 3):
+    /// a pass that carries its stock (roughing), every point of it no
+    /// further from the rotary axis than the nub's radius, where the part
+    /// leaves nothing round the axis (the tool dropped onto the axis meets
+    /// nothing). `None` for any other pass.
+    pub(super) fn nub(
+        &self,
+        b: &Builder<'_>,
+        input: &StrategyInput<'_>,
+        carries_stock: bool,
+        points: &[CutPoint],
+    ) -> Option<(f64, f64)> {
+        let radius = self.nub_radius?;
+        if !carries_stock || points.is_empty() {
+            return None;
+        }
+        let (mut low, mut high) = (f64::INFINITY, f64::NEG_INFINITY);
+        for p in points {
+            let q = b.rotary.to_axis(p.tip, p.a);
+            if q.across.hypot(q.height) > radius + EPS {
+                return None;
+            }
+            low = low.min(q.along);
+            high = high.max(q.along);
+        }
+        let spacing = (0.5 * self.tool_radius).max(1e-3);
+        let count = (((high - low) / spacing).ceil() as usize).min(10_000);
+        for k in 0..=count {
+            let along = if count == 0 {
+                low
+            } else {
+                low + (high - low) * k as f64 / count as f64
+            };
+            let at = AxisPosition {
+                along,
+                across: 0.0,
+                height: 0.0,
+            };
+            for j in 0..8 {
+                if self.touch_height(b, input, at, Degrees(45.0 * f64::from(j))) > self.tolerance {
+                    return None;
+                }
+            }
+        }
+        Some((low, high))
+    }
+
+    /// Removes the nub of a nub pass from `low` to `high` along X: at most
+    /// a tool diameter apart, the tool plunges to the rotary axis at the
+    /// plunge feed and the part turns a whole turn, then the tool retracts
+    /// (decision 0543 section 4, point 3). A stretch already cleared by an
+    /// earlier plunge is skipped. Gives the plunges made.
+    pub(super) fn plunge_nub(
+        &self,
+        b: &mut Builder<'_>,
+        input: &StrategyInput<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        (low, high): (f64, f64),
+        cleared: &mut Vec<(f64, f64)>,
+    ) -> Result<usize> {
+        if cleared
+            .iter()
+            .any(|&(a, z)| a <= low + EPS && high <= z + EPS)
+        {
+            return Ok(0);
+        }
+        let diameter = 2.0 * self.tool_radius;
+        let count = (((high - low) / diameter).ceil() as usize + 1).max(1);
+        let places: Vec<f64> = if count == 1 || high - low <= EPS {
+            vec![0.5 * (low + high)]
+        } else {
+            (0..count)
+                .map(|k| low + (high - low) * k as f64 / (count - 1) as f64)
+                .collect()
+        };
+        for &along in &places {
+            b.retract(self.probe_height)?;
+            let a = b.pose.a;
+            let height = b.at().height;
+            let over = b.rotary.to_model(
+                AxisPosition {
+                    along,
+                    across: 0.0,
+                    height,
+                },
+                a,
+            );
+            let pose = b.pose(over, a);
+            b.push(MoveKind::Rapid, pose, None, None)?;
+            let stop = stop_height(b, stock, common, 0.0);
+            rapid_to(b, stop)?;
+            let at = AxisPosition {
+                along,
+                across: 0.0,
+                height: 0.0,
+            };
+            let tip = b.rotary.to_model(at, a);
+            let pose = b.pose(tip, a);
+            b.push(MoveKind::Plunge, pose, None, Some(common.plunge_feed))?;
+            // A whole turn with the tip on the axis, the way the A range
+            // allows.
+            let sign = match input.rotary.range {
+                openchuck_types::machine::ARange::Limited { max, .. }
+                    if a.0 + 360.0 > max.0 + EPS =>
+                {
+                    -1.0
+                }
+                _ => 1.0,
+            };
+            if let openchuck_types::machine::ARange::Limited { min, max } = input.rotary.range
+                && (a.0 + sign * 360.0 < min.0 - EPS || a.0 + sign * 360.0 > max.0 + EPS)
+            {
+                return Err(PathError::Strategy(format!(
+                    "Face nubs: the nub at X {along:.3} mm needs a whole turn of A from {:.3} \
+                     degrees, outside the machine's A range of {:.3} to {:.3} degrees. Widen A \
+                     range in the setup's Machine settings, or turn off Plunge to remove face \
+                     nubs.",
+                    a.0, min.0, max.0
+                )));
+            }
+            for k in 1..=8 {
+                let turned = Degrees(a.0 + sign * 45.0 * f64::from(k));
+                let tip = b.rotary.to_model(at, turned);
+                let pose = b.pose(tip, turned);
+                b.push(MoveKind::Cutting, pose, Some(tip), Some(common.feed))?;
+            }
+            b.retract(self.probe_height)?;
+        }
+        cleared.push((low - self.tool_radius, high + self.tool_radius));
+        Ok(places.len())
+    }
+
+    /// Plans with the Ramp angle and, when that needs more than 10 turns and
+    /// the steeper ramp near the axis is on, again at the angle that fits
+    /// 10 turns, never steeper than the maximum (decision 0543 section 4,
+    /// point 3). Gives the plan or refusal, the tangent of the angle used
+    /// last, and whether that was the maximum.
+    fn steepen(
+        &self,
+        mut attempt: impl FnMut(f64) -> std::result::Result<RingRamp, ring_ramp::Refusal>,
+    ) -> (std::result::Result<RingRamp, ring_ramp::Refusal>, f64, bool) {
+        let first = attempt(self.ramp_tan);
+        let Err(ring_ramp::Refusal::TooManyTurns { mut turns, .. }) = first else {
+            return (first, self.ramp_tan, false);
+        };
+        if !self.steeper_near_axis || self.tan_max <= self.ramp_tan {
+            return (first, self.ramp_tan, false);
+        }
+        // Turns fall as the tangent rises: scale it to fit 10 turns, a few
+        // times, as a steep fall of the pass may add a turn.
+        let mut tan = self.ramp_tan;
+        for _ in 0..4 {
+            tan = (tan * turns / ring_ramp::MAX_TURNS * (1.0 + 1e-6)).min(self.tan_max);
+            match attempt(tan) {
+                Ok(mut plan) => {
+                    plan.steepened = Some(tan.atan().to_degrees());
+                    return (Ok(plan), tan, false);
+                }
+                Err(ring_ramp::Refusal::TooManyTurns { turns: t, .. }) => turns = t,
+                other => return (other, tan, false),
+            }
+            if tan >= self.tan_max {
+                break;
+            }
+        }
+        let at_max = tan >= self.tan_max;
+        (attempt(tan), tan, at_max)
+    }
+
+    /// Refuses `plan` when its start is outside a limited A range (decision
+    /// 0543 D6).
+    fn in_a_range(
+        &self,
+        input: &StrategyInput<'_>,
+        pass: usize,
+        plan: RingRamp,
+    ) -> Result<RingRamp> {
+        if let (openchuck_types::machine::ARange::Limited { min, max }, Some((_, a))) =
+            (input.rotary.range, plan.start())
+            && (a.0 < min.0 - EPS || a.0 > max.0 + EPS)
+        {
+            return Err(PathError::Strategy(format!(
+                "Ramp entry: pass {} needs A from {:.3} degrees to ramp round the part, outside \
+                 the machine's A range of {:.3} to {:.3} degrees. Widen A range in the setup's \
+                 Machine settings, or set Entry to Plunge or Helix.",
+                pass + 1,
+                a.0,
+                min.0,
+                max.0
+            )));
+        }
+        Ok(plan)
+    }
+
+    /// Where the entry of this pass starts, when it is not over the pass's
+    /// first cut point at the pass's first A: the link goes there
+    /// (decision 0543 section 2).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn start(
+        &self,
+        b: &Builder<'_>,
+        input: &StrategyInput<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        points: &[CutPoint],
+        rapids: &[usize],
+    ) -> Result<Option<CutPoint>> {
+        Ok(self
+            .ring_plan(b, input, stock, common, pass, points, rapids)?
+            .and_then(|plan| plan.start())
+            .map(|(pos, a)| {
+                let tip = b.rotary.to_model(pos, a);
+                CutPoint {
+                    tip,
+                    a,
+                    contact: tip,
+                }
+            }))
+    }
+
+    /// Emits a planned ring or spiral ramp.
+    fn ring_ramp(
+        &self,
+        b: &mut Builder<'_>,
+        input: &StrategyInput<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        plan: &RingRamp,
+    ) -> Result<()> {
+        let kind = if plan.on_axis.is_some() {
+            MoveKind::Plunge
+        } else {
+            MoveKind::LeadIn
+        };
+        self.emit(b, input, common, pass, &plan.moves, kind)?;
+        if plan.follows_steep_drop {
+            b.steep_ramps.push(pass);
+        }
+        if let Some(angle) = plan.steepened {
+            b.steepened_ramps.push((pass, angle));
+        }
+        if let Some(turns) = plan.on_axis {
+            b.on_axis_ramps.push((pass, turns));
+            b.straight_plunges.push(pass);
+        }
+        Ok(())
+    }
+
+    /// The height at which the tool, at `pos`'s X and Y and angle `a`,
+    /// meets the finished surface with the stock to leave (negative
+    /// infinity where it meets nothing).
+    fn touch_height(
+        &self,
+        b: &Builder<'_>,
+        input: &StrategyInput<'_>,
+        pos: AxisPosition,
+        a: Degrees,
+    ) -> f64 {
+        let Some(grown) = self.grown.as_ref() else {
+            return f64::NEG_INFINITY;
+        };
+        let line = ToolLine {
+            origin: b.rotary.to_model(
+                AxisPosition {
+                    height: self.probe_height,
+                    ..pos
+                },
+                a,
+            ),
+            axis: b.rotary.tool_axis(a),
+        };
+        input
+            .surface
+            .drop_tool(grown, &line)
+            .map_or(f64::NEG_INFINITY, |c| {
+                self.probe_height + c.offset + self.leave
+            })
+    }
+
     /// Segments in a quarter circle of radius `r`.
     fn arc_segments(&self, r: f64) -> usize {
         ((FRAC_PI_2 / self.angle_step(r)).ceil() as usize).clamp(2, MAX_SEGMENTS)
@@ -639,22 +1037,6 @@ impl<'a> Entry<'a> {
             }
         }
         worst
-    }
-
-    /// As [`Self::refuse`], for the back-and-forth ramp, which has no size
-    /// or angle that would avoid the cut.
-    fn ramp_refused(&self, input: &StrategyInput<'_>, pass: usize, found: Gouge) -> PathError {
-        let mid = crate::strategy::part_middle(input);
-        PathError::Strategy(
-            match crate::strategy::held_end(input.keep_out, mid, found.x, found.x) {
-                Some(end) => ramp_refusal::over_held(
-                    pass,
-                    crate::strategy::held_names(&std::collections::BTreeSet::from([end])),
-                    found.x,
-                ),
-                None => ramp_refusal::into_part(pass, found.depth, self.tolerance),
-            },
-        )
     }
 
     /// The refusal of an entry or exit that would cut into the finished
@@ -776,17 +1158,92 @@ fn unit(v: Dir) -> Option<Dir> {
     (n > 1e-6).then(|| (v.0 / n, v.1 / n))
 }
 
-/// Positions evenly spaced from `from` to `to`, `count` steps (at least 2).
-fn lerp_positions(from: AxisPosition, to: AxisPosition, count: f64) -> Vec<AxisPosition> {
-    let n = count.ceil().clamp(2.0, MAX_RAMP_CHECKS as f64) as usize;
-    (0..=n)
-        .map(|i| {
-            let t = i as f64 / n as f64;
-            AxisPosition {
-                along: from.along + t * (to.along - from.along),
-                across: from.across + t * (to.across - from.across),
-                height: from.height + t * (to.height - from.height),
-            }
+/// The travel along `path`: its length across the machine plus, where A
+/// turns, the arc length at the step's mean distance from the rotary axis.
+fn travel_of(path: &[(AxisPosition, Degrees)]) -> f64 {
+    path.windows(2)
+        .map(|w| match w {
+            [(q, b), (p, a)] => step_length(*q, *b, *p, *a),
+            _ => 0.0,
         })
-        .collect()
+        .sum()
+}
+
+/// The travel of one step (see [`travel_of`]).
+fn step_length(q: AxisPosition, b: Degrees, p: AxisPosition, a: Degrees) -> f64 {
+    let radius = 0.5 * (p.across.hypot(p.height) + q.across.hypot(q.height));
+    (p.along - q.along).hypot(p.across - q.across) + (a.0 - b.0).abs().to_radians() * radius
+}
+
+/// The highest stock under the tool's footprint along `path` from its first
+/// point up to a travel of `reach` (decision 0543 D5), probed from `probe`
+/// (above all the stock) at most half a tool radius apart; negative
+/// infinity where there is none.
+fn stock_top_along(
+    b: &Builder<'_>,
+    stock: View<'_>,
+    path: &[(AxisPosition, Degrees)],
+    reach: f64,
+    probe: f64,
+) -> f64 {
+    let spacing = (0.5 * b.tool_radius).max(1e-3);
+    let mut top = f64::NEG_INFINITY;
+    let mut probe_at = |pos: AxisPosition, a: Degrees| {
+        let over = AxisPosition {
+            height: probe,
+            ..pos
+        };
+        if let Some(d) = super::footprint_entry(b, stock, over, a, probe, 2.0 * probe.abs() + 1.0) {
+            top = top.max(probe - d);
+        }
+    };
+    let Some(&(first, a0)) = path.first() else {
+        return top;
+    };
+    probe_at(first, a0);
+    let mut travelled = 0.0;
+    for w in path.windows(2) {
+        let [(q, b0), (p, a)] = w else { continue };
+        if travelled >= reach {
+            break;
+        }
+        let length = step_length(*q, *b0, *p, *a);
+        let n = ((length / spacing).ceil() as usize).clamp(1, 10_000);
+        for k in 1..=n {
+            let f = k as f64 / n as f64;
+            if travelled + f * length > reach + spacing {
+                break;
+            }
+            probe_at(
+                AxisPosition {
+                    along: q.along + f * (p.along - q.along),
+                    across: q.across + f * (p.across - q.across),
+                    height: q.height + f * (p.height - q.height),
+                },
+                Degrees(b0.0 + f * (a.0 - b0.0)),
+            );
+        }
+        travelled += length;
+    }
+    top
+}
+
+/// The angle of a refusal of too many turns: the Ramp angle, or the
+/// Maximum ramp angle when the steeper ramp near the axis reached it.
+fn angle_words(tan: f64, at_max: bool) -> String {
+    let degrees = tan.atan().to_degrees();
+    if at_max {
+        format!("even at the Maximum ramp angle of {degrees:.2} degrees")
+    } else {
+        format!("at {degrees:.2} degrees")
+    }
+}
+
+/// What to change after a refusal of too many turns.
+fn fix_words(at_max: bool) -> &'static str {
+    if at_max {
+        "Raise Maximum ramp angle, or set Entry to Plunge or Helix."
+    } else {
+        "Raise Ramp angle, or turn on Steeper ramp near the axis, or set Entry to Plunge or Helix."
+    }
 }

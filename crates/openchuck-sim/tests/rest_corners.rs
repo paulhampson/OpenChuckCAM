@@ -197,7 +197,6 @@ impl Rig {
             },
             max_feeds: self.machine.max_feeds,
             tags: &self.tags,
-            entry_safety: None,
             facing: None,
             keep_out: &self.keep_out,
             shank: None,

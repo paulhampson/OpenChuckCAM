@@ -231,7 +231,6 @@ fn req_op_24_req_set_09_an_end_held_by_the_workholding_is_refused_not_cut_short(
     // The start of the stock is held: X -6 to -2, widened by the tool.
     let keep_out = [(-8.0, 0.0)];
     let input = openchuck_path::StrategyInput {
-        entry_safety: None,
         facing: None,
         keep_out: &keep_out,
         ..f.input()

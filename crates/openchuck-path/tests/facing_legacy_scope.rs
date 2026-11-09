@@ -71,7 +71,6 @@ fn fixture(test: impl FnOnce(&StrategyInput<'_>, &FacingSetup<'_>, &JobContext<'
         clearance: machine.clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: None,
         facing: Some(&setup),
         keep_out: &[],
         shank: None,

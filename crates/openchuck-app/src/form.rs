@@ -137,6 +137,11 @@ impl FormSection {
             | "approach_distance"
             | "entry"
             | "ramp_back_and_forth"
+            | "allow_single_point_plunge"
+            | "ramp_steeper_near_axis"
+            | "ramp_angle_max"
+            | "plunge_face_nubs"
+            | "face_nub_diameter"
             | "ramp_angle"
             | "helix_diameter"
             | "lead_radius"
@@ -175,7 +180,7 @@ pub struct Field {
     pub section: FormSection,
     /// Why the setting cannot be used as it is, when that is known before
     /// the operation is generated, in plain words with what to change; shown
-    /// under it (the back-and-forth ramp, #291).
+    /// under it.
     pub problem: Option<String>,
 }
 
@@ -232,11 +237,17 @@ pub fn parameter_form(
     {
         notes.insert(0, format!("{}.", reason.replacen("swarf", "Swarf", 1)));
     }
-    let reversing_inactive = matches!(
+    // Every ramp follows the toolpath (decision 0543 D1): the
+    // back-and-forth flag has no effect, and is shown only where a saved
+    // operation has it on, as inactive.
+    let reversing_set = matches!(
         op.parameters.get(names::RAMP_BACK_AND_FORTH),
         Some(ParameterValue::Flag(true))
-    ) && !matches!(op.parameters.get(names::ENTRY),Some(ParameterValue::Text(style)) if style=="ramp");
-    let ramp_refusal = crate::ramp_entry::refusal(project, op);
+    );
+    let ramp = matches!(
+        op.parameters.get(names::ENTRY),
+        Some(ParameterValue::Text(style)) if style == "ramp"
+    );
     let from_data = [names::FEED, names::PLUNGE_FEED, names::STEPOVER];
     // Exact STEP surface contact means something only on a STEP part
     // (decision record 0526): it is not shown for a mesh part.
@@ -246,6 +257,7 @@ pub fn parameter_form(
         .parameters
         .iter()
         .filter(|spec| on_step || spec.name != EXACT_CONTACT)
+        .filter(|spec| reversing_set || spec.name != names::RAMP_BACK_AND_FORTH)
         .map(|spec| {
             let set = op.parameters.get(&spec.name).cloned();
             let (kind, default) = match &spec.kind {
@@ -309,7 +321,17 @@ pub fn parameter_form(
             Field {
                 section: FormSection::of(&spec.name),
                 name: spec.name.clone(),
-                label: if spec.name == names::RAMP_BACK_AND_FORTH && reversing_inactive {
+                label: if spec.name == names::RAMP_BACK_AND_FORTH
+                    || (!ramp
+                        && [
+                            names::ALLOW_SINGLE_POINT_PLUNGE,
+                            names::RAMP_STEEPER_NEAR_AXIS,
+                            names::RAMP_ANGLE_MAX,
+                            names::PLUNGE_FACE_NUBS,
+                            names::FACE_NUB_DIAMETER,
+                        ]
+                        .contains(&spec.name.as_str()))
+                {
                     format!("{} (inactive)", spec.label)
                 } else {
                     facing_face_label(project, &op.strategy, &spec.name)
@@ -321,7 +343,6 @@ pub fn parameter_form(
                 value,
                 source,
                 problem: match spec.name.as_str() {
-                    names::RAMP_BACK_AND_FORTH => ramp_refusal.clone(),
                     EXACT_CONTACT => contact_problem.clone(),
                     _ => None,
                 },

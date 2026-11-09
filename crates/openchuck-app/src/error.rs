@@ -81,6 +81,18 @@ pub enum AppError {
         /// Why not.
         reason: String,
     },
+    /// An operation cannot be generated, refused by a check that names its
+    /// topic, in the one form of decision record 0536 section 3: "<Topic>
+    /// (operation '<name>'): <text>".
+    #[error("{topic} (operation '{name}'): {text}")]
+    Refused {
+        /// The check's topic, as the pathing library gives it.
+        topic: String,
+        /// The operation's name.
+        name: String,
+        /// What is wrong, why, and what to change.
+        text: String,
+    },
     /// An operation cannot be generated as it stands.
     #[error("operation '{name}' cannot be generated: {reason}")]
     Operation {

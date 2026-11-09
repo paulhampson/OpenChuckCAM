@@ -246,7 +246,6 @@ fn input_for<'a>(
         },
         max_feeds: machine.max_feeds,
         tags: tag,
-        entry_safety: None,
         facing: None,
         keep_out: &[],
         shank: None,

@@ -214,8 +214,12 @@ fn req_op_11_entry_parameters_are_validated() {
     }
 }
 
+/// A ramp on a line pass goes back and forth over the start of the pass
+/// itself, an even number of legs, each falling no more steeply than the
+/// angle, from the approach distance above the stock to the first cut point
+/// (decision 0543 section 2, D3 to D5).
 #[test]
-fn req_op_11_ramp_reaches_the_first_cut_point_at_the_requested_angle() {
+fn req_op_11_a_line_ramp_follows_the_pass_within_the_angle_and_ends_at_the_first_cut_point() {
     let (part, fixture) = cone();
     let v = values(
         30.0,
@@ -225,10 +229,8 @@ fn req_op_11_ramp_reaches_the_first_cut_point_at_the_requested_angle() {
     let group = path(&fixture, &v).unwrap();
     assert!(of_kind(&group, MoveKind::Plunge).is_empty());
     let ramps = of_kind(&group, MoveKind::LeadIn);
-    assert_eq!(ramps.len(), 1);
-    let ramp = ramps[0];
-    assert_eq!(ramp.contact_feed.unwrap().0, 100.0);
-    let first_cut = of_kind(&group, MoveKind::Cutting)[0];
+    assert!(ramps.len() >= 2, "{}", ramps.len());
+    assert!(ramps.iter().all(|s| s.contact_feed.unwrap().0 == 100.0));
     let index = |s: &Segment| {
         group
             .segments
@@ -236,22 +238,39 @@ fn req_op_11_ramp_reaches_the_first_cut_point_at_the_requested_angle() {
             .position(|x| std::ptr::eq(x, s))
             .unwrap()
     };
-    assert_eq!(index(first_cut), index(ramp) + 1);
-    // It ends at the first cut point, and the move before it ends at its start.
-    let before = &group.segments[index(ramp) - 1];
-    let (a0, c0) = flat(&fixture, before);
-    let (a1, c1) = flat(&fixture, ramp);
-    let run = (a1 - a0).hypot(c1 - c0);
-    let drop = height(&fixture, before) - height(&fixture, ramp);
-    assert!(
-        (drop / run - 15.0f64.to_radians().tan()).abs() < 1e-9,
-        "{}",
-        drop / run
-    );
-    // The descent stops the approach distance above the stock, and the ramp
-    // runs back along the cut (towards the lower X).
+    let first = index(ramps[0]);
+    let last = index(ramps[ramps.len() - 1]);
+    assert_eq!(index(of_kind(&group, MoveKind::Cutting)[0]), last + 1);
+    // The ramp starts over the first cut point, the approach distance above
+    // the stock (radius 20 mm, approach 1 mm), and every move stays over the
+    // pass's own line (X 30 to 38, across 0) at A 0.
+    let before = &group.segments[first - 1];
     assert!((height(&fixture, before) - 21.0).abs() < 1e-9);
-    assert!(a0 < a1);
+    let goal = flat(&fixture, ramps[ramps.len() - 1]);
+    let start = flat(&fixture, before);
+    assert!((start.0 - goal.0).abs() < 1e-9 && start.1.abs() < 1e-9);
+    let tan = 15.0f64.to_radians().tan();
+    let mut previous = before;
+    let mut turns = 0;
+    let mut heading = 0.0;
+    for s in &ramps {
+        let (a0, c0) = flat(&fixture, previous);
+        let (a1, c1) = flat(&fixture, s);
+        assert!((30.0 - 1e-9..=38.0 + 1e-9).contains(&a1) && c1.abs() < 1e-9);
+        assert_eq!(s.end.a.0, 0.0);
+        let run = (a1 - a0).hypot(c1 - c0);
+        let drop = height(&fixture, previous) - height(&fixture, s);
+        assert!(drop <= tan * run + 1e-9, "drop {drop} over {run}");
+        let way = (a1 - a0).signum();
+        if way != 0.0 && heading != 0.0 && way != heading {
+            turns += 1;
+        }
+        if way != 0.0 {
+            heading = way;
+        }
+        previous = s;
+    }
+    assert_eq!(turns % 2, 1, "an even number of legs: {turns} turns");
     // Nothing gouges, entry moves included.
     let outline = Outline::new(&fixture.tool);
     let poses: Vec<Pose> = group
@@ -266,34 +285,65 @@ fn req_op_11_ramp_reaches_the_first_cut_point_at_the_requested_angle() {
     assert!(max_gouge(&outline, &part, &poses, 0.1).depth <= 0.001);
 }
 
-/// A pass that is a single cut point (the part's tip just reaches this
-/// layer) has no horizontal move to ramp or lead along: it is entered by a
-/// plunge, as the owner's blisk roughing at 3 degrees needs (issue 199;
-/// decision 0204), and the lead-out has nothing to follow either.
+/// A pass that is a single cut point has no path to follow. Under a ramp it
+/// refuses the operation, naming the setting, unless Allow single-point
+/// plunge is on; then it is plunged, as plain plunge entry does, with a note
+/// naming the pass (decision 0543 D7, the owner's answer). Under a lead it
+/// is plunged as before (decision 0204 item 4; decision 0544 L4).
 #[test]
-fn req_op_11_nfr_07_a_single_point_pass_is_entered_by_plunge_for_ramp_and_lead() {
+fn req_op_11_req_nfr_07_a_single_point_pass_under_a_ramp_needs_allow_single_point_plunge() {
     let (_, fixture) = cylinder();
     let plain = path(&fixture, &values(10.0, 10.0, &[])).unwrap();
-    for style in ["ramp", "lead"] {
-        let v = values(10.0, 10.0, &[entry(style), number(names::RAMP_ANGLE, 3.0)]);
-        let group = path(&fixture, &v).unwrap_or_else(|e| panic!("{style}: {e}"));
-        assert_eq!(group, plain, "{style}");
-        assert_eq!(of_kind(&group, MoveKind::Plunge).len(), 1, "{style}");
-        assert!(of_kind(&group, MoveKind::LeadIn).is_empty(), "{style}");
-        assert!(of_kind(&group, MoveKind::LeadOut).is_empty(), "{style}");
-    }
+    let ramp = values(10.0, 10.0, &[entry("ramp"), number(names::RAMP_ANGLE, 3.0)]);
+    let err = path(&fixture, &ramp).unwrap_err().to_string();
+    assert!(err.contains("pass 1 is a single point"), "{err}");
+    assert!(err.contains("Turn on Allow single-point plunge"), "{err}");
+    let allowed = values(
+        10.0,
+        10.0,
+        &[
+            entry("ramp"),
+            number(names::RAMP_ANGLE, 3.0),
+            (names::ALLOW_SINGLE_POINT_PLUNGE, ParameterValue::Flag(true)),
+        ],
+    );
+    let generated = run(|ctx| generate(&Line, &fixture.input(), &allowed, ctx)).unwrap();
+    assert_eq!(generated.group, plain);
+    assert!(
+        generated
+            .notices
+            .iter()
+            .any(|n| n.text.contains("pass 1 is a single point")),
+        "{:?}",
+        generated.notices
+    );
+    let lead = values(10.0, 10.0, &[entry("lead")]);
+    let group = path(&fixture, &lead).unwrap();
+    assert_eq!(group, plain);
+    assert!(of_kind(&group, MoveKind::LeadOut).is_empty());
 }
 
+/// The straight ramp behind the first cut point cut into the cone, which
+/// rises there, and was refused (decision 0026 as built). Following the
+/// pass, the ramp stays over what the pass cuts and generates without a
+/// gouge (decision 0543 section 3).
 #[test]
-fn req_op_11_ramp_that_would_gouge_is_refused_naming_its_size() {
-    let (_, fixture) = cone();
+fn req_op_11_req_op_12_a_ramp_on_a_rising_part_follows_the_pass_without_gouging() {
+    let (part, fixture) = cone();
     let v = values(30.0, 38.0, &[entry("ramp"), number(names::RAMP_ANGLE, 3.0)]);
-    let err = path(&fixture, &v).unwrap_err().to_string();
-    assert!(err.contains("ramp"), "{err}");
-    assert!(err.contains("a run of"), "{err}");
-    assert!(err.contains("into the finished surface"), "{err}");
-    // The style is never changed for the user.
-    assert!(err.contains("try another entry style"), "{err}");
+    let group = path(&fixture, &v).unwrap();
+    let outline = Outline::new(&fixture.tool);
+    let poses: Vec<Pose> = group
+        .segments
+        .iter()
+        .filter(|s| matches!(s.kind, MoveKind::LeadIn | MoveKind::Cutting))
+        .map(|s| Pose {
+            tip: s.end.tip,
+            axis: s.end.axis.get(),
+        })
+        .collect();
+    assert!(max_gouge(&outline, &part, &poses, 0.1).depth <= 0.001);
+    assert!(of_kind(&group, MoveKind::LeadIn).len() > 2);
 }
 
 #[test]
@@ -486,512 +536,6 @@ fn req_op_11_entry_moves_are_fed_moves_with_positive_durations() {
         assert!(s.contact_length.0 > 0.0);
         assert!(s.contact_feed.is_some());
     }
-}
-
-#[test]
-fn req_op_11_back_and_forth_ramp_descends_on_multiple_legs() {
-    use openchuck_path::entry_safety::EntrySafety;
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        20.0,
-        &ball(6.0),
-    );
-    let safety = EntrySafety {
-        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected: &[],
-        body: &fixture.tool,
-        machine: &fixture.machine,
-    };
-    let mut input = fixture.input();
-    input.entry_safety = Some(&safety);
-    let v = values(
-        20.0,
-        30.0,
-        &[
-            entry("ramp"),
-            number(names::RAMP_ANGLE, 3.0),
-            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-        ],
-    );
-    let path = run(|ctx| generate(&Line, &input, &v, ctx)).unwrap();
-    let ramps = of_kind(&path.group, MoveKind::LeadIn);
-    assert!(ramps.len() > 2, "expected repeated descent");
-    let mut previous = path.group.start;
-    let mut descending = 0;
-    let mut reversals = 0;
-    let mut direction = 0.0_f64;
-    for segment in &path.group.segments {
-        if segment.kind == MoveKind::LeadIn {
-            let a = fixture.rotary.to_axis(previous.tip, previous.a);
-            let z = fixture.rotary.to_axis(segment.end.tip, segment.end.a);
-            assert_eq!(segment.end.a, previous.a);
-            assert_eq!(segment.contact_feed.unwrap().0, 100.0);
-            let travel = (z.along - a.along).hypot(z.across - a.across);
-            let drop = a.height - z.height;
-            assert!(drop >= -1e-10 && drop <= travel * 3.0_f64.to_radians().tan() + 1e-10);
-            assert!(segment.duration.0 > 0.0);
-            if drop > 1e-10 {
-                descending += 1;
-            }
-            let next = (z.along - a.along).signum();
-            if direction * next < 0.0 {
-                reversals += 1;
-            }
-            direction = next;
-        }
-        previous = segment.end;
-    }
-    assert!(descending > 2 && reversals > 1);
-    let last = ramps.last().unwrap().end;
-    let first_cut = path
-        .group
-        .segments
-        .iter()
-        .find(|s| s.kind == MoveKind::Cutting)
-        .unwrap();
-    assert!((fixture.rotary.to_axis(last.tip, last.a).height - 15.0).abs() < 1e-9);
-    assert!(first_cut.end.tip.x > last.tip.x);
-}
-
-#[test]
-fn req_op_11_req_nfr_07_reversing_ramp_refusal_names_pass_with_no_direction() {
-    use openchuck_path::entry_safety::EntrySafety;
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        20.0,
-        &ball(6.0),
-    );
-    let safety = EntrySafety {
-        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected: &[],
-        body: &fixture.tool,
-        machine: &fixture.machine,
-    };
-    let mut input = fixture.input();
-    input.entry_safety = Some(&safety);
-    let v = values(
-        20.0,
-        20.0,
-        &[
-            entry("ramp"),
-            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-        ],
-    );
-    let error = run(|ctx| generate(&Line, &input, &v, ctx))
-        .unwrap_err()
-        .to_string();
-    assert!(
-        error.starts_with("Pass 1 is a single point") && error.ends_with(ENTRY_FIX),
-        "{error}"
-    );
-}
-
-/// Availability matrix from Phase 1; every formerly budget-limited case
-/// must certify under accepted 0248, with the same tool, geometry and angle.
-/// Verification plan sections 4 (OP-11/12/14 and acceptance thresholds),
-/// 5 (pathing tests) and 8 (environment/tools).
-#[test]
-fn req_op_11_req_op_12_req_op_14_req_nfr_04_req_nfr_07_rampbudget_characterization() {
-    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
-    for (diameter, tolerance, angle) in [
-        (3.175, 0.01, 3.0),
-        (6.0, 0.01, 3.0),
-        (6.0, 0.02, 3.0),
-        (3.175, 0.01, 6.0),
-    ] {
-        for descent in [8.0, 10.0, 12.0, 14.0, 24.0] {
-            let part = Cylinder {
-                radius: 15.0,
-                length: 40.0,
-            };
-            // Explicit approach is 2 mm; descent is stock - target + approach.
-            let fixture = Fixture::new(
-                MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-                15.0 + descent - 2.0,
-                &ball(diameter),
-            );
-            let safety = EntrySafety {
-                rotary_precision: RotaryPrecision::Float32,
-                target: &fixture.surface,
-                protected: &[],
-                body: &fixture.tool,
-                machine: &fixture.machine,
-            };
-            let mut input = fixture.input();
-            input.entry_safety = Some(&safety);
-            let v = values(
-                20.0,
-                30.0,
-                &[
-                    entry("ramp"),
-                    number(names::RAMP_ANGLE, angle),
-                    number(names::TOLERANCE, tolerance),
-                    number(names::APPROACH_DISTANCE, 2.0),
-                    (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-                ],
-            );
-            let start = std::time::Instant::now();
-            let result = run(|ctx| generate(&Line, &input, &v, ctx));
-            eprintln!(
-                "RAMPBUDGET diameter={diameter} tolerance={tolerance} angle={angle} descent={descent} seconds={:.6} result={}",
-                start.elapsed().as_secs_f64(),
-                result
-                    .as_ref()
-                    .map(|_| "certified".to_owned())
-                    .unwrap_or_else(|e| e.to_string())
-            );
-            result.unwrap();
-        }
-    }
-}
-
-#[derive(Debug)]
-struct RepeatedLine;
-impl Strategy for RepeatedLine {
-    fn name(&self) -> &str {
-        "repeated_line"
-    }
-    fn label(&self) -> &str {
-        "Repeated line (measurement)"
-    }
-    fn description(&self) -> &str {
-        "Three identical passes to measure reusable entry queries"
-    }
-    fn schema(&self) -> ParameterSchema {
-        Line.schema()
-    }
-    fn passes(
-        &self,
-        input: &StrategyInput<'_>,
-        p: &Parameters,
-        context: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
-        let passes = Line.passes(input, p, context)?;
-        Ok((0..3).flat_map(|_| passes.clone()).collect())
-    }
-}
-
-#[test]
-fn req_op_11_req_nfr_04_rampbudget_unchanged_pass_inputs() {
-    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        21.0,
-        &ball(3.175),
-    );
-    let safety = EntrySafety {
-        rotary_precision: RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected: &[],
-        body: &fixture.tool,
-        machine: &fixture.machine,
-    };
-    let mut input = fixture.input();
-    input.entry_safety = Some(&safety);
-    let v = values(
-        20.0,
-        30.0,
-        &[
-            entry("ramp"),
-            number(names::RAMP_ANGLE, 3.0),
-            number(names::APPROACH_DISTANCE, 2.0),
-            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-        ],
-    );
-    run(|ctx| generate(&RepeatedLine, &input, &v, ctx)).unwrap();
-}
-
-#[test]
-fn req_op_11_req_nfr_07_rampbudget_exact_subinterval_boundary() {
-    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        21.0,
-        &ball(3.175),
-    );
-    let safety = EntrySafety {
-        rotary_precision: RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected: &[],
-        body: &fixture.tool,
-        machine: &fixture.machine,
-    };
-    let pose = |x| openchuck_types::ir::ToolPose {
-        tip: openchuck_types::geometry::Point3::new(x, 0.0, 35.0),
-        a: Degrees(0.0),
-        axis: fixture.rotary.tool_axis(Degrees(0.0)),
-    };
-    // Charge the same shared budget across repeated clear sweeps: below,
-    // at and beyond the 100000-attempt cap. Adaptive proof does not precharge
-    // an obsolete uniform grid's theoretical length.
-    let mut budget = 100_000;
-    for _ in 0..99_999 {
-        run(|ctx| safety.verify(pose(20.0), pose(21.0), 0.0, 0.00004, &mut budget, ctx)).unwrap();
-    }
-    assert_eq!(budget, 1);
-    run(|ctx| safety.verify(pose(20.0), pose(21.0), 0.0, 0.00004, &mut budget, ctx)).unwrap();
-    assert_eq!(budget, 0);
-    let error = run(|ctx| safety.verify(pose(20.0), pose(21.0), 0.0, 0.00004, &mut budget, ctx))
-        .unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "The back-and-forth ramp cannot be used here: the clearance check reached its limit of \
-         100000 checks for one entry before it could prove every move clear. In the operation's \
-         Entry, links and retract settings, turn off Back-and-forth ramp or set Entry to Plunge, \
-         Lead or Helix."
-    );
-}
-
-#[test]
-fn req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available() {
-    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        25.0,
-        &ball(3.175),
-    );
-    let safety = EntrySafety {
-        rotary_precision: RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected: &[],
-        body: &fixture.tool,
-        machine: &fixture.machine,
-    };
-    let mut input = fixture.input();
-    input.entry_safety = Some(&safety);
-    let v = values(
-        20.0,
-        30.0,
-        &[
-            entry("ramp"),
-            number(names::RAMP_ANGLE, 3.0),
-            number(names::APPROACH_DISTANCE, 2.0),
-            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-        ],
-    );
-    run(|ctx| generate(&Line, &input, &v, ctx)).unwrap();
-}
-
-#[derive(Default)]
-struct EntryCounts(std::sync::Mutex<BTreeMap<String, usize>>);
-impl openchuck_types::job::ProgressSink for EntryCounts {
-    fn report(&self, _: openchuck_types::job::Progress) {}
-    fn wants_timings(&self) -> bool {
-        true
-    }
-    fn timing(&self, stage: &str, _: std::time::Duration) {
-        *self.0.lock().unwrap().entry(stage.to_owned()).or_default() += 1;
-    }
-}
-
-#[test]
-fn req_op_11_req_op_12_req_nfr_04_every_leg_reversal_approach_and_connection_is_certified_with_memoisation()
- {
-    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        21.0,
-        &ball(3.175),
-    );
-    let safety = EntrySafety {
-        rotary_precision: RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected: &[],
-        body: &fixture.tool,
-        machine: &fixture.machine,
-    };
-    let mut input = fixture.input();
-    input.entry_safety = Some(&safety);
-    let v = values(
-        20.0,
-        30.0,
-        &[
-            entry("ramp"),
-            number(names::RAMP_ANGLE, 3.0),
-            number(names::APPROACH_DISTANCE, 2.0),
-            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-        ],
-    );
-    let counts = EntryCounts::default();
-    let cancel = openchuck_types::job::CancelToken::new();
-    let ctx = JobContext::new(&cancel, &counts);
-    let generated = generate(&RepeatedLine, &input, &v, &ctx).unwrap();
-    let counts = counts.0.lock().unwrap();
-    let ramps = of_kind(&generated.group, MoveKind::LeadIn);
-    // Each ramp segment is either a descending leg (including every reversal)
-    // or its final connection. Plus each entry's approach and corridor.
-    assert_eq!(counts["entry clearance sweep"], ramps.len() + 3 * 2);
-    assert!(counts["entry clearance cache hit"] > 0);
-    eprintln!("RAMPBUDGET adaptive three passes: {:?}", *counts);
-    // Diagnostics do not affect the generated motion.
-    assert_eq!(
-        generated.group,
-        run(|ctx| generate(&RepeatedLine, &input, &v, ctx))
-            .unwrap()
-            .group
-    );
-}
-
-#[test]
-fn req_gc_07_req_nfr_06_deep_reversing_entry_is_identical_at_1_2_and_n_threads() {
-    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        25.0,
-        &ball(3.175),
-    );
-    let safety = EntrySafety {
-        rotary_precision: RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected: &[],
-        body: &fixture.tool,
-        machine: &fixture.machine,
-    };
-    let mut input = fixture.input();
-    input.entry_safety = Some(&safety);
-    let v = values(
-        20.0,
-        30.0,
-        &[
-            entry("ramp"),
-            number(names::RAMP_ANGLE, 3.0),
-            number(names::APPROACH_DISTANCE, 2.0),
-            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-        ],
-    );
-    let mut expected = None;
-    for threads in [
-        1,
-        2,
-        std::thread::available_parallelism().map_or(4, usize::from),
-    ] {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .unwrap();
-        let generated = pool
-            .install(|| run(|ctx| generate(&RepeatedLine, &input, &v, ctx)))
-            .unwrap();
-        let bytes = serde_json::to_vec(&generated.group).unwrap();
-        if let Some(expected) = &expected {
-            assert_eq!(expected, &bytes);
-        } else {
-            expected = Some(bytes);
-        }
-    }
-}
-
-#[derive(Debug)]
-struct ClearedLocalStock;
-impl Strategy for ClearedLocalStock {
-    fn name(&self) -> &str {
-        "cleared_local_stock"
-    }
-    fn label(&self) -> &str {
-        "Cleared local stock (test)"
-    }
-    fn description(&self) -> &str {
-        "Prior removal does not waive incoming stock clearance"
-    }
-    fn schema(&self) -> ParameterSchema {
-        Line.schema()
-    }
-    fn passes(
-        &self,
-        input: &StrategyInput<'_>,
-        p: &Parameters,
-        context: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
-        let mut passes = RepeatedLine.passes(input, p, context)?;
-        for pass in &mut passes {
-            pass.stock = Some(openchuck_path::PassStock(std::sync::Arc::new(
-                openchuck_path::AnalyticStock::Cylinder {
-                    radius: 15.0,
-                    x_start: 0.0,
-                    x_end: 40.0,
-                },
-            )));
-        }
-        Ok(passes)
-    }
-}
-#[test]
-fn req_op_14_req_op_11_local_stock_removal_does_not_lower_the_unproven_incoming_rapid() {
-    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        25.0,
-        &ball(3.175),
-    );
-    let safety = EntrySafety {
-        rotary_precision: RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected: &[],
-        body: &fixture.tool,
-        machine: &fixture.machine,
-    };
-    let mut input = fixture.input();
-    input.entry_safety = Some(&safety);
-    let v = values(
-        20.0,
-        30.0,
-        &[
-            entry("ramp"),
-            number(names::RAMP_ANGLE, 3.0),
-            number(names::APPROACH_DISTANCE, 2.0),
-            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-        ],
-    );
-    let generated = run(|ctx| generate(&ClearedLocalStock, &input, &v, ctx)).unwrap();
-    let mut previous = generated.group.start;
-    let mut previous_kind = MoveKind::Rapid;
-    let mut starts = 0;
-    for s in &generated.group.segments {
-        if s.kind == MoveKind::LeadIn && previous_kind != MoveKind::LeadIn {
-            starts += 1;
-            assert!(
-                previous.tip.z >= 27.0,
-                "local stock does not prove the incoming rapid: {previous:?}"
-            );
-        }
-        previous = s.end;
-        previous_kind = s.kind;
-    }
-    assert_eq!(starts, 3);
 }
 
 /// Public library hosts may supply complete traversals already at clearance.
@@ -1226,287 +770,5 @@ fn req_op_11_req_op_14_req_op_15_a_reset_boundary_is_recorded_once_across_motion
     assert_eq!(
         without, control,
         "marking adds no motion, feed or diagnostic"
-    );
-}
-
-/// What the operation's Entry settings say to change, in every refusal of
-/// the back-and-forth ramp that the entry itself can avoid (#291).
-const ENTRY_FIX: &str = "In the operation's Entry, links and retract settings, turn off \
-     Back-and-forth ramp or set Entry to Plunge, Lead or Helix.";
-
-/// The refusal of a back-and-forth ramp entry on the line from `x0` to
-/// `x1`, with `extra` values and the clearance inputs `safety` gives.
-fn reversing_refusal(
-    fixture: &Fixture,
-    safety: Option<&openchuck_path::entry_safety::EntrySafety<'_>>,
-    protected: &[(f64, f64)],
-    x: (f64, f64),
-    extra: &[(&'static str, ParameterValue)],
-) -> String {
-    let mut input = fixture.input();
-    input.entry_safety = safety;
-    input.keep_out = protected;
-    let mut all = vec![
-        entry("ramp"),
-        (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-    ];
-    all.extend(extra.iter().cloned());
-    let v = values(x.0, x.1, &all);
-    run(|ctx| generate(&Line, &input, &v, ctx))
-        .unwrap_err()
-        .to_string()
-}
-
-fn safety_of<'a>(
-    fixture: &'a Fixture,
-    machine: &'a openchuck_types::machine::MachineProfile,
-    protected: &'a [openchuck_path::Solid],
-) -> openchuck_path::entry_safety::EntrySafety<'a> {
-    openchuck_path::entry_safety::EntrySafety {
-        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
-        target: &fixture.surface,
-        protected,
-        body: &fixture.tool,
-        machine,
-    }
-}
-
-fn small_cylinder() -> Fixture {
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        20.0,
-        &ball(6.0),
-    )
-}
-
-#[test]
-fn req_op_11_req_nfr_07_ramp_without_clearance_inputs_says_what_to_change() {
-    let fixture = small_cylinder();
-    let error = reversing_refusal(&fixture, None, &[], (20.0, 30.0), &[]);
-    assert_eq!(
-        error,
-        format!(
-            "The back-and-forth ramp cannot check its clearance in this operation: it needs the \
-             whole part, the complete tool and the machine's travel, and they were not \
-             supplied. {ENTRY_FIX}"
-        )
-    );
-}
-
-#[test]
-fn req_op_11_req_nfr_07_ramp_on_a_single_point_pass_says_what_to_change() {
-    let fixture = small_cylinder();
-    let safety = safety_of(&fixture, &fixture.machine, &[]);
-    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 20.0), &[]);
-    assert_eq!(
-        error,
-        format!(
-            "Pass 1 is a single point, so the back-and-forth ramp, which keeps the A angle \
-             fixed while it descends, has no straight line to ramp along. {ENTRY_FIX}"
-        )
-    );
-}
-
-#[test]
-fn req_op_11_req_nfr_07_ramp_above_the_safe_radius_names_safe_radius_and_approach() {
-    let fixture = small_cylinder();
-    let safety = safety_of(&fixture, &fixture.machine, &[]);
-    let error = reversing_refusal(
-        &fixture,
-        Some(&safety),
-        &[],
-        (20.0, 30.0),
-        &[number(names::APPROACH_DISTANCE, 16.0)],
-    );
-    assert_eq!(
-        error,
-        "Pass 1: the back-and-forth ramp starts 36.000 mm from the rotary axis (the stock's \
-         largest radius plus the approach distance), above the 35.000 mm the tool is at before \
-         this pass. In the Setup step, under Work offset and clearance, set Safe Z to at least \
-         36.000 mm; or, in the operation's Entry, links and retract settings, lower \
-         Approach distance, turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
-    );
-}
-
-#[test]
-fn req_op_11_req_nfr_07_ramp_with_too_many_runs_names_the_ramp_angle() {
-    // A deep first pass (stock 40 mm, part 15 mm) at a very shallow angle.
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    let fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        40.0,
-        &ball(6.0),
-    );
-    let safety = safety_of(&fixture, &fixture.machine, &[]);
-    let error = reversing_refusal(
-        &fixture,
-        Some(&safety),
-        &[],
-        (20.0, 30.0),
-        &[number(names::RAMP_ANGLE, 0.024)],
-    );
-    assert_eq!(
-        error,
-        "Pass 1: the back-and-forth ramp would need more than 10000 runs back and forth to \
-         descend 26.000 mm at 0.02 degrees along 6.000 mm (one tool diameter). In the \
-         operation's Entry, links and retract settings, raise Ramp angle, or turn off \
-         Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
-    );
-}
-
-#[test]
-fn req_op_11_req_nfr_07_ramp_beyond_the_machine_travel_names_the_travel() {
-    let fixture = small_cylinder();
-    let mut machine = fixture.machine.clone();
-    machine.travel.max.x = machine.travel.min.x + 1.0;
-    let safety = safety_of(&fixture, &machine, &[]);
-    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
-    assert_eq!(
-        error,
-        concat!(
-            "Back-and-forth ramp needs at least 6.000 mm of usable tool-centre travel; only ",
-            "0.000 mm could be verified: within one tool diameter behind the first cut, the tool ",
-            "would go beyond the machine's X, Y or Z travel. In the Setup step, under Machine, ",
-            "check Travel (in Travel and maximum feeds), or move the part with Offset along X ",
-            "under Part position, or change the entry: in the operation's Entry, links and ",
-            "retract settings, turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
-        )
-    );
-}
-
-#[test]
-fn req_op_11_req_nfr_07_ramp_into_a_protected_solid_names_the_workholding() {
-    let fixture = small_cylinder();
-    let solid = openchuck_path::Solid::cuboid(openchuck_types::geometry::Aabb {
-        min: openchuck_types::geometry::Point3::new(10.0, -30.0, -30.0),
-        max: openchuck_types::geometry::Point3::new(18.0, 30.0, 30.0),
-    })
-    .unwrap();
-    let protected = [solid];
-    let safety = safety_of(&fixture, &fixture.machine, &protected);
-    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
-    assert_eq!(
-        error,
-        concat!(
-            "Back-and-forth ramp needs at least 6.000 mm of usable tool-centre travel; only ",
-            "0.000 mm could be verified: within one tool diameter behind the first cut, the tool ",
-            "would reach a held region or a retaining tab. In the Setup step, under Workholding ",
-            "and tabs, move the held region or tab clear of the start of the pass, or change the ",
-            "entry: in the operation's Entry, links and retract settings, turn off Back-and-forth ",
-            "ramp or set Entry to Plunge, Lead or Helix."
-        )
-    );
-}
-
-#[test]
-fn req_op_11_req_nfr_07_ramp_corridor_into_the_part_keeps_the_approved_sentence_and_names_the_cause()
- {
-    let (_, fixture) = cone();
-    let safety = safety_of(&fixture, &fixture.machine, &[]);
-    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
-    // The owner's approved first sentence, word for word (decision 0242
-    // item 3), then the cause and the fix (owner's choice D2 = A, #291).
-    assert_eq!(
-        error,
-        format!(
-            "Back-and-forth ramp needs at least 6.000 mm of usable tool-centre travel; only \
-             0.000 mm could be verified: within one tool diameter behind the first cut, the \
-             tool would cut into the finished part by more than the tolerance. {ENTRY_FIX} A \
-             smaller tool needs a shorter run."
-        )
-    );
-}
-
-#[test]
-fn req_op_11_req_nfr_07_ramp_approach_beyond_the_travel_names_the_machine_travel() {
-    use openchuck_types::geometry::Point3;
-    use openchuck_types::kinematics::{RotaryFrame, machine_xyz};
-    let fixture = small_cylinder();
-    // The run at the cut's depth (tip 15 mm from the axis) is within the
-    // travel; the approach from above the stock (21 mm) is not.
-    let mut machine = fixture.machine.clone();
-    let frame = RotaryFrame::of_profile(&machine);
-    machine.travel.max.z = machine_xyz(&frame, Point3::new(20.0, 0.0, 18.0), Degrees(0.0)).z;
-    let safety = safety_of(&fixture, &machine, &[]);
-    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
-    assert_eq!(
-        error,
-        format!(
-            "Pass 1: the back-and-forth ramp cannot be used here: the tool would go beyond the \
-             machine's X, Y or Z travel. In the Setup step, under Machine, check Travel (in \
-             Travel and maximum feeds), or move the part with Offset along X under Part \
-             position, or change the entry: in the operation's Entry, links and retract settings, turn off Back-and-forth ramp or set \
-             Entry to Plunge, Lead or Helix."
-        )
-    );
-}
-
-/// A pass that starts above the stock has nothing to ramp down into: still
-/// refused (owner's choice D3 = A, #291), saying by how much and what to set.
-#[test]
-fn req_op_11_req_nfr_07_ramp_on_a_pass_above_the_stock_says_what_to_change() {
-    let part = Cylinder {
-        radius: 15.0,
-        length: 40.0,
-    };
-    // Stock 14 mm, part 15 mm: the first cut point is 1 mm above the stock,
-    // and level with the safe Z the tool starts at, so there is no descent.
-    let mut fixture = Fixture::new(
-        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
-        14.0,
-        &ball(6.0),
-    );
-    fixture.clearance.radius = Millimetres(15.0);
-    fixture.clearance.safe_z = Millimetres(15.0);
-    let safety = safety_of(&fixture, &fixture.machine, &[]);
-    let error = reversing_refusal(
-        &fixture,
-        Some(&safety),
-        &[],
-        (20.0, 30.0),
-        &[number(names::APPROACH_DISTANCE, 0.5)],
-    );
-    assert_eq!(
-        error,
-        "Pass 1 starts 1.000 mm above the stock, so the back-and-forth ramp has nothing to ramp \
-         down into. In the operation's Entry, links and retract settings, turn off \
-         Back-and-forth ramp or set Entry to Plunge."
-    );
-}
-
-/// After the first pass the tool is at the height its links retract to:
-/// the Safe radius with the default Retract, so that is the field named.
-#[test]
-fn req_op_11_req_nfr_07_ramp_above_the_link_height_names_safe_radius() {
-    let fixture = small_cylinder();
-    let safety = safety_of(&fixture, &fixture.machine, &[]);
-    let mut input = fixture.input();
-    input.entry_safety = Some(&safety);
-    let v = values(
-        20.0,
-        30.0,
-        &[
-            entry("ramp"),
-            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
-            number(names::APPROACH_DISTANCE, 6.0),
-        ],
-    );
-    let error = run(|ctx| generate(&RepeatedLine, &input, &v, ctx))
-        .unwrap_err()
-        .to_string();
-    assert_eq!(
-        error,
-        "Pass 2: the back-and-forth ramp starts 26.000 mm from the rotary axis (the stock's \
-         largest radius plus the approach distance), above the 25.000 mm the tool is at before \
-         this pass. In the Setup step, under Work offset and clearance, set Safe radius to at \
-         least 26.000 mm; or, in the operation's Entry, links and retract settings, lower \
-         Approach distance, turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
     );
 }

@@ -105,7 +105,6 @@ fn input_test(test: impl FnOnce(&StrategyInput<'_>, &JobContext<'_>)) {
         clearance: machine.clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: None,
         facing: None,
         keep_out: &[],
         shank: None,

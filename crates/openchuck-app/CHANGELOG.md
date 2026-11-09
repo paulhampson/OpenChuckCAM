@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.54.0
+
+- **Changed output (0.54.0, or the next free version; RAMPENTRY; issues #639, #642; decision 0543, accepted):** every ramp entry follows the pass's own toolpath (see `openchuck-path`), so the program of every operation with Entry Ramp changes. The back-and-forth ramp's application checks are removed with it: the refusal on a STEP part and with a shank wider than the cutter (`ramp_entry`, its line in the form and its message in the overview) and the post-precision certificate in posting. The form shows Back-and-forth ramp only where a saved operation has it on, labelled inactive, and the new Allow single-point plunge setting in Entry, links and retract (inactive unless Entry is Ramp). A Ramp or Lead operation is refused, naming the tool and the first pass, when the tool cannot cut straight down and a pass is entered by a straight plunge into the stock (a single point, a ring on the rotary axis, a face nub: `GeneratedPath::straight_plunges`; decision 0543 D7, decision 0544 item 7); the descent through air that every entry makes does not count. The form shows Steeper ramp near the axis, Maximum ramp angle, Plunge to remove face nubs and Face nub diameter in Entry, links and retract, inactive unless Entry is Ramp (decision 0543 section 4, point 3); a nub plunge is a plunge, so a tool that cannot cut straight down is refused naming it.
+
 ## Unreleased (RINGSTEP; issue #638; decision 0545, accepted)
 
 - **Changed output for new operations:** `Application::add_operation_on` writes `ring_step = blended` into a new operation of every strategy that has **Steps between rings** (helical finishing, rest machining, rotary roughing, Facing and simultaneous finishing), so a new ring operation blends its steps; an operation saved without it keeps sharp steps and its G-code (decision 0545 item 1, the owner's choice D3).

@@ -81,7 +81,6 @@ fn run_on(
         },
         max_feeds: m.max_feeds,
         tags: &tag,
-        entry_safety: None,
         facing: None,
         keep_out: &[],
         shank: None,
