@@ -165,7 +165,7 @@ fn whole_word_matches(text: &str, word: &str) -> usize {
 
 /// Whether `path` holds test code only. Only its part below `root` is
 /// looked at, so a folder named `tests` above the workspace does not count.
-fn is_test_file(root: &Path, path: &Path) -> bool {
+pub fn is_test_file(root: &Path, path: &Path) -> bool {
     let below = path.strip_prefix(root).unwrap_or(path);
     let name = below
         .file_name()
@@ -256,7 +256,7 @@ pub fn compare(
     findings
 }
 
-fn table(baseline: &toml::Table, key: &str) -> Result<BTreeMap<String, usize>> {
+pub fn table(baseline: &toml::Table, key: &str) -> Result<BTreeMap<String, usize>> {
     let mut out = BTreeMap::new();
     if let Some(t) = baseline.get(key).and_then(toml::Value::as_table) {
         for (file, value) in t {

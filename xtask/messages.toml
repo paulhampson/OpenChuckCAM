@@ -12,7 +12,27 @@
 # the others of `CLAIMS` in xtask/src/messages.rs) in a product file's string literals
 # (NFR-12; interface specification section 15). Build step 5 reworded the last of them
 # (OI-2097), so the table is empty and stays empty: no product text may use one.
+#
+# [strategy_refusals]: refusals in the path crate made with a variant that carries no
+# topic (`PathError::Strategy`, `Surface`, `Region`, `RotaryLimit`), per file (decision
+# record 0644; checked by `cargo xtask deps`' topics check). A refusal names its check
+# with `PathError::refused(topic::..., ...)`. Decision 0644 moved every strategy refusal;
+# what is left is the geometry's own `Surface`, `Region` and `RotaryLimit` errors, which
+# the application shows under the topics Surface, Region and Rotary axis, and the
+# registry's two errors in strategy.rs, which no user sees.
 
 [message_new]
 
 [claims]
+
+[strategy_refusals]
+"crates/openchuck-path/src/brep.rs" = 4
+"crates/openchuck-path/src/brep_edges.rs" = 3
+"crates/openchuck-path/src/curves.rs" = 4
+"crates/openchuck-path/src/drill.rs" = 1
+"crates/openchuck-path/src/region.rs" = 2
+"crates/openchuck-path/src/rotary.rs" = 2
+"crates/openchuck-path/src/solid.rs" = 4
+"crates/openchuck-path/src/strategy.rs" = 2
+"crates/openchuck-path/src/surface.rs" = 3
+"crates/openchuck-path/src/unroll.rs" = 19
