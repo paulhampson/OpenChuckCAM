@@ -465,7 +465,7 @@ pub(crate) fn assemble_limited(
             crate::topic::LINKS,
             format!(
                 "the stock reaches {r:.3} mm from the rotary axis, beyond the retract height of \
-             {link_height:.3} mm, so links could cross it (OP-14); enlarge the setup's clearance"
+             {link_height:.3} mm, so links could cross it. Enlarge the setup's clearance"
             ),
         ));
     }

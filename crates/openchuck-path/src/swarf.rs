@@ -1241,7 +1241,7 @@ fn place(
         PathError::refused(
             crate::topic::SWARF,
             "its rulings run along the rotary axis, so no rotation of the part brings the flank \
-             to them and no tool taper helps (decision record 0021, OI-94)"
+             to them and no tool taper helps"
                 .to_owned(),
         )
     })?;
@@ -3005,7 +3005,7 @@ fn swarf(
         return Err(PathError::refused(
             crate::topic::SWARF,
             "swarf needs the exact faces of a STEP model to read their rulings, and the selection \
-             has none: a mesh has no rulings to follow (decision record 0021)"
+             has none: a mesh has no rulings to follow"
                 .to_owned(),
         ));
     }

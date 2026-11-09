@@ -954,7 +954,7 @@ pub(crate) fn mesh_edge_segments(
         if set.stock_to_leave.is_some() {
             return Err(fail(
                 set,
-                "a stock to leave per selection set is not used on followed edges (OP-11); \
+                "a stock to leave per selection set is not used on followed edges; \
                  clear it on the set and set the operation's depth"
                     .to_owned(),
             ));

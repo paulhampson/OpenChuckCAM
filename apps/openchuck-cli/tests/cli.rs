@@ -1516,8 +1516,8 @@ fn req_prj_02_cli_a_file_linked_through_a_renamed_link_is_reported_as_linked() {
 /// Every line the command line says at a level, or lists as a check, in the
 /// one form of decision record 0536 section 3: a topic, the items in
 /// brackets, a colon, then the text ending in one full stop (decision record
-/// 0644). Fails on a doubled stop, a stop before a semicolon, a missing topic
-/// or a missing full stop.
+/// 0644). Fails on a doubled stop, a stop before a semicolon, a missing topic,
+/// a missing full stop, or a requirement, decision or open-item number.
 fn assert_one_form(output: &str) -> usize {
     let mut checked = 0;
     for line in output.lines() {
@@ -1545,9 +1545,46 @@ fn assert_one_form(output: &str) -> usize {
             !text.contains("..") && !text.contains(".;") && !text.contains(".:"),
             "a doubled stop: {line}"
         );
+        assert!(!names_an_id(text), "an internal reference: {line}");
         checked += 1;
     }
     checked
+}
+
+/// Whether `text` names a requirement ("(OP-14)"), an open item ("OI-360")
+/// or a decision record ("decision 0495"), which a message may not (decision
+/// record 0644).
+fn names_an_id(text: &str) -> bool {
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let prefixed = [
+        "COL", "GC", "IMP", "INT", "NFR", "OP", "PRJ", "SET", "SIM", "SUG", "TL", "UI", "VC", "OI",
+    ]
+    .iter()
+    .any(|prefix| {
+        let pattern = format!("{prefix}-");
+        text.match_indices(&pattern).any(|(at, _)| {
+            !text[..at].chars().next_back().is_some_and(is_word)
+                && text[at + pattern.len()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+        })
+    });
+    let lower = text.to_lowercase();
+    prefixed
+        || lower.match_indices("decision ").any(|(at, word)| {
+            let rest = &lower[at + word.len()..];
+            let rest = rest.strip_prefix("record ").unwrap_or(rest);
+            rest.chars().take(4).filter(char::is_ascii_digit).count() == 4
+        })
+}
+
+#[test]
+fn req_ui_12_the_guard_knows_an_internal_reference() {
+    assert!(names_an_id("so links could cross it (OP-14); enlarge"));
+    assert!(names_an_id("see decision 0495"));
+    assert!(names_an_id("OI-360 is closed"));
+    assert!(!names_an_id("a STOP-1 tool on T1-2 in 3 decisions"));
 }
 
 #[test]
