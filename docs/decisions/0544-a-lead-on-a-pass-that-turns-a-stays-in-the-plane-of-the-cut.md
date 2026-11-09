@@ -9,7 +9,7 @@
 - **Date:** 8 Nov 2026.
 - **Open items:** none new.
 
-Numbering: provisional, 0544 after 0543 (see that record). The Merge Manager assigns the final numbers at release. No project schema number.
+Numbering: 0544 is final, after 0543 (confirmed by the Merge Manager on 9 Nov 2026). No project schema number.
 
 ## Context
 
@@ -31,7 +31,7 @@ On the cone the lead-out continues along +X, where the part rises. On finishing 
 
 Read on `main` `1f3675d` and reproduced by this lane (`crates/openchuck-path/tests/entry_link_stock.rs`, synthetic fixtures): a link ends above the pass's first cut point at a height checked against the stock under the tool's footprint along the link. The lead-in (`Entry::lead_in`) and the ramp (`Entry::ramp`) then move sideways at that height to their own start, which is not over the first cut point, and nothing checks that move. Under a low link (0496, 0521) or roughing's local link that height is only the approach distance above the stock along the link. With a block of stock 19.5 mm from the axis beside the first cut point (outside the one-tool-radius footprint of the link's check), two line passes, the second linked low: the lead-in's sideways rapid at 17.0 mm enters the block at X 19.16 mm, and a 10 degree ramp's at X 18.81 mm; the plunge on the same stock stays clear. In roughing a lead arc's side is chosen only against the finished surface, so it can swing through uncut stock at full depth (issue #642 item 3; not yet reproduced).
 
-## Decision (proposed)
+## Decision
 
 On a pass that starts or ends by turning A, the lead-in and lead-out are tangent to the cut, as on a line pass, and stay in the plane of the cut at the pass's X:
 
@@ -69,7 +69,7 @@ All recommendations accepted as a package. Items 6 and 7 follow from the same an
 
 - **Code.** `openchuck-path` `assemble/lead.rs` (new: the lead on passes that turn A), `assemble/entry.rs` (dispatch; the checked move to an entry's start, item 6), `assemble.rs` (the link and `fit_range` with the arc's A). No API change beyond decision 0543's.
 - **Output.** Saved operations with Lead entry on passes that turn A give a different program at the next version; golden files are regenerated with a changelog entry and a release-notes line. Line-pass leads are byte-identical.
-- **Documents (proposed, not edited until the owner agrees):** verification plan row OP-11 (the lead on a pass that turns A); UI specification Entry row ("With `lead`, a matching arc also leaves the cut", gains "on a ring or spiral the arcs turn with the part, in the plane of the cut"); user guide Entry row. No change to `docs/requirements.md` or `docs/architecture.md`.
+- **Documents (agreed with the owner's acceptance; edited with the code pull request, architecture section 5.2 after it):** verification plan row OP-11 (the lead on a pass that turns A); UI specification Entry row ("With `lead`, a matching arc also leaves the cut", gains "on a ring or spiral the arcs turn with the part, in the plane of the cut"); user guide Entry row. No change to `docs/requirements.md` or `docs/architecture.md`.
 - **Not proved.** The geometry checks say nothing about chip load or tool suitability; no machine trial is claimed. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
 
 ## Verification (planned; filled in when built)

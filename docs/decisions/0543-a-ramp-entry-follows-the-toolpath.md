@@ -11,7 +11,7 @@
 - **Date:** 8 Nov 2026.
 - **Open items** ([docs/open-items.md](../open-items.md)): would close OI-553 and OI-790 (answered), retire OI-1270 (no certificate left to support on STEP parts, D10) and close OI-1271 (D7 builds its option as the Allow single-point plunge setting). New: OI-2111 (D5: strategies other than roughing carry no stock per layer).
 
-Numbering: provisional. On 8 Nov 2026 the highest record on `main` and on every unmerged branch was 0542 and the highest open item OI-2110, so this record takes 0543 and OI-2111; [decision 0544](0544-a-lead-on-a-pass-that-turns-a-stays-in-the-plane-of-the-cut.md) is its companion. The Merge Manager assigns the final record, OI and library version numbers at release. No project schema number: operation parameters are a free map (decision 0008 item 6), as `ramp_back_and_forth` was added without one (0242 item 8); the new `allow_single_point_plunge` flag is stored the same way, and `ramp_back_and_forth` stays in the map, read and inactive (D1).
+Numbering: record 0543 and OI-2111 are final (confirmed by the Merge Manager on 9 Nov 2026: main then held records up to 0549 and open items up to OI-2137, and these were free); [decision 0544](0544-a-lead-on-a-pass-that-turns-a-stays-in-the-plane-of-the-cut.md) is its companion. No project schema number: operation parameters are a free map (decision 0008 item 6), as `ramp_back_and_forth` was added without one (0242 item 8); the new settings are stored the same way, and `ramp_back_and_forth` stays in the map, read and inactive (D1). The library version is sequenced by the Merge Manager with the code pull request.
 
 ## Context
 
@@ -34,7 +34,7 @@ The issue's throwaway probe (an example on `openchuck-path`'s own test fixtures;
 
 With the held region in place, Plunge entered both pass shapes of roughing, and Helix entered the rings case and was refused on the spiral.
 
-## Decision (proposed)
+## Decision
 
 ### 1. The rule
 
@@ -199,7 +199,7 @@ All recommendations accepted as a package, with D7 changed as its row says. D10:
 - **Code.** `openchuck-path`: `assemble/entry.rs` (pass shape, the four ramp shapes, the single-point rule), `params.rs` (the `allow_single_point_plunge` flag in the common schema and `EntryParameters`, with whether the tool can plunge), `assemble/ramp.rs` (the leg planner over a path, not a straight corridor; the 10,000-leg bound and the written-precision reserve stay), `assemble/ramp_refusal.rs` (rewritten to the new refusals), `assemble.rs` (the link arriving at `A0 - Δ`, `fit_range` with Δ, the "reversing ramp keeps high links" rule removed), `params.rs`; removal of `entry_safety.rs`, `entry_safety/` and `StrategyInput::entry_safety` (D10). `openchuck-app`: `ramp_entry.rs` removed with its three uses (form line, overview, generation), `operation.rs` stops building `EntrySafety`, `posting.rs` and `form.rs` treat the flag as inactive. `openchuck-ui`: the form shows `ramp_back_and_forth` only when on, as inactive, and shows Allow single-point plunge (active for Ramp entry, labelled inactive otherwise, as 0242 item 1 did). User guide: `user-docs/src/reference/operations.md` (Entry, Ramp angle, the new setting's row with its tooltip text, the inactive flag's row).
 - **Output.** Every saved operation with ramp entry gives a different program at the next version (D1); golden files are regenerated, with a changelog entry and a release-notes line. Plunge, lead and helix output stays byte-identical; the test suite asserts it.
 - **Library API.** A breaking change under decision 0048 (D10, and `EntryParameters` gaining what D7 needs to know whether the tool can plunge): workspace minor bump (0.50.0 to the next free one, assigned by the Merge Manager) and a changelog entry with migration notes.
-- **Documents (proposed, not edited until the owner agrees):**
+- **Documents (agreed with the owner's acceptance; edited with the code pull request, architecture section 5.2 after it):**
   - architecture section 5.2: in the shared services list, "entry and exit moves (plunge, lead, ramp, helix)" gains "a ramp follows the pass's own toolpath (decision 0543)"; the paragraph on optional back-and-forth ramping (line 128) is replaced by one sentence: "A ramp follows the pass's own toolpath, raised along the tool axis, from the approach distance above the stock beneath it to the first cut point at full depth (decision 0543); the `ramp_back_and_forth` flag is read and has no effect." No change to `docs/requirements.md`.
   - verification plan: row OP-11 (each ramp shape meets its geometry: in the pass's footprint, within the angle on the real path, even legs, A the Rotation way on rings), and the ROUGHPATH and RAMPBUDGET paragraphs marked superseded by this record.
   - UI specification: the Entry settings (a row for Allow single-point plunge, default off, with its tooltip), and the "Optional back-and-forth ramp" section (replaced by a short note that the flag is inactive).
@@ -226,5 +226,5 @@ Every new test is timed uninstrumented; the changed crates' line coverage is che
 
 ## Open items
 
-- OI-2111 (new, proposed): only roughing carries the stock per layer, so a ramp in a later layer of another strategy (finishing layers, 0345) measures its start from the stock at the start of the operation and may ramp through some air (D5). Decide whether those strategies carry the stock per layer.
+- OI-2111 (new): only roughing carries the stock per layer, so a ramp in a later layer of another strategy (finishing layers, 0345) measures its start from the stock at the start of the operation and may ramp through some air (D5). Decide whether those strategies carry the stock per layer.
 - Closes OI-553, OI-790 and OI-1271 and retires OI-1270 when built.
