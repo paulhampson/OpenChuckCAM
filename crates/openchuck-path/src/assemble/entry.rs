@@ -224,6 +224,7 @@ impl Entry {
         // no line to lead along: it is entered by a plunge (issue 199,
         // decision 0204).
         let Some(d) = direction_at_start(b, points) else {
+            b.straight_plunges.push(pass);
             return plunge(b, stock, common, head);
         };
         let r = self.lead_radius;
@@ -376,6 +377,7 @@ impl Entry {
             )));
         }
         b.single_point_plunges.push(pass);
+        b.straight_plunges.push(pass);
         plunge(b, stock, common, head)
     }
 
@@ -946,6 +948,7 @@ impl Entry {
         }
         if let Some(turns) = plan.on_axis {
             b.on_axis_ramps.push((pass, turns));
+            b.straight_plunges.push(pass);
         }
         Ok(())
     }

@@ -247,17 +247,23 @@ fn req_op_14_req_op_11_the_rapid_to_a_lead_in_start_never_enters_the_stock() {
         &stock,
         &[(names::ENTRY, text("lead"))],
     );
-    if let Ok(Some(hit)) = outcome {
-        panic!("a rapid sweeps the tool through the stock: {hit:?}");
-    }
+    // Generated (a refusal would not show the rapid), with no rapid through
+    // the stock.
+    assert_eq!(
+        outcome,
+        Ok(None),
+        "a rapid sweeps the tool through the stock"
+    );
 }
 
 #[test]
 fn req_op_14_req_op_11_the_rapid_to_a_ramp_start_never_enters_the_stock() {
-    // Pass 1 runs from X 40 to X 30, so its ramp starts beyond the part's
-    // end. At 10 degrees pass 2's ramp starts about 11 mm behind its first
-    // cut point (X 20, going +X), over stock the link from X 30 never
-    // crossed.
+    // Pass 1 runs from X 40 to X 30. Written against the straight ramp, which
+    // started pass 2's ramp about 11 mm behind its first cut point (X 20,
+    // going +X), over the block the link from X 30 never crossed; it failed
+    // first on main. The ramp now goes back and forth over pass 2's own path
+    // (X 20 to 28, decision 0543), and the move to its start must still stay
+    // clear of the stock.
     let stock = Bumpy {
         along: (12.0, 16.0),
         across: (-2.0, 2.0),
@@ -271,9 +277,13 @@ fn req_op_14_req_op_11_the_rapid_to_a_ramp_start_never_enters_the_stock() {
             (names::RAMP_ANGLE, ParameterValue::Number(10.0)),
         ],
     );
-    if let Ok(Some(hit)) = outcome {
-        panic!("a rapid sweeps the tool through the stock: {hit:?}");
-    }
+    // Generated (a refusal would not show the rapid), with no rapid through
+    // the stock.
+    assert_eq!(
+        outcome,
+        Ok(None),
+        "a rapid sweeps the tool through the stock"
+    );
 }
 
 #[test]

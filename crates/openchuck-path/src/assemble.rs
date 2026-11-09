@@ -130,6 +130,16 @@ pub struct GeneratedPath {
     /// The places the strategy broke a pass for the tool's shank, as it gave
     /// them (decision record 0368).
     pub shank_breaks: Vec<ShankBreak>,
+    /// The passes, in order and each once, that a Ramp or Lead entry enters
+    /// by a straight plunge where the tool may cut on its way down: a pass
+    /// of a single point, a ring with its tip on the rotary axis, a face nub
+    /// (decision 0543 D7 and section 4, points 2 and 3; decision 0544 item
+    /// 7). A host that knows the tool cannot cut straight down refuses such
+    /// a path. The descent through air at the approach distance that every
+    /// entry makes, and a ramp's descent where there is nothing to descend
+    /// into, are not listed; nor is Plunge entry, which the host checks on
+    /// the entry itself.
+    pub straight_plunges: Vec<usize>,
 }
 
 const EPS: f64 = 1e-9;
@@ -182,6 +192,9 @@ struct Builder<'a> {
     /// Passes on the rotary axis descended while A turns, with the turns
     /// (decision 0543 section 4, point 2).
     on_axis_ramps: Vec<(usize, f64)>,
+    /// Passes entered by a straight plunge into the stock (see
+    /// [`GeneratedPath::straight_plunges`]).
+    straight_plunges: Vec<usize>,
 }
 
 impl Builder<'_> {
@@ -538,6 +551,7 @@ pub(crate) fn assemble_limited(
         nubs: Vec::new(),
         reversed_ramps: Vec::new(),
         on_axis_ramps: Vec::new(),
+        straight_plunges: Vec::new(),
     };
 
     let entry = entry::Entry::new(input, common, entry)?;
@@ -576,6 +590,7 @@ pub(crate) fn assemble_limited(
             let made = entry.plunge_nub(&mut b, input, stock, common, stretch, &mut cleared)?;
             if made > 0 {
                 b.nubs.push((stretch.0, stretch.1, made));
+                b.straight_plunges.push(i);
             }
             continue;
         }
@@ -840,11 +855,17 @@ pub(crate) fn assemble_limited(
     if b.raised_entries > 0 {
         b.notes.insert(
             0,
-            Notice::information(format!(
-                "{} entries start higher than the link before them ends, so the move to the \
-                 entry's start stays clear of the stock beside the first cut point",
-                b.raised_entries
-            ))
+            Notice::information(if b.raised_entries == 1 {
+                "1 entry starts higher than the link before it ends, so the move to the \
+                 entry's start stays clear of the stock beside the first cut point"
+                    .to_owned()
+            } else {
+                format!(
+                    "{} entries start higher than the links before them end, so the move to \
+                     each entry's start stays clear of the stock beside the first cut point",
+                    b.raised_entries
+                )
+            })
             .about(topic::ENTRY),
         );
     }
@@ -872,6 +893,12 @@ pub(crate) fn assemble_limited(
         notices: b.notes,
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
+        straight_plunges: {
+            let mut passes = b.straight_plunges;
+            passes.sort_unstable();
+            passes.dedup();
+            passes
+        },
     })
 }
 
@@ -1543,6 +1570,7 @@ mod tests {
                 nubs: Vec::new(),
                 reversed_ramps: Vec::new(),
                 on_axis_ramps: Vec::new(),
+                straight_plunges: Vec::new(),
             };
             let end = b.pose(to.tip, to.a);
             // A contact feed far above the limits, so the axes set the time.
@@ -1617,6 +1645,7 @@ mod tests {
             nubs: Vec::new(),
             reversed_ramps: Vec::new(),
             on_axis_ramps: Vec::new(),
+            straight_plunges: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
         b.push(
@@ -1683,6 +1712,7 @@ mod tests {
             nubs: Vec::new(),
             reversed_ramps: Vec::new(),
             on_axis_ramps: Vec::new(),
+            straight_plunges: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
         // A contact feed far above the limits, so the axes set the time.

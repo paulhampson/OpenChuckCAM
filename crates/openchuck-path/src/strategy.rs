@@ -1256,6 +1256,7 @@ mod tests {
             notices: Vec::new(),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
+            straight_plunges: Vec::new(),
         }
     }
 

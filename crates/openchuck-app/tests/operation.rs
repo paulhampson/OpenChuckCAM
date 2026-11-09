@@ -2604,6 +2604,89 @@ fn req_op_11_req_nfr_07_allow_single_point_plunge_decides_a_single_point_pass() 
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// One line of cuts along X at A 0, across the cube's top (a test strategy).
+#[derive(Debug)]
+struct OneLine;
+
+impl Strategy for OneLine {
+    fn name(&self) -> &str {
+        "one_line"
+    }
+    fn label(&self) -> &str {
+        "One line"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> ParameterSchema {
+        ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        _: &Parameters,
+        _: &JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<Pass>> {
+        let points = (-8..=8)
+            .filter_map(|i| {
+                let line = input.rotary.tool_line(
+                    Millimetres(0.5 * f64::from(i)),
+                    Degrees(0.0),
+                    Millimetres(0.0),
+                );
+                let c = input.surface.drop_tool(input.tool, &line)?;
+                Some(CutPoint {
+                    tip: c.tip,
+                    a: Degrees(0.0),
+                    contact: c.contact,
+                })
+            })
+            .collect();
+        Ok(vec![Pass {
+            helical_pass_start: false,
+            low_link: false,
+            points,
+            stock: None,
+            rapids: Vec::new(),
+            plunge_fed: Vec::new(),
+        }])
+    }
+}
+
+/// A tool that cannot cut straight down is refused only where a pass is
+/// entered by a straight plunge into the stock (a single point, a ring on
+/// the rotary axis, a face nub: decision 0543 D7, decision 0544 item 7). The
+/// descent through air at the approach distance that every lead-in makes is
+/// not a plunge into the stock: such a tool generates a lead on a line and a
+/// ramp on a line or round a ring.
+#[test]
+fn req_op_11_a_tool_that_cannot_plunge_still_leads_and_ramps_where_nothing_plunges_into_stock() {
+    let (dir, mut app, op) = project("no-plunge-lead-ramp");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    app.register_strategy(Arc::new(OneLine)).unwrap();
+    let mut tool = app.project().tools()[0].clone();
+    tool.tool.centre_cutting = Some(false);
+    app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    for (strategy, entry) in [
+        ("one_line", "lead"),
+        ("one_line", "ramp"),
+        ("one_ring", "ramp"),
+    ] {
+        let mut operation = app.project().operation(op).unwrap().clone();
+        operation.strategy = strategy.into();
+        app.execute(Command::Replace(Item::Operation(operation)))
+            .unwrap();
+        set_entry(&mut app, op, entry, &[]);
+        let run = app.start_regenerate().wait();
+        assert!(
+            run.is_ok(),
+            "{strategy}, {entry}: {:?}",
+            run.err().map(|e| e.to_string())
+        );
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// Links between passes (decision 0496, issue #524): the inspector form of
 /// axial and indexed finishing offers it, in the Entry, links and retract
 /// section of specification section 8 (UI-07), with its choice and default.

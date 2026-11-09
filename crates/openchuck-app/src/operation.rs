@@ -928,19 +928,17 @@ fn generate_unnamed(
             context,
         )?
     };
-    // A single-point pass under a ramp (with Allow single-point plunge on)
-    // or a lead is entered by a plunge: refused for a tool that cannot cut
-    // straight down (OI-117; decision 0543 D7, decision 0544 item 7). The
-    // path library does not know the tool's centre cutting, so it is
-    // checked here, on the generated path.
+    // A pass that a ramp or a lead enters by a straight plunge into the
+    // stock (a single point, a ring on the rotary axis, a face nub) is
+    // refused for a tool that cannot cut straight down (OI-117; decision
+    // 0543 D7, decision 0544 item 7). The path library does not know the
+    // tool's centre cutting, so it lists those passes and the check is made
+    // here. The descent through air that every entry makes is not one.
     if !snapshot.tool.can_plunge()
         && matches!(entry_parameters.style, EntryStyle::Ramp | EntryStyle::Lead)
-        && path
-            .group
-            .segments
-            .iter()
-            .any(|s| s.kind == openchuck_types::ir::MoveKind::Plunge)
+        && let Some(&first) = path.straight_plunges.first()
     {
+        let passes = path.straight_plunges.len();
         return Err(AppError::Refused {
             topic: if entry_parameters.style == EntryStyle::Ramp {
                 openchuck_path::topic::RAMP_ENTRY.to_owned()
@@ -949,10 +947,15 @@ fn generate_unnamed(
             },
             name: operation.name.clone(),
             text: format!(
-                "a pass is entered by a straight plunge (a single point, or a ring \
-                 on the rotary axis, where the tool descends while the part turns), and the \
-                 tool '{}' cannot cut straight down (it is not centre cutting). Set Entry to \
+                "{} entered by a straight plunge into the stock (a single point, a ring on the \
+                 rotary axis, where the tool descends while the part turns, or a face nub), and \
+                 the tool '{}' cannot cut straight down (it is not centre cutting). Set Entry to \
                  Helix, or choose a tool that can plunge",
+                if passes == 1 {
+                    format!("pass {} is", first + 1)
+                } else {
+                    format!("{passes} passes, the first pass {}, are", first + 1)
+                },
                 snapshot.name
             ),
         });

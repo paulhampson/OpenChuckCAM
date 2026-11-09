@@ -1109,3 +1109,62 @@ fn req_op_11_req_nfr_07_a_pass_shorter_than_the_tool_radius_is_refused_by_name()
         "{err}"
     );
 }
+
+#[test]
+fn req_op_11_req_nfr_07_the_path_lists_the_passes_entered_by_a_straight_plunge_into_the_stock() {
+    // Decision 0543 D7 and section 4, points 2 and 3; decision 0544 item 7:
+    // a host refuses these for a tool that cannot cut straight down, so the
+    // path lists exactly them, and not a ramp that follows the pass.
+    let f = cylinder();
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    // A ring ramped round itself: nothing plunges.
+    let ring = Through((0..=72).map(|k| (20.0, 5.0 * f64::from(k))).collect());
+    assert!(
+        make(&f, &ring, &v, &[])
+            .unwrap()
+            .straight_plunges
+            .is_empty()
+    );
+    // A line ramped back and forth: nothing plunges.
+    let line = Through((0..=20).map(|k| (10.0 + f64::from(k), 0.0)).collect());
+    assert!(
+        make(&f, &line, &v, &[])
+            .unwrap()
+            .straight_plunges
+            .is_empty()
+    );
+    // A single point, plunged with Allow single-point plunge on.
+    v.insert(
+        names::ALLOW_SINGLE_POINT_PLUNGE.into(),
+        ParameterValue::Flag(true),
+    );
+    let point = Through(vec![(20.0, 0.0)]);
+    assert_eq!(make(&f, &point, &v, &[]).unwrap().straight_plunges, [0]);
+    // A ring on the rotary axis, descended while A turns.
+    let mut long = f.input();
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 46.0,
+    };
+    long.stock = &stock;
+    v.insert(names::RAMP_ANGLE.into(), n(10.0));
+    let path = run(|ctx| generate(&RingOnAxis, &long, &v, ctx)).unwrap();
+    assert_eq!(path.straight_plunges, [0]);
+    // Face nubs plunged beyond the part's end.
+    let mut nub = f.input();
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 47.0,
+    };
+    nub.stock = &stock;
+    v.insert(names::PLUNGE_FACE_NUBS.into(), ParameterValue::Flag(true));
+    let rings = NarrowingRings {
+        x: 45.0,
+        radii: vec![2.5, 1.5, 0.6],
+    };
+    let path = run(|ctx| generate(&rings, &nub, &v, ctx)).unwrap();
+    assert!(!path.straight_plunges.is_empty());
+}

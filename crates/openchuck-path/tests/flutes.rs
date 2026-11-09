@@ -1180,6 +1180,7 @@ fn written(
         notices: Vec::new(),
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
+        straight_plunges: Vec::new(),
     }
 }
 
@@ -1646,6 +1647,7 @@ fn req_tl_04_req_nfr_07_a_move_of_many_turns_is_read_all_round() {
             notices: Vec::new(),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
+            straight_plunges: Vec::new(),
         }
     };
     let square = boxed((-17.5, 17.5), (-17.5, 17.5));
