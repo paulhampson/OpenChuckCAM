@@ -431,6 +431,28 @@ pub(crate) fn generate_with_part(
     })
 }
 
+/// Why a tool that cannot cut straight down is refused for `passes` (indices
+/// from 0) that a ramp or a lead enters by a straight plunge into the stock
+/// (decision 0543 D7, decision 0544 item 7). The passes are named as every
+/// message that lists passes names them (`openchuck_path::passes_named`;
+/// decision record 0644): "pass 149 is", "passes 1, 2 and 3 are", "88
+/// passes, from pass 1 to pass 88 (1, 2, 3 ... 86, 87, 88), are".
+fn plunge_refusal(passes: &[usize], tool: &str) -> String {
+    let named = openchuck_path::passes_named(passes);
+    let (named, verb) = match passes.len() {
+        1 => (named, "is"),
+        2..=6 => (named, "are"),
+        _ => (format!("{named},"), "are"),
+    };
+    format!(
+        "{named} {verb} entered by a straight plunge into the stock (a single point, a ring on \
+         the rotary axis, where the tool descends while the part turns, a face nub, or a lead \
+         whose descent to its arc goes down through the stock), and the tool '{tool}' cannot cut \
+         straight down (it is not centre cutting). Set Entry to Helix, or choose a tool that can \
+         plunge"
+    )
+}
+
 /// `error` from generating `operation`, naming it (issue #547; decision
 /// record 0644): an error from the pathing library does not know which
 /// operation it is about, so the user could not tell which one to change.
@@ -1073,9 +1095,8 @@ fn generate_unnamed(
     // here. The descent through air that every entry makes is not one.
     if !snapshot.tool.can_plunge()
         && matches!(entry_parameters.style, EntryStyle::Ramp | EntryStyle::Lead)
-        && let Some(&first) = path.straight_plunges.first()
+        && !path.straight_plunges.is_empty()
     {
-        let passes = path.straight_plunges.len();
         return Err(AppError::Refused {
             topic: if entry_parameters.style == EntryStyle::Ramp {
                 openchuck_path::topic::RAMP_ENTRY.to_owned()
@@ -1083,18 +1104,7 @@ fn generate_unnamed(
                 openchuck_path::topic::LEAD_ENTRY.to_owned()
             },
             name: operation.name.clone(),
-            text: format!(
-                "{} entered by a straight plunge into the stock (a single point, a ring on the \
-                 rotary axis, where the tool descends while the part turns, a face nub, or a \
-                 lead whose descent to its arc goes down through the stock), and the tool '{}' cannot cut straight down (it is not centre cutting). Set Entry to \
-                 Helix, or choose a tool that can plunge",
-                if passes == 1 {
-                    format!("pass {} is", first + 1)
-                } else {
-                    format!("{passes} passes, the first pass {}, are", first + 1)
-                },
-                snapshot.name
-            ),
+            text: plunge_refusal(&path.straight_plunges, &snapshot.name),
             setting: Some(openchuck_path::params::names::ENTRY.to_owned()),
         });
     }
@@ -4241,6 +4251,32 @@ mod tests {
             refusal_text(&f.project, &registry, None, &other),
             other.to_string()
         );
+    }
+
+    #[test]
+    fn req_op_11_req_ui_12_a_plunge_refusal_names_its_passes_as_the_notes_do() {
+        // OWNERCHECKS2 (relayed, 9 Nov 2026): "88 passes, the first pass 1,
+        // are entered" read awkwardly. The passes are named as every message
+        // that lists passes names them (decision record 0644).
+        let one = plunge_refusal(&[148], "T1 Flat 6");
+        assert!(
+            one.starts_with("pass 149 is entered by a straight plunge"),
+            "{one}"
+        );
+        let few = plunge_refusal(&[0, 1, 2], "T1 Flat 6");
+        assert!(few.starts_with("passes 1, 2 and 3 are entered"), "{few}");
+        let many: Vec<usize> = (0..88).collect();
+        let many = plunge_refusal(&many, "T1 Flat 6");
+        assert!(
+            many.starts_with(
+                "88 passes, from pass 1 to pass 88 (1, 2, 3 ... 86, 87, 88), are entered"
+            ),
+            "{many}"
+        );
+        for text in [&one, &few, &many] {
+            assert!(text.contains("the tool 'T1 Flat 6' cannot cut straight down"));
+            assert!(!text.contains("the first pass"), "{text}");
+        }
     }
 
     #[test]

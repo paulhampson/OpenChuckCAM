@@ -1417,8 +1417,11 @@ fn split_nubs(
 
 /// Passes named for a note (decision 0536; the grouping of #600): "pass 3",
 /// "passes 3, 5 and 7", or for many "52 passes, from pass 3 to pass 98 (3,
-/// 5, 7 ... 94, 96, 98)", so one note per operation stays short.
-fn passes_named(passes: &[usize]) -> String {
+/// 5, 7 ... 94, 96, 98)", so one note per operation stays short. `passes`
+/// are indices from 0; the names count from 1. Every message that lists
+/// passes names them so, in the pathing library and the application alike
+/// (decision record 0644).
+pub fn passes_named(passes: &[usize]) -> String {
     let names: Vec<String> = passes.iter().map(|p| (p + 1).to_string()).collect();
     match names.as_slice() {
         [] => String::new(),
