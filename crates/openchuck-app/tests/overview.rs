@@ -809,9 +809,16 @@ fn req_ui_12_each_source_gives_one_message_and_fixing_it_removes_the_message() {
         })
         .collect();
     assert_eq!(setup_messages.len(), 1);
+    // Show setting opens the setup at its clearance radius (decision
+    // record 0536 section 4).
     assert_eq!(
         setup_messages[0].action,
-        Some(MessageAction::ReviewSetup(f.setup))
+        Some(MessageAction::ShowSetting(
+            openchuck_app::overview::SettingRef::setup(
+                f.setup,
+                openchuck_app::setup_form::SetupField::SafeRadius
+            )
+        ))
     );
     assert!(
         o.setup_checks

@@ -305,7 +305,7 @@ fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_n
     let w = warnings(&checks);
     assert!(
         w.iter()
-            .any(|t| t.contains(&format!("'{name}'")) && t.contains(message)),
+            .any(|t| t.contains(&format!("'{name}'")) && t.contains("swarf on face 7 cuts into")),
         "{w:?}"
     );
     std::fs::remove_dir_all(dir).unwrap();
@@ -1067,7 +1067,7 @@ fn req_ui_12_req_gc_05_the_retained_export_message_keeps_every_path_exact() {
         .unwrap();
     assert_eq!(
         message.text,
-        "Export: Wrote 1 file; export incomplete.\n\
+        "Export: wrote 1 file; export incomplete.\n\
          Written: /out/01-part.nc\n\
          Failed: /out/02-part.nc — The disk is full\n\
          Not attempted: /out/part-setup-sheet.pdf\n\

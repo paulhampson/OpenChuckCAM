@@ -605,7 +605,7 @@ mod tests {
         };
         assert_eq!(
             report.text(),
-            "Export: Wrote 1 file.\nWritten: /out/a.nc\nEnd of the export result."
+            "Export: wrote 1 file.\nWritten: /out/a.nc\nEnd of the export result."
         );
     }
 }

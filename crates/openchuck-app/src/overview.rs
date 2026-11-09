@@ -1540,20 +1540,7 @@ fn old_z1_axis_height_text() -> String {
     )
 }
 
-/// `text` as the clause after a message's lead-in (decision record 0536
-/// section 3): its first letter in lower case, unless the first word is a
-/// name in capitals ("STEP") or a quoted name.
-fn clause(text: &str) -> String {
-    let text = text.trim();
-    let mut chars = text.chars();
-    match (chars.next(), chars.next()) {
-        (Some(first), Some(second)) if first.is_uppercase() && !second.is_uppercase() => first
-            .to_lowercase()
-            .chain(text[first.len_utf8()..].chars())
-            .collect(),
-        _ => text.to_owned(),
-    }
-}
+use crate::lead_in::clause;
 
 /// A setup warning in the one form: "Clearance (setup '<name>'): ...",
 /// the same in Messages and in the export checks.
@@ -3641,7 +3628,8 @@ mod tests {
             .iter()
             .find(|m| {
                 m.severity == Severity::Warning
-                    && m.text == format!("Overcut (operation 'Walls'): {message}")
+                    && m.text
+                        == crate::lead_in::in_form("Overcut", &Context::operation("Walls"), message)
             })
             .unwrap_or_else(|| panic!("{:?}", overview.messages));
         assert_eq!(

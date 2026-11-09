@@ -4094,7 +4094,7 @@ mod tests {
         assert_eq!(
             operation_notice(&f.project, operation, &overcut),
             format!(
-                "Overcut (operation '{}'): some moves cut 0.013 mm too deep",
+                "Overcut (operation '{}'): some moves cut 0.013 mm too deep.",
                 operation.name
             )
         );
@@ -4104,7 +4104,7 @@ mod tests {
             operation_notice(&f.project, operation, &flutes),
             format!(
                 "Flute length (operation '{}', tool '{}'): the stock stands 3.000 mm above the \
-                 flutes",
+                 flutes.",
                 operation.name, tool.name
             )
         );
@@ -4140,10 +4140,14 @@ mod tests {
         let shown = operation_notice(&f.project, operation, warning);
         assert_eq!(
             shown,
-            format!("Overcut (operation '{}'): {}", operation.name, warning.text)
+            crate::lead_in::in_form(
+                "Overcut",
+                &crate::lead_in::Context::operation(&operation.name),
+                &warning.text
+            )
         );
         assert!(
-            shown.starts_with("Overcut (operation 'Op'): Swarf on face 0 cuts "),
+            shown.starts_with("Overcut (operation 'Op'): swarf on face 0 cuts "),
             "{shown}"
         );
         // Every warning of the path has a topic, so none is shown without
@@ -4202,7 +4206,7 @@ mod tests {
         let shown = operation_note(&f.project, operation, summary);
         assert_eq!(
             shown,
-            format!("Edge following (operation 'Op'): {}", summary.text)
+            format!("Edge following (operation 'Op'): {}.", summary.text)
         );
         // Every note the library made has a topic, so each reads in the
         // one form.
@@ -4221,7 +4225,7 @@ mod tests {
         assert_eq!(
             operation_note(&f.project, operation, &slowed),
             "Feed limit (operation 'Op'): move 4: the machine's feed limits slow this move: the \
-             contact feed is 900.0 mm/min, not 1000.0"
+             contact feed is 900.0 mm/min, not 1000.0."
         );
         // The operation is named as it is now (decision record 0522 item 3).
         let mut project = f.project.clone();

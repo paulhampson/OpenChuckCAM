@@ -1289,7 +1289,7 @@ mod tests {
         assert!(
             lines
                 .iter()
-                .any(|l| l.text == format!("Selection set (operation '{name}'): {said}")),
+                .any(|l| l.text == format!("Selection set (operation '{name}'): {said}.")),
             "{lines:?}"
         );
         assert_eq!(level("cut 3 rings"), Severity::Info);

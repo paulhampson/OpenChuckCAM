@@ -220,9 +220,31 @@ pub fn names_the_tool(topic: &str) -> bool {
     TOOL_TOPICS.contains(&topic)
 }
 
-/// A whole message in the one form: the lead-in, a colon, then `text`.
+/// A whole message in the one form: the lead-in, a colon, then `text` as a
+/// clause ([`clause`]) ending with a full stop, so every message reads the
+/// same wherever it is shown, on the command line too (OWNERCHECKS2).
 pub fn in_form(topic: &str, context: &Context, text: &str) -> String {
+    let mut text = clause(text);
+    if !text.ends_with(['.', '!', '?']) {
+        text.push('.');
+    }
     format!("{}: {text}", lead_in(topic, context))
+}
+
+/// `text` as the clause after a message's lead-in (decision record 0536
+/// section 3): its first letter in lower case, unless the first word is a
+/// name in capitals ("STEP", "X") or the text opens with a quote or a
+/// number.
+pub fn clause(text: &str) -> String {
+    let text = text.trim();
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(first), Some(second)) if first.is_uppercase() && second.is_lowercase() => first
+            .to_lowercase()
+            .chain(text[first.len_utf8()..].chars())
+            .collect(),
+        _ => text.to_owned(),
+    }
 }
 
 #[cfg(test)]
@@ -239,7 +261,7 @@ mod tests {
                 "the stock stands 3.000 mm above the flutes"
             ),
             "Flute length (operation '1 Rough', tool 'T2 Flat 6'): the stock stands 3.000 mm \
-             above the flutes"
+             above the flutes."
         );
     }
 
@@ -276,10 +298,44 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_12_the_clause_after_the_lead_in_is_lower_case_and_ends_with_a_full_stop() {
+        // OWNERCHECKS2 on main 81bade8a: "Held region (operation 'X'):
+        // Nothing ..." started with a capital, and some lines ended with no
+        // full stop on the command line.
+        let held = Context::operation("Finish");
+        assert_eq!(
+            in_form(
+                "Held region",
+                &held,
+                "Nothing within one tool radius is cut"
+            ),
+            "Held region (operation 'Finish'): nothing within one tool radius is cut."
+        );
+        // A name in capitals, a quote or a number keeps its case; an ending
+        // is never doubled.
+        assert_eq!(
+            in_form("T", &held, "STEP faces only."),
+            "T (operation 'Finish'): STEP faces only."
+        );
+        assert_eq!(
+            in_form("T", &held, "X 10.000 is past the end"),
+            "T (operation 'Finish'): X 10.000 is past the end."
+        );
+        assert_eq!(
+            in_form("T", &held, "'Top' limits nothing?"),
+            "T (operation 'Finish'): 'Top' limits nothing?"
+        );
+        assert_eq!(
+            in_form("T", &held, "2 chains"),
+            "T (operation 'Finish'): 2 chains."
+        );
+    }
+
+    #[test]
     fn req_ui_12_a_message_about_no_item_is_led_by_its_topic_alone() {
         assert_eq!(
             in_form("Recovery", &Context::default(), "text"),
-            "Recovery: text"
+            "Recovery: text."
         );
     }
 }
