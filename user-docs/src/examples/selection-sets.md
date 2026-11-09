@@ -178,7 +178,7 @@ A set of the wrong kind
 </figure>
 
 Face-flow finishing with nothing in Cut on
-: It is refused: "Operation 'Floor finish' cannot be generated: Face-flow finishing needs a face set: select the faces to cut, save them as a set and put it in Cut on; an edge set there is the guide". Make a face set of the faces to cut and choose it beside **Cut on**.
+: It is refused: "Selection set (operation 'Floor finish'): face-flow finishing needs a face set: select the faces to cut, save them as a set and put it in Cut on; an edge set there is the guide." Make a face set of the faces to cut and choose it beside **Cut on**.
 
 Editing a set changes more than one operation
 : A set is shared. Shift-click or Ctrl-click on a chosen set changes it at once and makes every operation that uses it out of date, as its Inspector says. Make a new set if only one operation should change.

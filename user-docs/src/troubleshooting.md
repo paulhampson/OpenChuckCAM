@@ -20,21 +20,21 @@ A question about the unit, in an amber box
 
 ## An operation cannot be generated
 
-The operation's mark turns red, and Messages and the Results tab say "operation '...' cannot be generated:" with the reason. Common reasons:
+The operation's mark turns red, and Messages, the Results tab and the command line name the check that refused it, then the operation, then the reason, for example "End facing (operation 'Face'): …". Where the reason names a setting, **Show setting** in Messages opens the operation at it. Common reasons:
 
-"the project has no machine profile", "its setup has no stock", "it has no tool"
+"Machine profile (operation '...'): the project has no machine profile", "Stock (operation '...'): its setup has no stock", "Tool (operation '...'): it has no tool"
 : Something the operation needs is missing. Set it on the Setup step, or choose a tool in the operation's Tool section.
 
-"... is required: set it on the operation, or fix the cause: ..."
+"Cutting data (operation '...'): ... is required: set it on the operation, or fix the cause: ..."
 : A cutting value, such as the stepover or the stepdown, is empty and no cutting data fills it. The reason says why: the setup has no stock material, the tool has no cutting data for that material, or there is no tool. Type the value, or add cutting data to the tool (see [Add a tool to the library](how-to/add-a-tool.md)) and click **Update from library**.
 
-"parameter ...: ..."
-: A setting is out of its range or does not suit the tool, for example a stepdown deeper than the tool's flutes. Change the setting the message names.
+"Stepdown (operation '...'): ...", or another setting's name first
+: A setting is out of its range or does not suit the tool, for example a stepdown deeper than the tool's flutes. The message starts with the setting's name as the operation shows it; **Show setting** opens it.
 
 "tab ... is not wholly in the head or the tail zone"
 : Move the tab into a zone, in the setup's Workholding section. See [Tabs](concepts/tabs.md).
 
-"selection set '...' cannot be used: ..."
+"Selection set (operation '...'): the selection set '...' cannot be used: ..."
 : The set does not suit this strategy or this part. Choose another set, or **Reselect** it.
 
 "the job '...' stopped on an internal error; please report this as a defect"
