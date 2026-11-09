@@ -253,10 +253,14 @@ fn req_op_21_req_set_09_roughing_says_when_it_cannot_cut_down_beside_a_tab() {
         .iter()
         .find(|n| n.contains("cannot cut down beside tab 1"))
         .unwrap_or_else(|| panic!("no warning in {warnings:#?}"));
+    // The lead-in names the operation and the tool, once (decision record
+    // 0536 section 3).
+    assert!(note.starts_with("Tab clearance (operation '"), "{note}");
+    assert!(note.contains("', tool '"), "{note}");
     for want in [
-        "1 Roughing",
+        "the tool cannot cut down beside tab 1",
         "X 0.000 to 4.000 mm",
-        "Flat 3.175 (3.175 mm) has 3.000 mm of room",
+        "it is 3.175 mm wide and has 3.000 mm of room",
     ] {
         assert!(note.contains(want), "{want:?} not in {note}");
     }

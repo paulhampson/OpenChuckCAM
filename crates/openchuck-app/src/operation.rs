@@ -69,6 +69,33 @@ pub(crate) fn stored_values(operation: &Operation) -> BTreeMap<String, Parameter
         .collect()
 }
 
+/// A run's refusal in the user's words (OI-360; decision record 0536 step
+/// 4): a parameter the strategy refuses is named by the label its field has
+/// in the inspector, not by its name in the schema ("Stepover: must be above
+/// 0 mm", not "parameter stepover_mm: ..."). Other refusals read as they are.
+pub(crate) fn refusal_text(
+    project: &Project,
+    registry: &openchuck_path::Registry,
+    operation: Option<OperationId>,
+    error: &AppError,
+) -> String {
+    if let AppError::Path(openchuck_path::PathError::Parameter { name, reason }) = error {
+        let label = operation
+            .and_then(|id| project.operation(id))
+            .and_then(|op| {
+                let strategy = registry.get(&op.strategy).ok()?;
+                effective_schema(op, strategy)
+                    .get(name)
+                    .map(|spec| spec.label.clone())
+            });
+        return match label {
+            Some(label) => format!("{label}: {reason}"),
+            None => error.user_message(),
+        };
+    }
+    error.to_string()
+}
+
 pub(crate) fn effective_schema(
     operation: &Operation,
     strategy: &dyn Strategy,
@@ -836,7 +863,6 @@ fn generate_unnamed(
             Some(ParameterValue::Number(n)) => *n,
             _ => operation_leave,
         };
-        let label = crate::workholding::operation_label(project, operation);
         leave_notes.extend(
             crate::workholding::uncleared_tab_notes(
                 &setup.workholding,
@@ -846,8 +872,6 @@ fn generate_unnamed(
                     cutting_radius: profile.cutting_radius(),
                     reach: tool_reach(&profile, &snapshot.tool),
                     leave,
-                    tool: &snapshot.name,
-                    operation: &label,
                 },
             )
             .into_iter()
@@ -4015,6 +4039,42 @@ mod tests {
     }
 
     #[test]
+    fn req_nfr_15_a_refused_parameter_is_named_by_its_label() {
+        // OI-360: a refused parameter reaches Messages by the label the
+        // inspector shows, never by its name in the schema.
+        let f = bar_fixture_with(openchuck_path::helical::NAME, "bar.stl", ToolShape::FlatEnd);
+        let registry = Registry::builtin();
+        let operation = f.project.operation(f.operation).unwrap();
+        let strategy = registry.get(&operation.strategy).unwrap();
+        let spec = effective_schema(operation, strategy)
+            .parameters
+            .into_iter()
+            .find(|p| p.name == "tolerance")
+            .unwrap();
+        let refused = AppError::from(openchuck_path::PathError::parameter(
+            "tolerance",
+            "must be above 0 mm",
+        ));
+        assert_eq!(
+            refusal_text(&f.project, &registry, Some(f.operation), &refused),
+            format!("{}: must be above 0 mm", spec.label)
+        );
+        assert!(
+            !refusal_text(&f.project, &registry, Some(f.operation), &refused).contains("parameter")
+        );
+        // With no operation to look in, the reason alone.
+        assert_eq!(
+            refusal_text(&f.project, &registry, None, &refused),
+            "Must be above 0 mm."
+        );
+        let other = AppError::UnknownOperation("x".into());
+        assert_eq!(
+            refusal_text(&f.project, &registry, None, &other),
+            other.to_string()
+        );
+    }
+
+    #[test]
     fn req_ui_12_a_notice_with_a_topic_takes_the_one_form() {
         // Decision record 0536 section 3: the topic, then the operation as it
         // is named now (and its tool where the tool matters), then the text.
@@ -4031,7 +4091,7 @@ mod tests {
         assert_eq!(
             operation_notice(&f.project, operation, &overcut),
             format!(
-                "Overcut (operation '{}'): some moves cut 0.013 mm too deep",
+                "Overcut (operation '{}'): some moves cut 0.013 mm too deep.",
                 operation.name
             )
         );
@@ -4041,7 +4101,7 @@ mod tests {
             operation_notice(&f.project, operation, &flutes),
             format!(
                 "Flute length (operation '{}', tool '{}'): the stock stands 3.000 mm above the \
-                 flutes",
+                 flutes.",
                 operation.name, tool.name
             )
         );
@@ -4077,10 +4137,14 @@ mod tests {
         let shown = operation_notice(&f.project, operation, warning);
         assert_eq!(
             shown,
-            format!("Overcut (operation '{}'): {}", operation.name, warning.text)
+            crate::lead_in::in_form(
+                "Overcut",
+                &crate::lead_in::Context::operation(&operation.name),
+                &warning.text
+            )
         );
         assert!(
-            shown.starts_with("Overcut (operation 'Op'): Swarf on face 0 cuts "),
+            shown.starts_with("Overcut (operation 'Op'): swarf on face 0 cuts "),
             "{shown}"
         );
         // Every warning of the path has a topic, so none is shown without
@@ -4139,7 +4203,7 @@ mod tests {
         let shown = operation_note(&f.project, operation, summary);
         assert_eq!(
             shown,
-            format!("Edge following (operation 'Op'): {}", summary.text)
+            format!("Edge following (operation 'Op'): {}.", summary.text)
         );
         // Every note the library made has a topic, so each reads in the
         // one form.
@@ -4158,7 +4222,7 @@ mod tests {
         assert_eq!(
             operation_note(&f.project, operation, &slowed),
             "Feed limit (operation 'Op'): move 4: the machine's feed limits slow this move: the \
-             contact feed is 900.0 mm/min, not 1000.0"
+             contact feed is 900.0 mm/min, not 1000.0."
         );
         // The operation is named as it is now (decision record 0522 item 3).
         let mut project = f.project.clone();

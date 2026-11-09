@@ -255,7 +255,7 @@ fn req_sim_05_req_nfr_12_an_enclosed_leftover_gives_one_warning_per_setup_with_i
     assert!(summary.from <= 0.02 && summary.to >= 0.98, "{summary:?}");
     assert!(summary.facing_axis >= 0.99, "{summary:?}");
     for words in [
-        "Setup 'Setup 1': ",
+        "Enclosed material (setup 'Setup 1'): ",
         &format!("{:.1}% of the part's surface", summary.share * 100.0),
         &format!("(about {:.0} mm²)", summary.area),
         "of the part's length from its start",

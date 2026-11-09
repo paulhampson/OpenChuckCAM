@@ -194,10 +194,13 @@ pub enum ModelStorage {
 /// The note for Messages and `openchuck-cli validate` about a model linked
 /// from outside the project folder (decision record 0307 item 8).
 pub(crate) fn linked_note(model: &ModelRef) -> String {
-    format!(
-        "'{}' is outside the project folder, so the folder is not self-contained. Model \
+    // In the one form (decision record 0536 section 3), the same in
+    // Messages and on the command line.
+    crate::lead_in::in_form(
+        crate::lead_in::topic::LINKED_MODEL,
+        &crate::lead_in::Context::model(model.display_name()),
+        "the file is outside the project folder, so the folder is not self-contained. Model \
          inspector, Copy model into project.",
-        model.display_name()
     )
 }
 
@@ -375,7 +378,7 @@ pub(crate) fn inspect_model(
     let mut inspection = inspect_bytes(&path, &bytes, model.units, &model.transform, context)?;
     if ContentHash::of_bytes(&bytes) != model.hash {
         inspection.notes.push(format!(
-            "'{}' has changed since it was added to the project (PRJ-02)",
+            "'{}' has changed since it was added to the project",
             model.label()
         ));
     }

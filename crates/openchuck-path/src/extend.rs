@@ -174,7 +174,7 @@ impl Extension {
                     name: parameter::EXTEND.to_owned(),
                     reason: format!(
                         "the {which} of the stock is held by the workholding, so {label} cannot \
-                         extend past it (SET-09); extend past the other end only, or not at all"
+                         extend past it; extend past the other end only, or not at all"
                     ),
                 });
             }

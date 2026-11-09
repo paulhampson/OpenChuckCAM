@@ -82,6 +82,40 @@ pub enum SetupField {
     StockMargin,
 }
 
+impl SetupField {
+    /// The fields a "Show setting" link can name, with their keys.
+    const KEYED: [(Self, &'static str); 11] = [
+        (Self::Diameter, "stock_diameter"),
+        (Self::Length, "stock_length"),
+        (Self::StartX, "stock_start_x"),
+        (Self::BoundsOffset, "bounds_offset"),
+        (Self::Material, "material"),
+        (Self::PartOffset, "part_offset"),
+        (Self::WorkZeroX, "work_zero_x"),
+        (Self::SafeRadius, "safe_radius"),
+        (Self::SafeZ, "safe_z"),
+        (Self::MinClearance, "min_clearance"),
+        (Self::StockMargin, "stock_margin"),
+    ];
+
+    /// This field's key in a "Show setting" link (decision record 0536
+    /// section 4), or `None` for a box corner, which no message names.
+    pub fn key(self) -> Option<&'static str> {
+        Self::KEYED
+            .iter()
+            .find(|(field, _)| *field == self)
+            .map(|(_, key)| *key)
+    }
+
+    /// The field a "Show setting" key names.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::KEYED
+            .iter()
+            .find(|(_, k)| *k == key)
+            .map(|(field, _)| *field)
+    }
+}
+
 /// One row of a setup section.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetupRow {

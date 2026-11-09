@@ -461,7 +461,7 @@ impl std::fmt::Display for SetupWarning {
                 f.write_str("bounding-box stock needs a part model; set the setup's part")?
             }
             SetupWarningKind::ImportedStock => {
-                f.write_str("imported stock (SET-04) is not available yet, so it is not checked")?
+                f.write_str("imported stock is not available yet, so it is not checked")?
             }
             SetupWarningKind::ClearanceInsideStock { radius, stock } => write!(
                 f,
@@ -587,7 +587,7 @@ pub fn validate_setup(
         if matches!(stock, Stock::Imported { .. }) {
             return Err(Error::invalid(
                 format!("{field}.stock"),
-                "imported stock (SET-04) is not available yet; use a cylinder, a box or the bounding box",
+                "imported stock is not available yet; use a cylinder, a box or the bounding box",
             ));
         }
         stock.validate()?;
@@ -1199,7 +1199,11 @@ mod tests {
             },
         };
         let err = validate_setup(&SetupFrame::default(), Some(&stock), None, "setup").unwrap_err();
-        assert!(err.to_string().contains("SET-04"), "{err}");
+        assert!(
+            err.to_string()
+                .contains("imported stock is not available yet"),
+            "{err}"
+        );
     }
 
     fn rules(min: Option<f64>, margin: Option<f64>) -> ClearanceRules {

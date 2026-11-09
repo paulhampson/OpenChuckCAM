@@ -133,20 +133,122 @@ pub mod topic {
     pub const WORKHOLDING: &str = "Workholding";
     /// What the 3D view cannot draw yet.
     pub const VIEW: &str = "View";
+    /// A finished or failed export, in Messages.
+    pub const EXPORT: &str = "Export";
+    /// A generation that was refused or failed.
+    pub const GENERATION: &str = "Generation";
+    /// A strategy that needs a STEP part, on a mesh part.
+    pub const STEP_PART: &str = "STEP part";
+    /// A ramp entry that cannot be used on this part or with this tool.
+    pub const RAMP_ENTRY: &str = "Ramp entry";
+    /// Material no tool on the machine can reach, enclosed by the part.
+    pub const ENCLOSED_MATERIAL: &str = "Enclosed material";
+    /// A setup with no machine profile, or a profile's own values.
+    pub const MACHINE_PROFILE: &str = "Machine profile";
+    /// A tool too long for the safe Z or the Z travel.
+    pub const TOOL_LENGTH: &str = "Tool length";
+    /// The Makera Z1 copy's old placeholder axis height.
+    pub const AXIS_HEIGHT: &str = "Axis height";
+    /// A setup's stock.
+    pub const STOCK: &str = "Stock";
+    /// A setup's clearance (the safe cylinder).
+    pub const CLEARANCE: &str = "Clearance";
+    /// A position outside the machine's travel.
+    pub const TRAVEL: &str = "Travel";
+    /// A tab's position, or two tabs over each other.
+    pub const TAB_POSITION: &str = "Tab position";
+    /// A model linked from outside the project folder.
+    pub const LINKED_MODEL: &str = "Linked model";
+    /// A model's file: missing, unreadable or changed.
+    pub const MODEL_FILE: &str = "Model file";
+    /// What the mesh check found in a model.
+    pub const MESH_CHECK: &str = "Mesh check";
+    /// A model whose units are in doubt.
+    pub const UNITS: &str = "Units";
+    /// What reading a model's file noted.
+    pub const MODEL_NOTES: &str = "Model notes";
+    /// A model that cannot be imported.
+    pub const IMPORT: &str = "Import";
+    /// The project's checks, when they fail to run.
+    pub const PROJECT_CHECKS: &str = "Project checks";
+    /// A rapid move the stock simulation found removing material.
+    pub const RAPID_CUT: &str = "Rapid cut";
+    /// Moves shorter than the controller can run at their feed.
+    pub const SHORT_BLOCKS: &str = "Short blocks";
+
+    /// Every topic above, for a check that a message takes one.
+    pub const ALL: &[&str] = &[
+        TAB_LENGTH,
+        TAB_CLEARANCE,
+        STOCK_TO_LEAVE,
+        EXACT_CONTACT,
+        CUTTING_DATA,
+        IGNORED_SETTING,
+        EARLIER_OPERATIONS,
+        WORKHOLDING,
+        VIEW,
+        EXPORT,
+        GENERATION,
+        STEP_PART,
+        RAMP_ENTRY,
+        ENCLOSED_MATERIAL,
+        MACHINE_PROFILE,
+        TOOL_LENGTH,
+        AXIS_HEIGHT,
+        STOCK,
+        CLEARANCE,
+        TRAVEL,
+        TAB_POSITION,
+        LINKED_MODEL,
+        MODEL_FILE,
+        MESH_CHECK,
+        UNITS,
+        MODEL_NOTES,
+        IMPORT,
+        PROJECT_CHECKS,
+        RAPID_CUT,
+        SHORT_BLOCKS,
+    ];
 }
 
 /// The topics whose messages name the tool too, because the tool's size,
 /// flutes or number matter to them (decision record 0536 section 3).
-pub const TOOL_TOPICS: &[&str] = &[openchuck_path::topic::FLUTE_LENGTH, topic::TAB_LENGTH];
+pub const TOOL_TOPICS: &[&str] = &[
+    openchuck_path::topic::FLUTE_LENGTH,
+    topic::TAB_LENGTH,
+    topic::TAB_CLEARANCE,
+];
 
 /// Whether a message under `topic` names the operation's tool as well.
 pub fn names_the_tool(topic: &str) -> bool {
     TOOL_TOPICS.contains(&topic)
 }
 
-/// A whole message in the one form: the lead-in, a colon, then `text`.
+/// A whole message in the one form: the lead-in, a colon, then `text` as a
+/// clause ([`clause`]) ending with a full stop, so every message reads the
+/// same wherever it is shown, on the command line too (OWNERCHECKS2).
 pub fn in_form(topic: &str, context: &Context, text: &str) -> String {
+    let mut text = clause(text);
+    if !text.ends_with(['.', '!', '?']) {
+        text.push('.');
+    }
     format!("{}: {text}", lead_in(topic, context))
+}
+
+/// `text` as the clause after a message's lead-in (decision record 0536
+/// section 3): its first letter in lower case, unless the first word is a
+/// name in capitals ("STEP", "X") or the text opens with a quote or a
+/// number.
+pub fn clause(text: &str) -> String {
+    let text = text.trim();
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(first), Some(second)) if first.is_uppercase() && second.is_lowercase() => first
+            .to_lowercase()
+            .chain(text[first.len_utf8()..].chars())
+            .collect(),
+        _ => text.to_owned(),
+    }
 }
 
 #[cfg(test)]
@@ -163,7 +265,7 @@ mod tests {
                 "the stock stands 3.000 mm above the flutes"
             ),
             "Flute length (operation '1 Rough', tool 'T2 Flat 6'): the stock stands 3.000 mm \
-             above the flutes"
+             above the flutes."
         );
     }
 
@@ -173,6 +275,7 @@ mod tests {
         // size, flutes or number matter.
         assert!(names_the_tool("Flute length"));
         assert!(names_the_tool("Tab length"));
+        assert!(names_the_tool("Tab clearance"));
         assert!(!names_the_tool("Overcut"));
     }
 
@@ -200,10 +303,44 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_12_the_clause_after_the_lead_in_is_lower_case_and_ends_with_a_full_stop() {
+        // OWNERCHECKS2 on main 81bade8a: "Held region (operation 'X'):
+        // Nothing ..." started with a capital, and some lines ended with no
+        // full stop on the command line.
+        let held = Context::operation("Finish");
+        assert_eq!(
+            in_form(
+                "Held region",
+                &held,
+                "Nothing within one tool radius is cut"
+            ),
+            "Held region (operation 'Finish'): nothing within one tool radius is cut."
+        );
+        // A name in capitals, a quote or a number keeps its case; an ending
+        // is never doubled.
+        assert_eq!(
+            in_form("T", &held, "STEP faces only."),
+            "T (operation 'Finish'): STEP faces only."
+        );
+        assert_eq!(
+            in_form("T", &held, "X 10.000 is past the end"),
+            "T (operation 'Finish'): X 10.000 is past the end."
+        );
+        assert_eq!(
+            in_form("T", &held, "'Top' limits nothing?"),
+            "T (operation 'Finish'): 'Top' limits nothing?"
+        );
+        assert_eq!(
+            in_form("T", &held, "2 chains"),
+            "T (operation 'Finish'): 2 chains."
+        );
+    }
+
+    #[test]
     fn req_ui_12_a_message_about_no_item_is_led_by_its_topic_alone() {
         assert_eq!(
             in_form("Recovery", &Context::default(), "text"),
-            "Recovery: text"
+            "Recovery: text."
         );
     }
 }

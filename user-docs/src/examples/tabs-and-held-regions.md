@@ -106,7 +106,7 @@ What to change, in order of preference:
 - Use a smaller tool for the operations that cut near the tab.
 - If the operation only cuts part of the model, limit it to a region away from the tab: the check only counts operations whose path can reach the tab ([Limit an operation to a region](limit-to-a-region.md)).
 
-When there is no room for the tab to sit beside the tool at all, the operation adds a warning that it "cannot cut down beside" the tab, with the room it had, and leaves the stock round the tab above it there.
+When there is no room for the tab to sit beside the tool at all, the operation adds a **Tab clearance** warning, naming the operation and the tool, that the tool "cannot cut down beside" the tab, with the room it had, and leaves the stock round the tab above it there.
 
 ## 4. A tab with no room
 

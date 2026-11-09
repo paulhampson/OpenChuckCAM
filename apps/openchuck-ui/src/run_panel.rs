@@ -1289,7 +1289,7 @@ mod tests {
         assert!(
             lines
                 .iter()
-                .any(|l| l.text == format!("Selection set (operation '{name}'): {said}")),
+                .any(|l| l.text == format!("Selection set (operation '{name}'): {said}.")),
             "{lines:?}"
         );
         assert_eq!(level("cut 3 rings"), Severity::Info);
@@ -1358,8 +1358,9 @@ mod tests {
     #[test]
     fn req_nfr_12_a_real_warning_is_never_merged_into_the_feed_summary() {
         let (mut run, project, name) = limited_run("three", 3);
-        let rapid =
-            format!("operation '{name}': move 9 is a rapid that removes 0.100 mm3 of material");
+        let rapid = format!(
+            "Rapid cut (operation '{name}'): move 9 is a rapid that removes 0.100 mm³ of material"
+        );
         // A rapid that removes material is a warning of the run (decision
         // 0536 step 2).
         run.warnings.push(rapid.clone());
