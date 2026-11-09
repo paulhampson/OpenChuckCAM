@@ -4,6 +4,12 @@
 
 > Entry: the move to an entry's start would pass through stock that reaches *R* mm from the rotary axis, at or above the retract height of *H* mm. Raise the setup's clearance, or set Entry to Plunge.
 
+Where the tool rises first, the operation gets an information note, and only then:
+
+> Entry (operation '*name*'): 1 entry starts higher than the link before it ends, so the move to the entry's start stays clear of the stock beside the first cut point.
+
+or, for several, "Entry (operation '*name*'): *N* entries start higher than the links before them end, so the move to each entry's start stays clear of the stock beside the first cut point." No test asserts this note's text yet (lane RAMPENTRY is adding one); the tests below assert that no rapid sweeps through the stock.
+
 **There is no project to open for this check.** Lane RAMPENTRY found no public model that reproduces the old fault: it needs a raised piece of stock beside a pass's first cut point, outside the footprint the link checks, under a low link. The fix is shown by the lane's tests on synthetic stock, in [`crates/openchuck-path/tests/entry_link_stock.rs`](https://github.com/paulhampson/OpenChuckCAM/blob/main/crates/openchuck-path/tests/entry_link_stock.rs) on `main`:
 
 - `req_op_14_req_op_11_the_rapid_to_a_lead_in_start_never_enters_the_stock`
@@ -26,7 +32,8 @@ They place a block of stock 19.5 mm from the axis beside the second pass's first
 ## Expected result
 
 - The three tests pass on `main` at `fa1c2de1` or later (lane RAMPENTRY ran them before the merge; they failed on `1f3675d52` as written, the control passing).
-- No change in programs where the move to an entry's start was already clear: the tool rises only where the probe finds stock.
+- No change in programs where the move to an entry's start was already clear: the tool rises only where the probe finds stock, and only then does the "Entry (operation '...'): ... entr... start higher than the link..." note appear.
+- If one of your own projects shows that note, look at the entries it counts: the tool now rises before moving across to their start.
 
 ## Report back
 
@@ -34,4 +41,4 @@ Reply on issue #642 with: **PASS** if you are content with the tests as the chec
 
 ## What we saw when preparing this
 
-Lane OWNERCHECKS2 tried to find a public case and did not: the public example projects and the STEP files of `testdata/step/valid` have no raised stock beside a first cut point under a low link. The refusal text above is read from the code on `main` at `fa1c2de1` (`crates/openchuck-path/src/assemble.rs`). We did not run the tests here; they are part of the continuous-integration suite of #663. The rest of #642 (a roughing lead arc swinging through uncut stock) belongs to the lead work of #640 and is checked with it.
+Lane OWNERCHECKS2 tried to find a public case and did not: the public example projects and the STEP files of `testdata/step/valid` have no raised stock beside a first cut point under a low link. The refusal and the note texts above are read from the code on `main` at `fa1c2de1` (`crates/openchuck-path/src/assemble.rs`, the note at about lines 855 to 871, the rise in `clear_traverse`). We did not produce the rise-first case on a public model, so the note has not been seen in a program here. We did not run the tests here; they are part of the continuous-integration suite of #663. The rest of #642 (a roughing lead arc swinging through uncut stock) belongs to the lead work of #640 and is checked with it.

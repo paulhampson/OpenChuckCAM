@@ -2,7 +2,7 @@
 
 - Check (no project: reading only): https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/642-entry-start-checked/CHECK.md
 
-There is no public model that reproduces the old fault (it needs raised stock beside a first cut point under a low link), so the check rests on the lane's tests in `crates/openchuck-path/tests/entry_link_stock.rs`: the rapid to a lead-in start and to a ramp start never enter the stock, with a plunge entry as the control. Before the fix those rapids entered a block of stock at X 19.16 and 18.81 mm. About 2 minutes of reading; if one of your own projects showed such a rapid, regenerate it and look there.
+There is no public model that reproduces the old fault (it needs raised stock beside a first cut point under a low link), so the check rests on the lane's tests in `crates/openchuck-path/tests/entry_link_stock.rs`: the rapid to a lead-in start and to a ramp start never enter the stock, with a plunge entry as the control. Before the fix those rapids entered a block of stock at X 19.16 and 18.81 mm. Where the tool rises first, the operation gets the note "Entry (operation '...'): 1 entry starts higher than the link before it ends, so the move to the entry's start stays clear of the stock beside the first cut point" (or N entries); no test asserts that text yet. About 2 minutes of reading; if one of your own projects showed such a rapid, regenerate it and look there.
 
 Nothing here shows that a program is safe to run.
 
