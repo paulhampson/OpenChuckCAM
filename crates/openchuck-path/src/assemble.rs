@@ -524,6 +524,18 @@ pub fn assemble_with_entry(
 
     let entry = entry::Entry::new(input, common, entry)?;
     let entry_nub_radius = entry.nub_radius();
+    if entry_nub_radius > 0.0 {
+        split_nubs(
+            &b,
+            input,
+            &entry,
+            &mut placed,
+            &mut stocks,
+            &mut rapids,
+            &mut helical_starts,
+            &mut low_links,
+        );
+    }
     let total = placed.len() as u64;
     let mut cleared: Vec<(f64, f64)> = Vec::new();
     let (mut asked_low, mut kept_high) = (0_usize, 0_usize);
@@ -1193,6 +1205,92 @@ fn view<'a>(stocks: &'a [Option<PassStock>], i: usize, input: &'a StrategyInput<
             wide: false,
         },
     }
+}
+
+/// Splits each roughing pass (one that carries its stock and has no
+/// rapids) round every stretch of it that turns at least a whole turn within
+/// the nub's radius of the rotary axis where the part leaves nothing round
+/// the axis (decision 0543 section 4, point 3), so that stretch becomes a
+/// pass of its own, which the assembly plunges as a nub. Roughing in Rings
+/// joins a whole layer into one pass, so a nub past the part's end is a
+/// stretch of a pass, not a pass.
+#[allow(clippy::too_many_arguments)]
+fn split_nubs(
+    b: &Builder<'_>,
+    input: &StrategyInput<'_>,
+    entry: &entry::Entry,
+    placed: &mut Vec<Vec<CutPoint>>,
+    stocks: &mut Vec<Option<PassStock>>,
+    rapids: &mut Vec<Vec<usize>>,
+    helical_starts: &mut Vec<bool>,
+    low_links: &mut Vec<bool>,
+) {
+    let radius = entry.nub_radius();
+    let mut out = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let passes = std::mem::take(placed);
+    for (i, points) in passes.into_iter().enumerate() {
+        let stock = stocks.get(i).cloned().flatten();
+        let pass_rapids = rapids.get(i).cloned().unwrap_or_default();
+        let helical = helical_starts.get(i).copied().unwrap_or(false);
+        let low = low_links.get(i).copied().unwrap_or(false);
+        let mut pieces: Vec<Vec<CutPoint>> = Vec::new();
+        if stock.is_some() && pass_rapids.is_empty() {
+            let inside: Vec<bool> = points
+                .iter()
+                .map(|p| {
+                    let q = b.rotary.to_axis(p.tip, p.a);
+                    q.across.hypot(q.height) <= radius + EPS
+                })
+                .collect();
+            let mut start = 0;
+            let mut k = 0;
+            while k < points.len() {
+                if !inside.get(k).copied().unwrap_or(false) {
+                    k += 1;
+                    continue;
+                }
+                let mut end = k;
+                while inside.get(end + 1).copied().unwrap_or(false) {
+                    end += 1;
+                }
+                let run = points.get(k..=end).unwrap_or_default();
+                let turned = run
+                    .windows(2)
+                    .map(|w| match w {
+                        [p, q] => (q.a.0 - p.a.0).abs(),
+                        _ => 0.0,
+                    })
+                    .sum::<f64>();
+                if turned >= 360.0 - 1e-6 && entry.nub(b, input, true, run).is_some() {
+                    if k > start {
+                        pieces.push(points.get(start..k).unwrap_or_default().to_vec());
+                    }
+                    pieces.push(run.to_vec());
+                    start = end + 1;
+                }
+                k = end + 1;
+            }
+            if start > 0 && start < points.len() {
+                pieces.push(points.get(start..).unwrap_or_default().to_vec());
+            }
+        }
+        if pieces.is_empty() {
+            out.0.push(points);
+            out.1.push(stock);
+            out.2.push(pass_rapids);
+            out.3.push(helical);
+            out.4.push(low);
+        } else {
+            for (n, piece) in pieces.into_iter().enumerate() {
+                out.0.push(piece);
+                out.1.push(stock.clone());
+                out.2.push(Vec::new());
+                out.3.push(helical && n == 0);
+                out.4.push(low);
+            }
+        }
+    }
+    (*placed, *stocks, *rapids, *helical_starts, *low_links) = out;
 }
 
 /// Passes named for a note (decision 0536; the grouping of #600): "pass 3",

@@ -797,3 +797,176 @@ fn req_op_11_req_nfr_07_the_steep_drop_note_is_singular_for_one_pass() {
         note.text
     );
 }
+
+/// One roughing pass that joins a ring over the part (X 20, outside the nub)
+/// to two small rings past the part's end (X 45), as roughing in Rings joins
+/// a layer into one pass.
+#[derive(Debug)]
+struct LayerPastTheEnd;
+
+impl Strategy for LayerPastTheEnd {
+    fn name(&self) -> &str {
+        "test_layer_past_the_end"
+    }
+    fn label(&self) -> &str {
+        "Layer past the end (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        _: &openchuck_path::Parameters,
+        _: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        use openchuck_path::rotary::AxisPosition;
+        use openchuck_types::units::Degrees;
+        let at = |along: f64, height: f64, a: f64| {
+            let tip = input.rotary.to_model(
+                AxisPosition {
+                    along,
+                    across: 0.0,
+                    height,
+                },
+                Degrees(a),
+            );
+            openchuck_path::CutPoint {
+                tip,
+                a: Degrees(a),
+                contact: tip,
+            }
+        };
+        let mut points: Vec<openchuck_path::CutPoint> = (0..=36)
+            .map(|k| at(20.0, 15.5, 10.0 * f64::from(k)))
+            .collect();
+        // The step along X at the ring's end angle, then the small rings.
+        points.extend((1..=10).map(|k| at(20.0 + 2.5 * f64::from(k), 15.5, 360.0)));
+        points.push(at(45.0, 1.0, 360.0));
+        points.extend((1..=36).map(|k| at(45.0, 1.0, 360.0 + 10.0 * f64::from(k))));
+        let stock: std::sync::Arc<dyn openchuck_path::StockModel> =
+            std::sync::Arc::new(openchuck_path::AnalyticStock::Cylinder {
+                radius: 16.0,
+                x_start: -1.0,
+                x_end: 47.0,
+            });
+        Ok(vec![openchuck_path::Pass {
+            helical_pass_start: false,
+            low_link: false,
+            points,
+            stock: Some(openchuck_path::PassStock(stock)),
+            rapids: Vec::new(),
+        }])
+    }
+}
+
+#[test]
+fn req_op_11_req_op_03_a_nub_inside_a_joined_roughing_layer_is_plunged() {
+    // The layer's small ring past the part's end is a nub (the part leaves
+    // nothing round the axis there) and is plunged; the ring over the part
+    // is still cut. Off, the program has no plunge.
+    let f = cylinder();
+    let mut input = f.input();
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 47.0,
+    };
+    input.stock = &stock;
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    v.insert(names::RAMP_ANGLE.into(), n(10.0));
+    let plunges = |path: &GeneratedPath| {
+        path.group
+            .segments
+            .iter()
+            .filter(|s| s.kind == MoveKind::Plunge)
+            .count()
+    };
+    let off = run(|ctx| generate(&LayerPastTheEnd, &input, &v, ctx)).unwrap();
+    assert_eq!(plunges(&off), 0);
+    v.insert(names::PLUNGE_FACE_NUBS.into(), ParameterValue::Flag(true));
+    let on = run(|ctx| generate(&LayerPastTheEnd, &input, &v, ctx)).unwrap();
+    assert_eq!(plunges(&on), 1);
+    let segs = &on.group.segments;
+    // The ring over the part is still cut at 15.5 mm; nothing is cut at
+    // 1 mm from the axis.
+    let cut_at = |r: f64| {
+        segs.iter().any(|s| {
+            let p = f.rotary.to_axis(s.end.tip, s.end.a);
+            s.kind == MoveKind::Cutting && (p.across.hypot(p.height) - r).abs() < 1e-6
+        })
+    };
+    assert!(cut_at(15.5));
+    assert!(!cut_at(1.0));
+    assert!(
+        on.notices.iter().any(|n| n.text.contains("nub")),
+        "{:?}",
+        on.notices
+    );
+}
+
+/// Rotary roughing in Rings on a cylinder of 5 mm radius, the stock (radius
+/// 8 mm) running 10 mm past its flat free end: past the end the layers ring
+/// down towards the axis, and with Plunge to remove face nubs the rings no
+/// wider than the tool are plunged instead (decision 0543 section 4, point 3).
+#[test]
+fn req_op_11_req_op_03_roughing_past_a_flat_free_end_plunges_its_nub() {
+    let part = Cylinder {
+        radius: 5.0,
+        length: 30.0,
+    };
+    let f = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 72)).unwrap(),
+        8.0,
+        &tool(ToolShape::FlatEnd, 3.0),
+    );
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 8.0,
+        x_start: -1.0,
+        x_end: 40.0,
+    };
+    let mut input = f.input();
+    input.stock = &stock;
+    let mut v = roughing_values("rings");
+    v.insert(names::STEPOVER.into(), n(1.5));
+    v.insert(roughing::STEPDOWN.into(), n(1.0));
+    v.insert(names::RAMP_ANGLE.into(), n(10.0));
+    v.insert(
+        names::RAMP_STEEPER_NEAR_AXIS.into(),
+        ParameterValue::Flag(true),
+    );
+    v.insert(
+        names::ALLOW_SINGLE_POINT_PLUNGE.into(),
+        ParameterValue::Flag(true),
+    );
+    v.insert("extend".into(), t("far end"));
+    let off = run(|ctx| generate(&RotaryRoughing, &input, &v, ctx)).unwrap();
+    v.insert(names::PLUNGE_FACE_NUBS.into(), ParameterValue::Flag(true));
+    let on = run(|ctx| generate(&RotaryRoughing, &input, &v, ctx)).unwrap();
+    let near_axis = |path: &GeneratedPath| {
+        path.group
+            .segments
+            .iter()
+            .filter(|s| s.kind == MoveKind::Cutting)
+            .filter(|s| {
+                let p = f.rotary.to_axis(s.end.tip, s.end.a);
+                p.across.hypot(p.height) <= 1.5 + 1e-6 && p.across.hypot(p.height) > 1e-6
+            })
+            .count()
+    };
+    assert!(
+        near_axis(&off) > 0,
+        "roughing rings near the axis past the end"
+    );
+    assert_ne!(off.group, on.group);
+    assert!(
+        on.notices.iter().any(|n| n.text.contains("nub")),
+        "{:?}",
+        on.notices
+    );
+    assert_eq!(near_axis(&on), 0, "no ring left within the nub");
+}
