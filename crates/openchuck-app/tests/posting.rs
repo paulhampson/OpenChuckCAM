@@ -727,9 +727,11 @@ fn req_gc_07_req_op_11_ramp_option_off_posts_identical_bytes() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// A ramp that follows the toolpath (decision 0543) posts cleanly on both
+/// posts, and the same at 1, 2 and N threads (GC-07, NFR-06).
 #[test]
-fn req_op_11_req_gc_09_req_gc_10_reversing_ramp_posts_from_application() {
-    let (dir, mut app, op) = project("reversing-ramp-post");
+fn req_op_11_req_gc_07_req_nfr_06_a_ramp_that_follows_the_toolpath_posts_from_application() {
+    let (dir, mut app, op) = project("follow-ramp-post");
     let mut operation = app.project().operation(op).unwrap().clone();
     operation
         .parameters
@@ -737,9 +739,6 @@ fn req_op_11_req_gc_09_req_gc_10_reversing_ramp_posts_from_application() {
     operation
         .parameters
         .insert("ramp_angle".into(), ParameterValue::Number(15.0));
-    operation
-        .parameters
-        .insert("ramp_back_and_forth".into(), ParameterValue::Flag(true));
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     for post in ["makera-z1", "linuxcnc"] {
@@ -779,9 +778,11 @@ fn req_op_11_req_gc_09_req_gc_10_reversing_ramp_posts_from_application() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Indexed roughing's ramps follow its passes through the shared entry
+/// (decision 0543).
 #[test]
-fn req_op_03_req_op_11_indexed_roughing_uses_shared_reversing_ramp() {
-    let (dir, mut app, op) = project("roughing-reversing-ramp");
+fn req_op_03_req_op_11_indexed_roughing_ramps_follow_its_passes() {
+    let (dir, mut app, op) = project("roughing-follow-ramp");
     let mut operation = app.project().operation(op).unwrap().clone();
     operation.strategy = "rotary_roughing".into();
     operation.parameters.remove("face_free_ends");
@@ -805,9 +806,6 @@ fn req_op_03_req_op_11_indexed_roughing_uses_shared_reversing_ramp() {
     operation
         .parameters
         .insert("ramp_angle".into(), ParameterValue::Number(15.0));
-    operation
-        .parameters
-        .insert("ramp_back_and_forth".into(), ParameterValue::Flag(true));
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     with_post(&mut app, "linuxcnc");
@@ -829,101 +827,24 @@ fn req_op_03_req_op_11_indexed_roughing_uses_shared_reversing_ramp() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Every ramp follows the toolpath (decision 0543 D1): a saved Back-and-forth
+/// ramp setting still opens, is shown as inactive, and changes nothing, with
+/// Entry set to Ramp or not.
 #[test]
-fn req_op_11_req_gc_04_reversing_ramp_requires_certified_post_precision() {
-    let (dir, mut app, op) = project("ramp-post-precision");
-    let mut operation = app.project().operation(op).unwrap().clone();
-    operation
-        .parameters
-        .insert("entry".into(), ParameterValue::Text("ramp".into()));
-    operation
-        .parameters
-        .insert("ramp_angle".into(), ParameterValue::Number(15.0));
-    operation
-        .parameters
-        .insert("ramp_back_and_forth".into(), ParameterValue::Flag(true));
-    app.execute(Command::Replace(Item::Operation(operation)))
-        .unwrap();
-    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/linuxcnc");
-    let custom = dir.join("custom-post");
-    std::fs::create_dir_all(&custom).unwrap();
-    std::fs::copy(original.join("main.post"), custom.join("main.post")).unwrap();
-    let manifest = std::fs::read_to_string(original.join("post.toml")).unwrap();
-    app.set_post(Some(PostSelection::Folder(custom.clone())));
-    for setting in ["pos", "a"] {
-        std::fs::write(
-            custom.join("post.toml"),
-            manifest.replace(&format!("{setting} = 3"), &format!("{setting} = 2")),
-        )
-        .unwrap();
-        match app.regenerate() {
-            Ok(_) => panic!("reversing-ramp output accepted uncertified {setting} precision"),
-            Err(error) => assert!(
-                error.to_string().contains("at least three decimal"),
-                "{error}"
-            ),
-        }
-    }
-    app.execute(Command::SetParameter {
-        operation: op,
-        name: "ramp_back_and_forth".into(),
-        value: Some(ParameterValue::Flag(false)),
-    })
-    .unwrap();
-    assert!(
-        app.regenerate().is_ok(),
-        "the new precision gate applies only to the optional ramp"
-    );
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn req_gc_09_req_op_11_reversing_ramp_refuses_uncertified_float_work_coordinates() {
-    let (dir, mut app, op) = project("ramp-float-work-offset");
-    let mut operation = app.project().operation(op).unwrap().clone();
-    operation
-        .parameters
-        .insert("entry".into(), ParameterValue::Text("ramp".into()));
-    operation
-        .parameters
-        .insert("ramp_angle".into(), ParameterValue::Number(15.0));
-    operation
-        .parameters
-        .insert("ramp_back_and_forth".into(), ParameterValue::Flag(true));
-    app.execute(Command::Replace(Item::Operation(operation)))
-        .unwrap();
-    let mut setup = app.project().setups()[0].clone();
-    setup.frame.work_offset.x = Millimetres(100_000_000.0);
-    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
-    with_post(&mut app, "makera-z1");
-    match app.regenerate() {
-        Ok(_) => panic!(
-            "a float controller cannot preserve the certified XYZ clearance at this work offset"
-        ),
-        Err(error) => assert!(error.to_string().contains("numeric precision"), "{error}"),
-    }
-    // Small WCS words do not rescue a machine with huge absolute MCS
-    // coordinates: the float controller still stores those positions.
-    let mut setup = app.project().setups()[0].clone();
-    setup.frame.work_offset.x = Millimetres(0.0);
-    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
-    let mut machine = app.project().machine().unwrap().clone();
-    machine.rotary_origin.x += 100_000_000.0;
-    machine.travel.min.x += 100_000_000.0;
-    machine.travel.max.x += 100_000_000.0;
-    app.execute(Command::SetMachine(Some(Box::new(machine))))
-        .unwrap();
-    match app.regenerate() {
-        Ok(_) => panic!("large float machine coordinates also exceed the certified precision"),
-        Err(error) => assert!(error.to_string().contains("numeric precision"), "{error}"),
-    }
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn req_op_11_req_ui_07_inactive_reversing_ramp_is_identified_and_changes_no_output() {
+fn req_op_11_req_ui_07_the_back_and_forth_flag_is_inactive_and_changes_no_output() {
     let (dir, mut app, op) = project("inactive-ramp-option");
     with_post(&mut app, "linuxcnc");
+    let form = app.parameter_form(op).unwrap();
+    assert!(
+        form.fields.iter().all(|f| f.name != "ramp_back_and_forth"),
+        "the flag is not shown when it is off"
+    );
+    app.execute(Command::SetParameter {
+        operation: op,
+        name: "entry".into(),
+        value: Some(ParameterValue::Text("ramp".into())),
+    })
+    .unwrap();
     let expected = app.regenerate().unwrap();
     app.execute(Command::SetParameter {
         operation: op,
@@ -941,52 +862,6 @@ fn req_op_11_req_ui_07_inactive_reversing_ramp_is_identified_and_changes_no_outp
     let actual = app.regenerate().unwrap();
     assert_eq!(expected.toolpath, actual.toolpath);
     assert_eq!(expected.gcode, actual.gcode);
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn req_gc_09_req_op_11_float_counter_context_must_match_ramp_certificate() {
-    let (dir, mut app, op) = project("ramp-counter-context");
-    let mut operation = app.project().operation(op).unwrap().clone();
-    operation
-        .parameters
-        .insert("entry".into(), ParameterValue::Text("ramp".into()));
-    operation
-        .parameters
-        .insert("ramp_angle".into(), ParameterValue::Number(15.0));
-    operation
-        .parameters
-        .insert("ramp_back_and_forth".into(), ParameterValue::Flag(true));
-    app.execute(Command::Replace(Item::Operation(operation.clone())))
-        .unwrap();
-    operation.id = OperationId::new();
-    operation.name = "Second operation".into();
-    app.execute(Command::Add {
-        item: Item::Operation(operation),
-        placement: Placement::End,
-    })
-    .unwrap();
-    with_post(&mut app, "makera-z1");
-    assert!(
-        app.regenerate()
-            .unwrap()
-            .reports
-            .iter()
-            .all(|r| r.is_clean())
-    );
-    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/makera-z1");
-    let custom = dir.join("no-counter-reset");
-    std::fs::create_dir_all(&custom).unwrap();
-    std::fs::copy(original.join("main.post"), custom.join("main.post")).unwrap();
-    let manifest = std::fs::read_to_string(original.join("post.toml"))
-        .unwrap()
-        .replace("unwind = \"drop_turns\"", "unwind = \"rotate\"");
-    std::fs::write(custom.join("post.toml"), manifest).unwrap();
-    app.set_post(Some(PostSelection::Folder(custom)));
-    match app.regenerate() {
-        Ok(_) => panic!("large unrebased float counter exceeds the canonical entry certificate"),
-        Err(error) => assert!(error.to_string().contains("numeric precision"), "{error}"),
-    }
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -1067,14 +942,37 @@ fn req_gc_17_req_gc_12_report_preserves_output_and_explains_short_blocks() {
         reported
             .warnings
             .iter()
-            .any(|n| n.contains("short blocks") && n.contains("500"))
+            .any(|n| n.starts_with("Short blocks (operation '") && n.contains("500"))
     );
     let checks = app.export_checks(Some(&reported), Some(&reported), None);
     assert!(
         checks
             .checks
             .iter()
-            .any(|c| c.text.contains("short blocks"))
+            .any(|c| c.text.starts_with("Short blocks (operation '"))
+    );
+    // In Messages too, as a warning that marks the operation and shows the
+    // post's short block setting (decision record 0536, the owner's answer
+    // (e); OI-373).
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    let message = overview
+        .messages
+        .iter()
+        .find(|m| m.text.starts_with("Short blocks (operation '"))
+        .unwrap_or_else(|| panic!("{:?}", overview.messages));
+    assert_eq!(message.severity, openchuck_app::overview::Severity::Warning);
+    let Some(openchuck_app::overview::ItemRef::Operation(op)) = message.source else {
+        panic!("{message:?}");
+    };
+    assert_eq!(
+        overview.items[&openchuck_app::overview::ItemRef::Operation(op)].state,
+        openchuck_app::overview::ItemState::Warning
+    );
+    assert_eq!(
+        message.action,
+        Some(openchuck_app::overview::MessageAction::ShowSetting(
+            openchuck_app::overview::SettingRef::setup_machine(app.project().setups()[0].id)
+        ))
     );
     let sheet = app.setup_sheet_for_run(&reported);
     let html = sheet.to_html();

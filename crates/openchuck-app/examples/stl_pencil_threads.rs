@@ -393,7 +393,6 @@ impl Job<'_> {
             max_feeds: self.machine.max_feeds,
             tags: &tags,
             keep_out: &[],
-            entry_safety: None,
             facing: None,
             shank: None,
         };

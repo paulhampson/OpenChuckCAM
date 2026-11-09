@@ -135,7 +135,11 @@ use openchuck_types::workholding::Workholding;
 ///   contact it machined with, on for the first four and off for axial
 ///   finishing and pencil clean-up, so it machines as before (decision
 ///   record 0526).
-pub const SCHEMA: i64 = 27;
+/// - 28: End facing reads `stepover` as the slice along X and `stepdown` as
+///   the band along the tool, the other way round from before; an older End
+///   facing operation has the two stored values exchanged, so it machines as
+///   before (decision record 0547 item 3).
+pub const SCHEMA: i64 = 28;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -176,6 +180,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_24_to_25,
     schema_25_to_26,
     schema_26_to_27,
+    schema_27_to_28,
 ];
 
 /// The strategies whose operations gained `exact_contact` in schema 27 on,
@@ -223,6 +228,39 @@ fn schema_26_to_27(kind: FileKind, table: &mut toml::Table) -> Result<(), String
     }
     if let Some(on) = value {
         parameters.insert("exact_contact".to_owned(), toml::Value::Boolean(on));
+    }
+    Ok(())
+}
+
+/// Schema 28 (decision record 0547 item 3): End facing now reads the
+/// Stepover as the slice along X (a width across the tool) and the Stepdown
+/// as the band along the tool, as a tool's cutting data defines them. An End
+/// facing operation saved before it has its stored `stepover` and
+/// `stepdown` exchanged, so it machines as it did; a value it did not store
+/// stays unstored (its tool's preset fills it, in the new meaning). Every
+/// other operation is left as it is.
+fn schema_27_to_28(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind != FileKind::Operation
+        || table.get("strategy").and_then(toml::Value::as_str) != Some("facing")
+    {
+        return Ok(());
+    }
+    let Some(parameters) = table.get_mut("parameters") else {
+        return Ok(());
+    };
+    let Some(parameters) = parameters.as_table_mut() else {
+        return Err("an operation's `parameters` must be a table".to_owned());
+    };
+    if parameters.get("shape").and_then(toml::Value::as_str) != Some("end") {
+        return Ok(());
+    }
+    let stepover = parameters.remove("stepover");
+    let stepdown = parameters.remove("stepdown");
+    if let Some(value) = stepdown {
+        parameters.insert("stepover".to_owned(), value);
+    }
+    if let Some(value) = stepover {
+        parameters.insert("stepdown".to_owned(), value);
     }
     Ok(())
 }

@@ -82,7 +82,6 @@ pub mod cutter;
 pub mod drill;
 pub mod edge_curve;
 pub mod edge_following;
-pub mod entry_safety;
 mod error;
 pub mod extend;
 pub mod face_flow;

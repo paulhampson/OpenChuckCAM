@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use openchuck_path::extend;
-use openchuck_path::params::{EntryParameters, ParameterKind, names};
+use openchuck_path::params::{EntryParameters, EntryStyle, ParameterKind, names};
 use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BoundaryLimits, BrepEdges, BrepSurface, ChosenSegments,
@@ -67,6 +67,33 @@ pub(crate) fn stored_values(operation: &Operation) -> BTreeMap<String, Parameter
             (k.clone(), v)
         })
         .collect()
+}
+
+/// A run's refusal in the user's words (OI-360; decision record 0536 step
+/// 4): a parameter the strategy refuses is named by the label its field has
+/// in the inspector, not by its name in the schema ("Stepover: must be above
+/// 0 mm", not "parameter stepover_mm: ..."). Other refusals read as they are.
+pub(crate) fn refusal_text(
+    project: &Project,
+    registry: &openchuck_path::Registry,
+    operation: Option<OperationId>,
+    error: &AppError,
+) -> String {
+    if let AppError::Path(openchuck_path::PathError::Parameter { name, reason }) = error {
+        let label = operation
+            .and_then(|id| project.operation(id))
+            .and_then(|op| {
+                let strategy = registry.get(&op.strategy).ok()?;
+                effective_schema(op, strategy)
+                    .get(name)
+                    .map(|spec| spec.label.clone())
+            });
+        return match label {
+            Some(label) => format!("{label}: {reason}"),
+            None => error.user_message(),
+        };
+    }
+    error.to_string()
 }
 
 pub(crate) fn effective_schema(
@@ -352,6 +379,15 @@ pub(crate) fn generate_with_part(
     })
 }
 
+/// The topics the pathing library leads its entry refusals with
+/// (decisions 0543 and 0544): such a refusal is shown in the one form.
+const REFUSAL_TOPICS: [&str; 4] = [
+    openchuck_path::topic::RAMP_ENTRY,
+    "Lead entry",
+    openchuck_path::topic::ENTRY,
+    openchuck_path::topic::FACE_NUBS,
+];
+
 /// `error` from generating `operation`, naming it (issue #547): an error
 /// from the pathing library does not know which operation it is about, so
 /// the user could not tell which one to change. Its own words are kept,
@@ -360,10 +396,25 @@ pub(crate) fn generate_with_part(
 fn named(operation: &Operation, error: AppError) -> AppError {
     match error {
         AppError::Path(openchuck_path::PathError::Cancelled) => error,
-        AppError::Path(other) => AppError::Operation {
-            name: operation.name.clone(),
-            reason: other.to_string(),
-        },
+        AppError::Path(other) => {
+            let reason = other.to_string();
+            // A refusal that leads with its topic is shown in the one form
+            // of decision record 0536 section 3.
+            match REFUSAL_TOPICS
+                .iter()
+                .find_map(|topic| Some((*topic, reason.strip_prefix(&format!("{topic}: "))?)))
+            {
+                Some((topic, text)) => AppError::Refused {
+                    topic: topic.to_owned(),
+                    name: operation.name.clone(),
+                    text: text.to_owned(),
+                },
+                None => AppError::Operation {
+                    name: operation.name.clone(),
+                    reason,
+                },
+            }
+        }
         other => other,
     }
 }
@@ -454,11 +505,6 @@ fn generate_unnamed(
         .next()
     {
         return Err(missing(operation, &refusal.text));
-    }
-    // A back-and-forth ramp that cannot be used on this part or with this
-    // tool: the same check the inspector and the overview read (#291).
-    if let Some(reason) = crate::ramp_entry::refusal(project, operation) {
-        return Err(missing(operation, &reason));
     }
     let limited = operation.selection_refs().next().is_some();
     // A STEP part's selections are faces and edges, which choose the holes
@@ -721,43 +767,6 @@ fn generate_unnamed(
         setup: setup.id.to_string(),
         tool: snapshot.id.to_string(),
     };
-    // A STEP part, or a shank wider than the cutter, was refused above
-    // (`ramp_entry::refusal`).
-    let entry_geometry = if crate::ramp_entry::wanted(operation) && placed.brep.is_none() {
-        use openchuck_types::tool::profile::{
-            ProfilePiece, ProfilePoint, ProfileSegment, ToolProfile,
-        };
-        let mut segments = profile
-            .pieces()
-            .iter()
-            .map(|piece| match *piece {
-                ProfilePiece::Line { end, .. } => ProfileSegment::Line { to: end },
-                ProfilePiece::Arc { end, centre, .. } => ProfileSegment::Arc { to: end, centre },
-            })
-            .collect::<Vec<_>>();
-        if snapshot.tool.overall_length.0 > profile.top() {
-            segments.push(ProfileSegment::Line {
-                to: ProfilePoint::new(profile.cutting_radius(), snapshot.tool.overall_length.0),
-            });
-        }
-        let body = ToolProfile { segments }.validate()?;
-        let part = openchuck_geom::part_extent(mesh)
-            .ok_or_else(|| missing(operation, "the whole target has no bounds"))?;
-        let protected =
-            crate::workholding::solids(&setup.workholding, setup.stock.as_ref(), &part)?;
-        Some((MeshSurface::new(mesh)?, body, protected))
-    } else {
-        None
-    };
-    let entry_safety = entry_geometry.as_ref().map(|(target, body, protected)| {
-        openchuck_path::entry_safety::EntrySafety {
-            rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
-            target,
-            body,
-            protected,
-            machine,
-        }
-    });
     let input = StrategyInput {
         surface,
         stock,
@@ -767,7 +776,6 @@ fn generate_unnamed(
         clearance: crate::setup::effective_clearance(machine, setup, Some(&part_bounds)).clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: entry_safety.as_ref(),
         facing: facing_setup.as_ref(),
         keep_out: &keep_out,
         shank: shank_of(&profile, &snapshot.tool),
@@ -784,7 +792,8 @@ fn generate_unnamed(
         )?;
     }
     // A straight plunge needs a tool that can cut straight down (OI-117).
-    EntryParameters::read(&parameters)?.check_tool(snapshot.tool.can_plunge())?;
+    let entry_parameters = EntryParameters::read(&parameters)?;
+    entry_parameters.check_tool(snapshot.tool.can_plunge())?;
     let operation_leave = parameters.number(names::STOCK_TO_LEAVE)?;
     let mut zones = resolved_region
         .as_ref()
@@ -836,7 +845,6 @@ fn generate_unnamed(
             Some(ParameterValue::Number(n)) => *n,
             _ => operation_leave,
         };
-        let label = crate::workholding::operation_label(project, operation);
         leave_notes.extend(
             crate::workholding::uncleared_tab_notes(
                 &setup.workholding,
@@ -846,8 +854,6 @@ fn generate_unnamed(
                     cutting_radius: profile.cutting_radius(),
                     reach: tool_reach(&profile, &snapshot.tool),
                     leave,
-                    tool: &snapshot.name,
-                    operation: &label,
                 },
             )
             .into_iter()
@@ -922,6 +928,38 @@ fn generate_unnamed(
             context,
         )?
     };
+    // A pass that a ramp or a lead enters by a straight plunge into the
+    // stock (a single point, a ring on the rotary axis, a face nub) is
+    // refused for a tool that cannot cut straight down (OI-117; decision
+    // 0543 D7, decision 0544 item 7). The path library does not know the
+    // tool's centre cutting, so it lists those passes and the check is made
+    // here. The descent through air that every entry makes is not one.
+    if !snapshot.tool.can_plunge()
+        && matches!(entry_parameters.style, EntryStyle::Ramp | EntryStyle::Lead)
+        && let Some(&first) = path.straight_plunges.first()
+    {
+        let passes = path.straight_plunges.len();
+        return Err(AppError::Refused {
+            topic: if entry_parameters.style == EntryStyle::Ramp {
+                openchuck_path::topic::RAMP_ENTRY.to_owned()
+            } else {
+                "Lead entry".to_owned()
+            },
+            name: operation.name.clone(),
+            text: format!(
+                "{} entered by a straight plunge into the stock (a single point, a ring on the \
+                 rotary axis, where the tool descends while the part turns, or a face nub), and \
+                 the tool '{}' cannot cut straight down (it is not centre cutting). Set Entry to \
+                 Helix, or choose a tool that can plunge",
+                if passes == 1 {
+                    format!("pass {} is", first + 1)
+                } else {
+                    format!("{passes} passes, the first pass {}, are", first + 1)
+                },
+                snapshot.name
+            ),
+        });
+    }
     // The tabs a limited operation's path can touch, against its tool
     // (issue #548; decision 0523): a tab it never comes near says nothing;
     // one outside the end zones it does touch is refused, and one shorter
@@ -4015,6 +4053,42 @@ mod tests {
     }
 
     #[test]
+    fn req_nfr_15_a_refused_parameter_is_named_by_its_label() {
+        // OI-360: a refused parameter reaches Messages by the label the
+        // inspector shows, never by its name in the schema.
+        let f = bar_fixture_with(openchuck_path::helical::NAME, "bar.stl", ToolShape::FlatEnd);
+        let registry = Registry::builtin();
+        let operation = f.project.operation(f.operation).unwrap();
+        let strategy = registry.get(&operation.strategy).unwrap();
+        let spec = effective_schema(operation, strategy)
+            .parameters
+            .into_iter()
+            .find(|p| p.name == "tolerance")
+            .unwrap();
+        let refused = AppError::from(openchuck_path::PathError::parameter(
+            "tolerance",
+            "must be above 0 mm",
+        ));
+        assert_eq!(
+            refusal_text(&f.project, &registry, Some(f.operation), &refused),
+            format!("{}: must be above 0 mm", spec.label)
+        );
+        assert!(
+            !refusal_text(&f.project, &registry, Some(f.operation), &refused).contains("parameter")
+        );
+        // With no operation to look in, the reason alone.
+        assert_eq!(
+            refusal_text(&f.project, &registry, None, &refused),
+            "Must be above 0 mm."
+        );
+        let other = AppError::UnknownOperation("x".into());
+        assert_eq!(
+            refusal_text(&f.project, &registry, None, &other),
+            other.to_string()
+        );
+    }
+
+    #[test]
     fn req_ui_12_a_notice_with_a_topic_takes_the_one_form() {
         // Decision record 0536 section 3: the topic, then the operation as it
         // is named now (and its tool where the tool matters), then the text.
@@ -4031,7 +4105,7 @@ mod tests {
         assert_eq!(
             operation_notice(&f.project, operation, &overcut),
             format!(
-                "Overcut (operation '{}'): some moves cut 0.013 mm too deep",
+                "Overcut (operation '{}'): some moves cut 0.013 mm too deep.",
                 operation.name
             )
         );
@@ -4041,7 +4115,7 @@ mod tests {
             operation_notice(&f.project, operation, &flutes),
             format!(
                 "Flute length (operation '{}', tool '{}'): the stock stands 3.000 mm above the \
-                 flutes",
+                 flutes.",
                 operation.name, tool.name
             )
         );
@@ -4077,10 +4151,14 @@ mod tests {
         let shown = operation_notice(&f.project, operation, warning);
         assert_eq!(
             shown,
-            format!("Overcut (operation '{}'): {}", operation.name, warning.text)
+            crate::lead_in::in_form(
+                "Overcut",
+                &crate::lead_in::Context::operation(&operation.name),
+                &warning.text
+            )
         );
         assert!(
-            shown.starts_with("Overcut (operation 'Op'): Swarf on face 0 cuts "),
+            shown.starts_with("Overcut (operation 'Op'): swarf on face 0 cuts "),
             "{shown}"
         );
         // Every warning of the path has a topic, so none is shown without
@@ -4139,7 +4217,7 @@ mod tests {
         let shown = operation_note(&f.project, operation, summary);
         assert_eq!(
             shown,
-            format!("Edge following (operation 'Op'): {}", summary.text)
+            format!("Edge following (operation 'Op'): {}.", summary.text)
         );
         // Every note the library made has a topic, so each reads in the
         // one form.
@@ -4158,7 +4236,7 @@ mod tests {
         assert_eq!(
             operation_note(&f.project, operation, &slowed),
             "Feed limit (operation 'Op'): move 4: the machine's feed limits slow this move: the \
-             contact feed is 900.0 mm/min, not 1000.0"
+             contact feed is 900.0 mm/min, not 1000.0."
         );
         // The operation is named as it is now (decision record 0522 item 3).
         let mut project = f.project.clone();

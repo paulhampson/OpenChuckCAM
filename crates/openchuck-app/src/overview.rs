@@ -37,6 +37,7 @@ use openchuck_types::setup::{PartExtent, SetupWarning, SetupWarningKind};
 
 use crate::cache::{Key, StatusKey, status_keys};
 use crate::jobs::{JobLog, JobOutcome};
+use crate::lead_in::{Context, topic};
 use crate::requirements::Requirement;
 use crate::{AppError, Application, JobHandle, SelectionSummary};
 
@@ -359,6 +360,43 @@ impl SettingRef {
             key: key.into(),
         }
     }
+
+    /// The field `field` of setup `setup`.
+    pub fn setup(setup: SetupId, field: crate::setup_form::SetupField) -> Self {
+        Self {
+            place: SettingPlace::Setup(setup),
+            key: field.key().unwrap_or_default().to_owned(),
+        }
+    }
+
+    /// The machine profile of setup `setup`, in its machine section: the
+    /// short-block mode, for example.
+    pub fn setup_machine(setup: SetupId) -> Self {
+        Self {
+            place: SettingPlace::Setup(setup),
+            key: Self::MACHINE.to_owned(),
+        }
+    }
+
+    /// The key of a setup's machine profile.
+    pub const MACHINE: &'static str = "machine";
+
+    /// The field `key` of tool `tool`, in the tool library (a name of
+    /// [`crate::tool_edit::fields`]).
+    pub fn tool(tool: ToolId, key: impl Into<String>) -> Self {
+        Self {
+            place: SettingPlace::Tool(tool),
+            key: key.into(),
+        }
+    }
+
+    /// The post's setting `key`, in the export dialog.
+    pub fn post(key: impl Into<String>) -> Self {
+        Self {
+            place: SettingPlace::Post,
+            key: key.into(),
+        }
+    }
 }
 
 /// What a message's action link does. The front end carries it out.
@@ -461,8 +499,10 @@ pub struct Message {
 }
 
 impl Message {
-    /// A message about `source`.
-    pub fn new(
+    /// A message about `source`. Private (decision record 0536 item 6.2):
+    /// every message is made with [`Message::about`], or with
+    /// [`Message::formed`] from a text already in the one form.
+    fn new(
         severity: Severity,
         text: impl Into<String>,
         source: Option<(ItemRef, String)>,
@@ -481,6 +521,19 @@ impl Message {
             views: Vec::new(),
             to_acknowledge: false,
         }
+    }
+
+    /// A message whose text is already in the one form, made with
+    /// [`crate::lead_in::in_form`] where the same text is also used
+    /// elsewhere (a setup's export check, the Results tab).
+    pub(crate) fn formed(
+        severity: Severity,
+        text: String,
+        source: Option<(ItemRef, String)>,
+        action: Option<MessageAction>,
+    ) -> Self {
+        debug_assert!(text.contains(": "), "not in the one form: {text}");
+        Self::new(severity, text, source, action)
     }
 
     /// A message in the one form `<Topic> (<context>): <text>` (decision
@@ -1077,6 +1130,12 @@ struct Made {
     warnings: Vec<openchuck_path::Notice>,
     /// How many areas its strategy could not reach (decision record 0515).
     unreached: usize,
+    /// The rapid moves the run's stock simulation found removing material,
+    /// as (move, mm³): warnings to acknowledge (decision record 0538).
+    rapid_cuts: Vec<(usize, f64)>,
+    /// What the post found of short blocks it left in the program (Report
+    /// mode): warnings (decision record 0536, the owner's answer (e)).
+    short_blocks: Vec<openchuck_post::ShortBlockReport>,
 }
 
 #[derive(Debug, Clone)]
@@ -1171,6 +1230,22 @@ impl GenerationRecord {
                     .filter(|g| g.operation == *id)
                     .map(|g| g.unreached.len())
                     .sum();
+                let rapid_cuts = run
+                    .groups
+                    .iter()
+                    .filter(|g| g.operation == *id)
+                    .flat_map(|g| g.rapid_cuts.iter().copied())
+                    .collect();
+                let short_blocks = run
+                    .short_blocks
+                    .iter()
+                    .filter(|r| {
+                        r.operation == id.to_string()
+                            && r.affected_windows > 0
+                            && r.settings.mode == openchuck_types::machine::ShortBlockMode::Report
+                    })
+                    .cloned()
+                    .collect();
                 s.generated.insert(
                     *id,
                     Made {
@@ -1178,6 +1253,8 @@ impl GenerationRecord {
                         before,
                         warnings,
                         unreached,
+                        rapid_cuts,
+                        short_blocks,
                     },
                 );
                 if simulated {
@@ -1202,6 +1279,11 @@ impl GenerationRecord {
             s.finished_in_run.clear();
             s.interrupted.clear();
         });
+    }
+
+    /// The operation the run in progress is working on, if any.
+    pub(crate) fn current(&self) -> Option<OperationId> {
+        self.with(|s| s.current).flatten()
     }
 
     /// A pipeline run on `project` failed with `message`, on the operation
@@ -1456,6 +1538,48 @@ fn old_z1_axis_height_text() -> String {
         "This project's Makera Z1 copy has the old placeholder axis height, machine Z -55 mm.{measured} \
          Choose the Makera Z1 again in the setup's machine section to update the copy, then check the axis height and the safe Z on your machine."
     )
+}
+
+use crate::lead_in::clause;
+
+/// A setup warning in the one form: "Clearance (setup '<name>'): ...",
+/// the same in Messages and in the export checks.
+pub(crate) fn setup_warning_in_form(setup: &str, warning: &SetupWarning) -> String {
+    crate::lead_in::in_form(
+        setup_topic(&warning.kind),
+        &Context::setup(setup),
+        &setup_warning_text(warning),
+    )
+}
+
+/// A tool too long for the safe Z or the Z travel, in the one form: "Tool
+/// length (tool '<name>', setup '<name>'): ...", the same in Messages and in
+/// the export checks.
+pub(crate) fn tool_length_text(
+    setup: &str,
+    tool: &openchuck_project::ToolSnapshot,
+    found: &crate::setup::SpindleHeight,
+) -> String {
+    crate::lead_in::in_form(
+        topic::TOOL_LENGTH,
+        &Context::setup(setup).and_tool(&tool.name),
+        &crate::setup::spindle_height_text(tool.controller.number, found),
+    )
+}
+
+/// The topic of a setup warning (decision record 0536 section 3).
+fn setup_topic(kind: &SetupWarningKind) -> &'static str {
+    match kind {
+        SetupWarningKind::ClearanceInsideStock { .. }
+        | SetupWarningKind::ClearanceInsidePart { .. }
+        | SetupWarningKind::ClearanceBelowMinimum { .. } => topic::CLEARANCE,
+        SetupWarningKind::OutsideTravel { .. } => topic::TRAVEL,
+        SetupWarningKind::TabOutsideEndZones { .. }
+        | SetupWarningKind::AutoTabNoRoom { .. }
+        | SetupWarningKind::TabsOverlap { .. } => topic::TAB_POSITION,
+        SetupWarningKind::HeldRegionCoversPart { .. } => openchuck_path::topic::HELD_REGION,
+        _ => topic::STOCK,
+    }
 }
 
 fn sentence(text: &str) -> String {
@@ -1792,13 +1916,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     // newest kind of news first within a severity (decision record 0117).
     let mut messages: Vec<Message> = Vec::new();
     for (index, report) in record.output_reports.iter().enumerate().rev() {
-        messages.push(Message::new(
+        messages.push(Message::about(
             if report.failed.is_some() {
                 Severity::Error
             } else {
                 Severity::Info
             },
-            report.text(),
+            topic::EXPORT,
+            &Context::default(),
+            &report.body(),
             None,
             Some(MessageAction::ReviewExport(index)),
         ));
@@ -1807,13 +1933,19 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     let mut blocked_sets = Vec::new();
 
     // Jobs that failed (other than generation, which is recorded below).
-    for name in ["build scene", "project checks", "import model"] {
+    for (name, job_topic) in [
+        ("build scene", topic::VIEW),
+        ("project checks", topic::PROJECT_CHECKS),
+        ("import model", topic::IMPORT),
+    ] {
         if let Some(entry) = jobs.latest_failure(name)
             && let Some(JobOutcome::Failed(e)) = &entry.outcome
         {
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                format!("{} failed: {e}", entry.label),
+                job_topic,
+                &Context::default(),
+                &format!("{} failed: {e}", clause(&entry.label)),
                 None,
                 None,
             ));
@@ -1923,9 +2055,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             && *key_then == key.map(|k| k.chained)
         {
             status = ItemStatus::new(ItemState::Error, sentence(message));
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                message.clone(),
+                topic::GENERATION,
+                &Context::operation(&o.name),
+                &clause(message),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
             ));
@@ -1971,7 +2105,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 } else {
                     Vec::new()
                 };
-                let message = Message::new(
+                let message = Message::formed(
                     Severity::Warning,
                     crate::operation::operation_notice(project, o, warning),
                     Some((item, label.clone())),
@@ -1988,35 +2122,59 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 });
             }
         }
+        // What the run found of the path in the stock simulation and the
+        // post, while the path is current: a rapid that removes material, a
+        // warning to acknowledge (decision record 0538), and short blocks
+        // left in the program, a warning; each marks the operation as a
+        // path's warning does (decision record 0536, the owner's answer
+        // (e); OI-373).
+        if up_to_date && let Some(made) = made {
+            for &(segment, volume) in &made.rapid_cuts {
+                let text = crate::export::rapid_cut_text(&o.name, segment, volume);
+                if status.state == ItemState::UpToDate
+                    || (status.state == ItemState::Warning
+                        && !status.cause.starts_with(NEEDS_ACKNOWLEDGING))
+                {
+                    status = ItemStatus::needs_acknowledging(&text);
+                }
+                messages.push(
+                    Message::formed(
+                        Severity::Warning,
+                        text,
+                        Some((item, label.clone())),
+                        Some(MessageAction::Show(item)),
+                    )
+                    .to_acknowledge(),
+                );
+            }
+            for report in &made.short_blocks {
+                let text = crate::posting::short_block_note(project, report);
+                if status.state == ItemState::UpToDate {
+                    status = ItemStatus::new(ItemState::Warning, sentence(&text));
+                }
+                messages.push(Message::formed(
+                    Severity::Warning,
+                    text,
+                    Some((item, label.clone())),
+                    // The short-block mode is the machine profile's.
+                    Some(MessageAction::ShowSetting(SettingRef::setup_machine(
+                        o.setup,
+                    ))),
+                ));
+            }
+        }
         // A strategy that needs a STEP part on a mesh part: said at once,
         // before anything is generated (decision record 0174).
         if let Some(reason) = crate::operation::brep_only(project, &app.strategies, o) {
             status = ItemStatus::new(ItemState::Error, sentence(&reason));
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                sentence(&reason),
+                topic::STEP_PART,
+                &Context::operation(&o.name),
+                &clause(&reason),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
             ));
-        }
-        // A back-and-forth ramp that cannot be used on this part or with
-        // this tool: said at once, from the same check generation makes
-        // (#291). Said once, when a generation already failed with it.
-        if let Some(reason) = crate::ramp_entry::refusal(project, o) {
-            if status.state != ItemState::Error {
-                status = ItemStatus::new(ItemState::Error, sentence(&reason));
-            }
-            if !messages
-                .iter()
-                .any(|m| m.source == Some(item) && m.text.contains(&reason))
-            {
-                messages.push(Message::new(
-                    Severity::Error,
-                    reason,
-                    Some((item, label.clone())),
-                    Some(MessageAction::Show(item)),
-                ));
-            }
         }
         // A selection set the strategy cannot use on a STEP part: said at
         // once, from the same check generation makes (decision 0209 item
@@ -2035,18 +2193,22 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             {
                 continue;
             }
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                refusal.text,
+                openchuck_path::topic::SELECTION_SET,
+                &Context::operation(&o.name),
+                &clause(&refusal.text),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
             ));
         }
         if let Some((_, notes)) = checks.and_then(|c| c.reach.get(&o.id)) {
             for note in notes {
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Warning,
-                    note.clone(),
+                    openchuck_path::topic::HELD_REGION,
+                    &Context::operation(&o.name),
+                    &clause(note),
                     Some((item, label.clone())),
                     Some(MessageAction::EditWorkholding(o.setup)),
                 ));
@@ -2059,9 +2221,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         message,
     }) = &record.failure
     {
-        messages.push(Message::new(
+        messages.push(Message::about(
             Severity::Error,
-            format!("Generating failed: {message}"),
+            topic::GENERATION,
+            &Context::default(),
+            &clause(message),
             None,
             Some(MessageAction::Generate),
         ));
@@ -2078,9 +2242,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     format!("{problem}. Reselect it in the view"),
                 ),
             );
-            messages.push(Message::new(
+            messages.push(Message::about(
                 Severity::Error,
-                format!("The selection set '{}' cannot be used: {problem}", s.name),
+                openchuck_path::topic::SELECTION_SET,
+                &Context::default(),
+                &format!("the selection set '{}' cannot be used: {problem}", s.name),
                 Some((item, s.name.clone())),
                 Some(MessageAction::Reselect(s.id)),
             ));
@@ -2125,7 +2291,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     )
                 });
             if current {
-                messages.push(Message::new(
+                messages.push(Message::formed(
                     Severity::Warning,
                     text.clone(),
                     Some((setup, s.name.clone())),
@@ -2135,22 +2301,27 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         }
         match project.machine() {
             None => {
-                let text = "The project has no machine profile, so the setup is not checked. Choose one in the setup's machine section.";
+                let text = crate::lead_in::in_form(
+                    topic::MACHINE_PROFILE,
+                    &Context::setup(&s.name),
+                    "the project has no machine profile, so the setup is not checked. Choose one \
+                     in the setup's machine section.",
+                );
                 raise(
                     &mut items,
                     at(SetupPart::Machine),
                     ItemStatus::new(ItemState::Warning, "no machine profile is chosen"),
                 );
-                messages.push(Message::new(
+                messages.push(Message::formed(
                     Severity::Warning,
-                    text,
+                    text.clone(),
                     Some((at(SetupPart::Machine), s.name.clone())),
                     Some(MessageAction::ReviewSetup(s.id)),
                 ));
                 setup_checks.push(SetupCheck {
                     setup: s.id,
                     passed: false,
-                    text: sentence(text),
+                    text: sentence(&text),
                     action: Some(MessageAction::ReviewSetup(s.id)),
                 });
             }
@@ -2203,11 +2374,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     if let Some(found) =
                         crate::setup::spindle_height(m, safe_z, minimum, &snapshot.tool)
                     {
-                        let text = crate::setup::spindle_height_text(
-                            snapshot.controller.number,
-                            &snapshot.name,
-                            &found,
-                        );
+                        let text = tool_length_text(&s.name, snapshot, &found);
                         // A tool that may meet the workholding is a
                         // possible collision; one past the top of the travel
                         // is a travel limit (decision record 0538).
@@ -2226,11 +2393,20 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                                 )
                             },
                         );
-                        let message = Message::new(
+                        // Show setting opens what the text says to change:
+                        // the tool, whose flute length sets how far it
+                        // sticks out, or the setup's safe Z (decision record
+                        // 0536 section 4).
+                        let action = MessageAction::ShowSetting(if collision {
+                            SettingRef::tool(snapshot.id, crate::tool_edit::fields::FLUTE_LENGTH)
+                        } else {
+                            SettingRef::setup(s.id, crate::setup_form::SetupField::SafeZ)
+                        });
+                        let message = Message::formed(
                             Severity::Warning,
                             text.clone(),
                             Some((at(SetupPart::Machine), s.name.clone())),
-                            Some(MessageAction::ReviewSetup(s.id)),
+                            Some(action.clone()),
                         );
                         messages.push(if collision {
                             message.to_acknowledge()
@@ -2241,14 +2417,18 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             setup: s.id,
                             passed: false,
                             text,
-                            action: Some(MessageAction::ReviewSetup(s.id)),
+                            action: Some(action),
                         });
                     }
                 }
                 if crate::setup::has_old_z1_axis_height(project.machine_id(), m) {
                     // The copy is the project's own (SET-01); it is not
                     // changed, only named (decision record 0317).
-                    let text = old_z1_axis_height_text();
+                    let text = crate::lead_in::in_form(
+                        topic::AXIS_HEIGHT,
+                        &Context::setup(&s.name),
+                        &clause(&old_z1_axis_height_text()),
+                    );
                     raise(
                         &mut items,
                         at(SetupPart::Machine),
@@ -2257,7 +2437,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             "the Makera Z1 copy has the old placeholder axis height",
                         ),
                     );
-                    messages.push(Message::new(
+                    messages.push(Message::formed(
                         Severity::Warning,
                         text.clone(),
                         Some((at(SetupPart::Machine), s.name.clone())),
@@ -2283,7 +2463,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             for w in &found.warnings {
                 let part = part_of(&w.kind);
                 let target = part.map_or(setup, at);
-                let text = sentence(&setup_warning_text(w));
+                let text = sentence(&setup_warning_in_form(&s.name, w));
                 // A possible collision must be acknowledged before the
                 // program is written (decision record 0538).
                 let collision = crate::setup::is_possible_collision(&w.kind);
@@ -2298,10 +2478,17 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 );
                 let action = if part == Some(SetupPart::Workholding) {
                     MessageAction::EditWorkholding(s.id)
+                } else if setup_topic(&w.kind) == topic::CLEARANCE {
+                    // The clearance radius the text says to raise (decision
+                    // record 0536 section 4).
+                    MessageAction::ShowSetting(SettingRef::setup(
+                        s.id,
+                        crate::setup_form::SetupField::SafeRadius,
+                    ))
                 } else {
                     MessageAction::ReviewSetup(s.id)
                 };
-                let message = Message::new(
+                let message = Message::formed(
                     Severity::Warning,
                     text.clone(),
                     Some((target, s.name.clone())),
@@ -2320,13 +2507,17 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 });
             }
             for note in &found.notes {
-                let text = sentence(note);
+                let text = sentence(&crate::lead_in::in_form(
+                    topic::WORKHOLDING,
+                    &Context::setup(&s.name),
+                    &clause(note),
+                ));
                 raise(
                     &mut items,
                     at(SetupPart::Workholding),
                     ItemStatus::new(ItemState::Warning, text.clone()),
                 );
-                messages.push(Message::new(
+                messages.push(Message::formed(
                     Severity::Warning,
                     text.clone(),
                     Some((at(SetupPart::Workholding), s.name.clone())),
@@ -2341,16 +2532,18 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             }
             if let Some(reason) = &found.unbuildable {
                 let text = format!(
-                    "The stored workholding cannot be built, so operations of this setup cannot be generated: {reason}"
+                    "the stored workholding cannot be built, so operations of this setup cannot be generated: {reason}"
                 );
                 raise(
                     &mut items,
                     at(SetupPart::Workholding),
                     ItemStatus::new(ItemState::Error, sentence(reason)),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    text,
+                    topic::WORKHOLDING,
+                    &Context::setup(&s.name),
+                    &text,
                     Some((at(SetupPart::Workholding), s.name.clone())),
                     Some(MessageAction::EditWorkholding(s.id)),
                 ));
@@ -2383,8 +2576,9 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     for m in project.models() {
         let item = ItemRef::Model(m.id);
         let name = m.label();
+        let model = Context::model(m.display_name());
         if m.path.is_outside_project() {
-            messages.push(Message::new(
+            messages.push(Message::formed(
                 Severity::Info,
                 crate::model::linked_note(m),
                 Some((item, name.clone())),
@@ -2401,9 +2595,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     item,
                     ItemStatus::new(ItemState::Error, "the file is missing"),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    format!("'{name}' is missing. Put the file back, or remove the model and import it again"),
+                    topic::MODEL_FILE,
+                    &model,
+                    "the file is missing. Put the file back, or remove the model and import it again",
                     Some((item, name.clone())),
                     Some(MessageAction::Show(item)),
                 ));
@@ -2414,9 +2610,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     item,
                     ItemStatus::new(ItemState::Error, format!("the file cannot be read: {e}")),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    format!("'{name}' cannot be read: {e}"),
+                    topic::MODEL_FILE,
+                    &model,
+                    &format!("the file cannot be read: {e}"),
                     Some((item, name.clone())),
                     Some(MessageAction::Show(item)),
                 ));
@@ -2430,9 +2628,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                         "the file has changed since it was added",
                     ),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Warning,
-                    format!("'{name}' has changed since it was added. The toolpaths will use the file as it is now"),
+                    topic::MODEL_FILE,
+                    &model,
+                    "the file has changed since it was added. The toolpaths will use the file as it is now",
                     Some((item, name.clone())),
                     Some(MessageAction::Show(item)),
                 ));
@@ -2450,9 +2650,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             format!("mesh check: {}", f.problems.join("; ")),
                         ),
                     );
-                    messages.push(Message::new(
+                    messages.push(Message::about(
                         Severity::Warning,
-                        format!("The mesh check found: {}", f.problems.join("; ")),
+                        topic::MESH_CHECK,
+                        &model,
+                        &clause(&f.problems.join("; ")),
                         Some((item, name.clone())),
                         Some(MessageAction::Show(item)),
                     ));
@@ -2463,9 +2665,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                         item,
                         ItemStatus::new(ItemState::Warning, q.clone()),
                     );
-                    messages.push(Message::new(
+                    messages.push(Message::about(
                         Severity::Warning,
-                        q.clone(),
+                        topic::UNITS,
+                        &model,
+                        &clause(q),
                         Some((item, name.clone())),
                         Some(MessageAction::Show(item)),
                     ));
@@ -2476,9 +2680,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     .iter()
                     .filter(|n| !n.contains("has changed since it was added"))
                 {
-                    messages.push(Message::new(
+                    messages.push(Message::about(
                         Severity::Info,
-                        note.clone(),
+                        topic::MODEL_NOTES,
+                        &model,
+                        &clause(note),
                         Some((item, name.clone())),
                         None,
                     ));
@@ -2490,9 +2696,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     item,
                     ItemStatus::new(ItemState::Error, format!("it cannot be read: {e}")),
                 );
-                messages.push(Message::new(
+                messages.push(Message::about(
                     Severity::Error,
-                    format!("'{name}' cannot be imported: {e}"),
+                    topic::IMPORT,
+                    &model,
+                    &format!("the model cannot be imported: {e}"),
                     Some((item, name.clone())),
                     Some(MessageAction::Show(item)),
                 ));
@@ -3072,6 +3280,7 @@ mod tests {
                     max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
                 },
                 warnings: Vec::new(),
+                rapid_cuts: Vec::new(),
             }],
             ..crate::Regeneration::default()
         };
@@ -3151,6 +3360,16 @@ mod tests {
         name: &str,
         warnings: Vec<openchuck_path::Notice>,
     ) -> (std::path::PathBuf, Application, OperationId) {
+        made_app(name, warnings, Vec::new())
+    }
+
+    /// As [`warned_app`], with `rapid_cuts` found by the run's stock
+    /// simulation.
+    fn made_app(
+        name: &str,
+        warnings: Vec<openchuck_path::Notice>,
+        rapid_cuts: Vec<(usize, f64)>,
+    ) -> (std::path::PathBuf, Application, OperationId) {
         use openchuck_project::{Item, Operation, OrderKey, Placement};
         let dir = std::env::temp_dir().join(format!("openchuck-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -3206,6 +3425,7 @@ mod tests {
                     max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
                 },
                 warnings,
+                rapid_cuts,
             }],
             ..crate::Regeneration::default()
         };
@@ -3270,6 +3490,37 @@ mod tests {
         assert!(warnings.iter().any(|m| m.text
             == "Overcut (operation 'Walls'): an ordinary warning."
             && !m.to_acknowledge));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn req_gc_16_req_ui_12_a_rapid_that_removes_material_is_in_messages_to_acknowledge() {
+        // Decision record 0536, the owner's answer (e), and OI-373: a rapid
+        // the run's stock simulation found removing material reaches
+        // Messages as a warning to acknowledge, in the one form, and marks
+        // the operation, while its path is current.
+        let (dir, app, op) = made_app("rapid-cut", Vec::new(), vec![(9, 0.1234)]);
+        let overview = app.overview(None, &JobLog::default());
+        let status = &overview.items[&ItemRef::Operation(op)];
+        assert_eq!(status.state, ItemState::Warning, "{status:?}");
+        assert!(
+            status
+                .cause
+                .starts_with("Needs acknowledging: Rapid cut (operation 'Walls')"),
+            "{}",
+            status.cause
+        );
+        let message = overview
+            .messages
+            .iter()
+            .find(|m| m.source == Some(ItemRef::Operation(op)))
+            .unwrap();
+        assert_eq!(message.severity, Severity::Warning);
+        assert!(message.to_acknowledge);
+        assert_eq!(
+            message.text,
+            "Rapid cut (operation 'Walls'): move 9 is a rapid that removes 0.123 mm³ of material."
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -3342,6 +3593,7 @@ mod tests {
                         .about(openchuck_path::topic::OVERCUT)
                         .with_setting("tolerance".to_owned()),
                 ],
+                rapid_cuts: Vec::new(),
             }],
             ..crate::Regeneration::default()
         };
@@ -3355,7 +3607,8 @@ mod tests {
             .iter()
             .find(|m| {
                 m.severity == Severity::Warning
-                    && m.text == format!("Overcut (operation 'Walls'): {message}")
+                    && m.text
+                        == crate::lead_in::in_form("Overcut", &Context::operation("Walls"), message)
             })
             .unwrap_or_else(|| panic!("{:?}", overview.messages));
         assert_eq!(

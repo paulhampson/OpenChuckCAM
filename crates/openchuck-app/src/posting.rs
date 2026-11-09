@@ -630,8 +630,8 @@ pub(crate) fn short_block_note(project: &Project, report: &ShortBlockReport) -> 
             report.added_seconds
         ),
     };
-    format!(
-        "Operation '{operation}': short blocks: {} windows below {:.3} ms averaged over {} {} (limit from {}, window from {}, mode from {}); {} moves below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
+    let text = format!(
+        "{} windows below {:.3} ms averaged over {} {} (limit from {}, window from {}, mode from {}); {} moves below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
         report.affected_windows,
         report.settings.min_block_ms,
         report.settings.block_window,
@@ -647,6 +647,12 @@ pub(crate) fn short_block_note(project: &Project, report: &ShortBlockReport) -> 
         report.longest_run,
         report.worst_window_ms,
         report.effective_feed
+    );
+    // In the one form (decision record 0536 section 3).
+    crate::lead_in::in_form(
+        crate::lead_in::topic::SHORT_BLOCKS,
+        &crate::lead_in::Context::operation(operation),
+        &text,
     )
 }
 
@@ -688,27 +694,6 @@ pub(crate) fn post_toolpath(
                 "operation '{}': whole-setup Facing verification inputs are missing; regenerate before posting",
                 operation.name
             )));
-        }
-    }
-    let decimals = &post.definition().options.decimals;
-    if decimals.pos < 3 || decimals.a < 3 {
-        for group in &toolpath.groups {
-            if let Some(operation) = project
-                .operations()
-                .iter()
-                .find(|o| o.id.to_string() == group.tags.operation)
-            {
-                let reversing = matches!(
-                    operation.parameters.get("ramp_back_and_forth"),
-                    Some(openchuck_project::ParameterValue::Flag(true))
-                ) && matches!(operation.parameters.get("entry"),Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp");
-                if reversing {
-                    return Err(AppError::Post(format!(
-                        "operation '{}': back-and-forth ramp clearance requires at least three decimal places for XYZ and A; increase the post precision or choose another entry",
-                        operation.name
-                    )));
-                }
-            }
         }
     }
     let extension = post.definition().options.file_extension.clone();
@@ -857,49 +842,6 @@ pub(crate) fn post_toolpath(
                 let end = group.segments.last().map_or(group.start, |s| s.end);
                 let written_end_a = openchuck_post::round_written(end.a.0, options.decimals.a);
                 let end_z = openchuck_types::kinematics::machine_xyz(&job.frame, end.tip, end.a).z;
-                let reversing=project.operations().iter().find(|o|o.id.to_string()==group.tags.operation).is_some_and(|o|
-                    matches!(o.parameters.get("ramp_back_and_forth"),Some(openchuck_project::ParameterValue::Flag(true)))
-                    && matches!(o.parameters.get("entry"),Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp"));
-                if reversing {
-                    let canonical = toolpath.groups.iter().find(|g| g.tags == group.tags)
-                        .ok_or_else(|| AppError::Post("back-and-forth ramp has no canonical numeric precision check result; regenerate the toolpath".into()))?;
-                    let canonical_end =
-                        canonical.segments.last().map_or(canonical.start, |s| s.end);
-                    let counter_offset = (end.a.0 - canonical_end.a.0) * sign + a_shift;
-                    if !counter_offset.is_finite() || counter_offset.abs() > 720.0 + 1e-7 {
-                        return Err(AppError::Post("back-and-forth ramp cannot check the controller's numeric precision at this rotary counter; use a supported counter-reset post or choose another entry".into()));
-                    }
-                }
-                for pose in std::iter::once(group.start)
-                    .chain(group.segments.iter().map(|s| s.end))
-                    .filter(|_| reversing)
-                {
-                    context.check_cancelled()?;
-                    let xyz =
-                        openchuck_types::kinematics::machine_xyz(&job.frame, pose.tip, pose.a);
-                    let machine_xyz = openchuck_types::kinematics::machine_xyz(
-                        &RotaryFrame::of_profile(machine),
-                        pose.tip,
-                        pose.a,
-                    );
-                    for value in [
-                        xyz.x,
-                        xyz.y,
-                        xyz.z,
-                        machine_xyz.x,
-                        machine_xyz.y,
-                        machine_xyz.z,
-                    ] {
-                        #[allow(clippy::cast_possible_truncation)]
-                        let word = (value.abs() + 1.0) as f32;
-                        if !word.is_finite()
-                            || f64::from(f32::from_bits(word.to_bits() + 1)) - f64::from(word)
-                                > 0.0001
-                        {
-                            return Err(AppError::Post("back-and-forth ramp cannot check the controller's numeric precision at this work offset; choose another entry".into()));
-                        }
-                    }
-                }
                 // Mirror the nonmoving boundary emitted by conversion and
                 // the firmware's strict >360 reset rule, including preceding
                 // operations that do not use reversing entry.

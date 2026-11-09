@@ -1588,7 +1588,6 @@ impl Job<'_> {
                 tags: &tags,
                 keep_out: &[],
                 shank: None,
-                entry_safety: None,
                 facing: None,
             };
             let started = Instant::now();

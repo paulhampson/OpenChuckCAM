@@ -554,6 +554,7 @@ fn hole_pass(
         points,
         stock: None,
         rapids,
+        plunge_fed: Vec::new(),
     })
 }
 

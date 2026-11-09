@@ -60,7 +60,6 @@ fn input_test(test: impl FnOnce(&StrategyInput<'_>)) {
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: None,
         facing: None,
         keep_out: &[],
         shank: None,

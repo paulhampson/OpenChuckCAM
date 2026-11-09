@@ -639,12 +639,11 @@ fn req_set_09_req_op_03_roughing_clears_the_stock_beside_the_held_region_all_rou
     );
 }
 
-/// A ramp entry that would run over a held region is refused with a message
-/// that names the held region and the way out, so the user sees why a ramp
-/// beside the part fails (SET-09, NFR-07; decision records 0114, 0161; the
-/// owner's decision on OI-553).
+/// A ramp entry beside a held region was refused (OI-553): it ran back along
+/// the part over the gripped length. Following the pass's own toolpath, it
+/// stays over the ring and generates (SET-09; decision 0543, issue #639).
 #[test]
-fn req_set_09_req_nfr_07_a_ramp_over_the_held_region_is_refused_naming_it() {
+fn req_set_09_req_op_11_a_ramp_beside_the_held_region_follows_the_pass_and_generates() {
     let ramp = (
         "helical_finishing",
         vec![
@@ -654,12 +653,7 @@ fn req_set_09_req_nfr_07_a_ramp_over_the_held_region_is_refused_naming_it() {
         ],
     );
     let b = build("ramp", Shape::Round, None, &[rough(), ramp]);
-    let error = b.app.regenerate().unwrap_err().to_string();
-    assert!(
-        error.contains("would run over the held region at the start of the stock")
-            && error.contains("use a plunge entry"),
-        "{error}"
-    );
+    b.app.regenerate().unwrap();
 }
 
 /// Face free ends off for the strategies that have it: these tests are not

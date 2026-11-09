@@ -103,6 +103,19 @@ pub mod topic {
     pub const PENCIL: &str = "Pencil clean-up";
     /// How swarf cutting follows a ruled face.
     pub const SWARF: &str = "Swarf";
+    /// How a ramp entry followed the pass's own toolpath (decision record
+    /// 0543): passes plunged as single points, ramps that followed a steep
+    /// drop of the pass, A reversed during an entry.
+    pub const RAMP_ENTRY: &str = "Ramp entry";
+    /// The move to an entry's start, raised to clear the stock beside the
+    /// first cut point (decision record 0544 item 6).
+    pub const ENTRY: &str = "Entry";
+    /// Nubs of stock round the rotary axis removed by a plunge instead of
+    /// ring layers (decision record 0543 section 4, point 3).
+    pub const FACE_NUBS: &str = "Face nubs";
+    /// The bands End facing adds where the stock rises above the requested
+    /// area (decision record 0547, question 4).
+    pub const STOCK_ABOVE_THE_AREA: &str = "Stock above the area";
 }
 
 /// How serious a [`Notice`] is (decision record 0536 section 1).

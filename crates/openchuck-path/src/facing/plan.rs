@@ -260,6 +260,7 @@ pub fn plan_box_sides(
                     points,
                     stock: None,
                     rapids: Vec::new(),
+                    plunge_fed: Vec::new(),
                 });
             }
         }

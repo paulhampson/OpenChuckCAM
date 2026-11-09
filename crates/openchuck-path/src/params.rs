@@ -360,8 +360,22 @@ pub mod names {
     pub const APPROACH_DISTANCE: &str = "approach_distance";
     /// The entry style (decision record 0026).
     pub const ENTRY: &str = "entry";
-    /// Optional repeated descending ramp legs.
+    /// Optional repeated descending ramp legs (decision 0242). Read and
+    /// inactive since every ramp follows the toolpath (decision 0543 D1).
     pub const RAMP_BACK_AND_FORTH: &str = "ramp_back_and_forth";
+    /// A single-point pass under a ramp is entered by a plunge instead of
+    /// refusing the operation (decision 0543 D7).
+    pub const ALLOW_SINGLE_POINT_PLUNGE: &str = "allow_single_point_plunge";
+    /// A ring or spiral ramp that would need more than 10 turns at the ramp
+    /// angle uses a steeper angle (decision 0543 section 4, point 3).
+    pub const RAMP_STEEPER_NEAR_AXIS: &str = "ramp_steeper_near_axis";
+    /// The steepest angle the steeper ramp near the axis may use.
+    pub const RAMP_ANGLE_MAX: &str = "ramp_angle_max";
+    /// Roughing rings round the rotary axis no wider than the face nub
+    /// diameter are replaced by a plunge (decision 0543 section 4, point 3).
+    pub const PLUNGE_FACE_NUBS: &str = "plunge_face_nubs";
+    /// The widest nub plunged; zero means the tool's cutting diameter.
+    pub const FACE_NUB_DIAMETER: &str = "face_nub_diameter";
     /// Descent angle for ramp and helix entry.
     pub const RAMP_ANGLE: &str = "ramp_angle";
     /// The helix entry's circle, as a fraction of the tool diameter.
@@ -478,7 +492,47 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
                 default: EntryStyle::Plunge.name().to_owned(),
             },
         },
-        ParameterSpec { name: RAMP_BACK_AND_FORTH.to_owned(), label: "Back-and-forth ramp (ramp entry only)".to_owned(), description: "Only for ramp entry. Repeated descending passes may cut a full-width slot; verify tool suitability and this G-code before machining.".to_owned(), kind: ParameterKind::Flag { default: false } },
+        ParameterSpec { name: RAMP_BACK_AND_FORTH.to_owned(), label: "Back-and-forth ramp (ramp entry only)".to_owned(), description: "No longer has an effect: every ramp now follows the pass's own toolpath, going back and forth over a line where it needs to. Kept so saved operations still open.".to_owned(), kind: ParameterKind::Flag { default: false } },
+        ParameterSpec {
+            name: ALLOW_SINGLE_POINT_PLUNGE.to_owned(),
+            label: "Allow single-point plunge".to_owned(),
+            description: "A pass that is a single point has no path for a ramp to follow. With this on, the tool plunges straight down to that point instead of refusing the operation. The tool must be able to plunge (centre cutting).".to_owned(),
+            kind: ParameterKind::Flag { default: false },
+        },
+        ParameterSpec {
+            name: RAMP_STEEPER_NEAR_AXIS.to_owned(),
+            label: "Steeper ramp near the axis".to_owned(),
+            description: "Near the rotary axis a ramp round a ring needs many turns. With this on, a ring or spiral ramp that would need more than 10 turns at the Ramp angle uses a steeper angle, just enough to fit in 10 turns, never steeper than the Maximum ramp angle. Lines are not affected. Check that the tool can enter at the steeper angle.".to_owned(),
+            kind: ParameterKind::Flag { default: false },
+        },
+        ParameterSpec {
+            name: RAMP_ANGLE_MAX.to_owned(),
+            label: "Maximum ramp angle".to_owned(),
+            description: "The steepest angle the steeper ramp near the axis may use. A value below the Ramp angle uses the Ramp angle.".to_owned(),
+            kind: ParameterKind::Number {
+                unit: Unit::Degrees,
+                min: Some(0.0),
+                min_exclusive: true,
+                max: Some(45.0),
+                default: Some(DEFAULT_RAMP_ANGLE_MAX),
+            },
+        },
+        ParameterSpec {
+            name: PLUNGE_FACE_NUBS.to_owned(),
+            label: "Plunge to remove face nubs".to_owned(),
+            description: "Use this where the part comes to a point near the rotary axis (a pointed or tapering end, or a pin) with stock beyond it. There, roughing in rings narrows the stock round the axis to a nub no wider than the Face nub diameter, with nothing of the part inside it; with this on, the tool plunges at the axis while the part turns, to remove the nub, instead of ramping round ever smaller rings. It has no effect anywhere else. On a flat free end roughing makes no rings near the axis: face that end with a Facing operation in End mode before roughing. Only with Entry Ramp. The tool must be able to plunge (centre cutting), and it cuts with its full width.".to_owned(),
+            kind: ParameterKind::Flag { default: false },
+        },
+        number(
+            FACE_NUB_DIAMETER,
+            "Face nub diameter",
+            "The widest nub round the rotary axis that is plunged; 0 uses the tool's cutting \
+             diameter, and a larger value is held to it.",
+            Unit::Millimetres,
+            0.0,
+            false,
+            Some(0.0),
+        ),
         ParameterSpec {
             name: RAMP_ANGLE.to_owned(),
             label: "Ramp angle".to_owned(),
@@ -516,6 +570,10 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
 /// The default ramp and helix descent angle, in degrees (decision record
 /// 0026 item 6: a starting value, not verified on a machine).
 pub const DEFAULT_RAMP_ANGLE: f64 = 3.0;
+
+/// The default steepest angle of the steeper ramp near the axis, degrees
+/// (decision 0543 section 4, point 3).
+pub const DEFAULT_RAMP_ANGLE_MAX: f64 = 15.0;
 
 /// The default helix circle, as a fraction of the tool diameter (decision
 /// record 0026 item 6: a starting value, not verified on a machine).
@@ -567,8 +625,20 @@ pub struct EntryParameters {
     pub style: EntryStyle,
     /// Descent angle of a ramp or helix.
     pub ramp_angle: Degrees,
-    /// Repeated descending legs; inactive for other entry styles.
-    pub back_and_forth: bool,
+    /// Enter a single-point pass under a ramp by a plunge instead of
+    /// refusing (decision 0543 D7).
+    pub allow_single_point_plunge: bool,
+    /// A ring or spiral ramp that would need more than 10 turns uses a
+    /// steeper angle, up to `ramp_angle_max` (decision 0543 section 4,
+    /// point 3).
+    pub steeper_near_axis: bool,
+    /// The steepest angle of the steeper ramp near the axis.
+    pub ramp_angle_max: Degrees,
+    /// Roughing rings round the axis no wider than `face_nub_diameter` are
+    /// replaced by a plunge (decision 0543 section 4, point 3).
+    pub plunge_face_nubs: bool,
+    /// The widest nub plunged; zero means the tool's cutting diameter.
+    pub face_nub_diameter: Millimetres,
     /// The helix circle as a fraction of the tool diameter.
     pub helix_diameter: f64,
     /// Radius of the lead arcs, or zero for the tool radius.
@@ -580,7 +650,11 @@ impl EntryParameters {
     pub const PLUNGE: Self = Self {
         style: EntryStyle::Plunge,
         ramp_angle: Degrees(DEFAULT_RAMP_ANGLE),
-        back_and_forth: false,
+        allow_single_point_plunge: false,
+        steeper_near_axis: false,
+        ramp_angle_max: Degrees(DEFAULT_RAMP_ANGLE_MAX),
+        plunge_face_nubs: false,
+        face_nub_diameter: Millimetres(0.0),
         helix_diameter: DEFAULT_HELIX_DIAMETER,
         lead_radius: Millimetres(0.0),
     };
@@ -606,7 +680,11 @@ impl EntryParameters {
         Ok(Self {
             style: EntryStyle::parse(p.text(ENTRY)?),
             ramp_angle: Degrees(p.number(RAMP_ANGLE)?),
-            back_and_forth: p.flag(RAMP_BACK_AND_FORTH)?,
+            allow_single_point_plunge: p.flag(ALLOW_SINGLE_POINT_PLUNGE)?,
+            steeper_near_axis: p.flag(RAMP_STEEPER_NEAR_AXIS)?,
+            ramp_angle_max: Degrees(p.number(RAMP_ANGLE_MAX)?),
+            plunge_face_nubs: p.flag(PLUNGE_FACE_NUBS)?,
+            face_nub_diameter: Millimetres(p.number(FACE_NUB_DIAMETER)?),
             helix_diameter: p.number(HELIX_DIAMETER)?,
             lead_radius: Millimetres(p.number(LEAD_RADIUS)?),
         })

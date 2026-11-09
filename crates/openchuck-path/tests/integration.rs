@@ -32,6 +32,8 @@ mod brep_queries;
 mod carving;
 #[path = "cutter.rs"]
 mod cutter;
+#[path = "descent_feed.rs"]
+mod descent_feed;
 #[path = "drill.rs"]
 mod drill;
 #[path = "drop_threads.rs"]
@@ -42,8 +44,8 @@ mod edge_curve;
 mod edge_following;
 #[path = "entry.rs"]
 mod entry;
-#[path = "entry_safety.rs"]
-mod entry_safety;
+#[path = "entry_link_stock.rs"]
+mod entry_link_stock;
 #[path = "exact_contact.rs"]
 mod exact_contact;
 #[path = "exact_faces.rs"]
@@ -102,6 +104,8 @@ mod pass_order;
 mod pathing;
 #[path = "program.rs"]
 mod program;
+#[path = "ramp_follows.rs"]
+mod ramp_follows;
 #[path = "region.rs"]
 mod region;
 #[path = "region_offsets.rs"]

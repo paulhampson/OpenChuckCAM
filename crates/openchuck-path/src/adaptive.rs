@@ -1150,6 +1150,7 @@ mod tests {
                     .collect(),
                 stock: None,
                 rapids: Vec::new(),
+                plunge_fed: Vec::new(),
             }
         }
     }
