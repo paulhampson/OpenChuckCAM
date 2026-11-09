@@ -354,11 +354,10 @@ pub(crate) fn generate_with_part(
 
 /// The topics the pathing library leads its entry refusals with
 /// (decisions 0543 and 0544): such a refusal is shown in the one form.
-const REFUSAL_TOPICS: [&str; 4] = [
+const REFUSAL_TOPICS: [&str; 3] = [
     openchuck_path::topic::RAMP_ENTRY,
     "Lead entry",
     openchuck_path::topic::ENTRY,
-    openchuck_path::topic::FACE_NUBS,
 ];
 
 /// `error` from generating `operation`, naming it (issue #547): an error
