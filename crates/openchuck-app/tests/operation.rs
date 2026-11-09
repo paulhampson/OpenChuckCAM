@@ -285,7 +285,9 @@ fn req_op_11_feeds_and_stepover_default_from_the_tool_cutting_data() {
     })
     .unwrap();
     let e = app.regenerate().unwrap_err().to_string();
-    assert!(e.contains("tolerance"), "{e}");
+    // Named by the field's label, which Show setting opens (decision
+    // record 0644).
+    assert!(e.starts_with("Tolerance (operation '"), "{e}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -298,7 +300,7 @@ fn req_op_01_missing_pieces_are_named() {
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     let e = app.regenerate().unwrap_err();
-    assert!(matches!(e, AppError::Operation { .. }), "{e}");
+    assert!(matches!(e, AppError::Refused { .. }), "{e}");
     assert!(
         e.to_string().contains("'Ring'") && e.to_string().contains("no tool"),
         "{e}"
@@ -372,7 +374,7 @@ fn req_op_11_req_tl_05_each_material_gives_its_own_feed_and_a_missing_one_is_nam
     for material in ["pine", "Stee l"] {
         set_material(&mut app, Some(material));
         let e = app.regenerate().unwrap_err();
-        assert!(matches!(e, AppError::Operation { .. }), "{e}");
+        assert!(matches!(e, AppError::Refused { .. }), "{e}");
         let text = e.to_string();
         for part in [
             "'Ring'",
@@ -1332,7 +1334,7 @@ fn req_op_07_req_nfr_07_swarf_on_a_mesh_part_says_it_is_b_rep_only() {
         .unwrap_or_else(|| panic!("no B-rep only note: {:?}", form.notes));
     assert!(note.contains("STEP") && note.contains("cube.stl"), "{note}");
     let e = app.regenerate().unwrap_err();
-    assert!(matches!(e, AppError::Operation { .. }), "{e}");
+    assert!(matches!(e, AppError::Refused { .. }), "{e}");
     let e = e.to_string();
     assert!(
         e.contains("'Ring'") && e.contains("B-rep only") && e.contains("cube.stl"),
@@ -1489,14 +1491,14 @@ fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_b
     );
     // Generating refuses with the same words.
     let e = app.start_regenerate().wait().unwrap_err().to_string();
-    assert!(e.contains(said), "{e}");
+    assert!(e.to_lowercase().contains(&said.to_lowercase()), "{e}");
     // After that generation, Messages says it once.
     let overview = app.overview(None, &openchuck_app::JobLog::default());
     assert_eq!(
         overview
             .messages
             .iter()
-            .filter(|m| m.text.contains(said))
+            .filter(|m| m.text.to_lowercase().contains(&said.to_lowercase()))
             .count(),
         1,
         "{:?}",

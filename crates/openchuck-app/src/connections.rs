@@ -69,10 +69,7 @@ pub(crate) fn connect(
     )
     .map_err(|e| match e {
         openchuck_path::PathError::Cancelled => AppError::Path(e),
-        other => AppError::Operation {
-            name: operation.name.clone(),
-            reason: other.to_string(),
-        },
+        other => crate::operation::named_path(operation, other),
     })
 }
 

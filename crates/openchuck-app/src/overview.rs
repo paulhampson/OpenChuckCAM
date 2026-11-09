@@ -1142,6 +1142,9 @@ struct Made {
 struct Failure {
     operation: Option<(OperationId, Option<Key>)>,
     message: String,
+    /// The refusal in its parts, when the run was refused by a check: shown
+    /// by its own topic and setting (decision record 0644).
+    refusal: Option<crate::operation::Refusal>,
 }
 
 impl RecordState {
@@ -1287,8 +1290,14 @@ impl GenerationRecord {
     }
 
     /// A pipeline run on `project` failed with `message`, on the operation
-    /// it was working on, if any.
-    pub(crate) fn failed(&self, project: &Project, message: String) {
+    /// it was working on, if any; `refusal` is the message in its parts when
+    /// a check refused the operation.
+    pub(crate) fn failed(
+        &self,
+        project: &Project,
+        message: String,
+        refusal: Option<crate::operation::Refusal>,
+    ) {
         let keys = status_keys(project);
         self.with(|s| {
             let operation = s.current.take().map(|id| {
@@ -1296,7 +1305,11 @@ impl GenerationRecord {
                 (id, key)
             });
             s.stop_run(&format!("the run stopped before it finished ({message})"));
-            s.failure = Some(Failure { operation, message });
+            s.failure = Some(Failure {
+                operation,
+                message,
+                refusal,
+            });
         });
     }
 
@@ -2049,20 +2062,36 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         if let Some(Failure {
             operation: Some((id, key_then)),
             message,
+            refusal,
         }) = &record.failure
             && *id == o.id
             && key_then.is_some()
             && *key_then == key.map(|k| k.chained)
         {
             status = ItemStatus::new(ItemState::Error, sentence(message));
-            messages.push(Message::about(
-                Severity::Error,
-                topic::GENERATION,
-                &Context::operation(&o.name),
-                &clause(message),
-                Some((item, label.clone())),
-                Some(MessageAction::Show(item)),
-            ));
+            // A refusal reads by its own topic, and opens the setting to
+            // change (decision record 0644); any other failure is the run's.
+            messages.push(match refusal {
+                Some(refusal) => Message::about(
+                    Severity::Error,
+                    &refusal.topic,
+                    &Context::operation(&o.name),
+                    &refusal.text,
+                    Some((item, label.clone())),
+                    Some(match &refusal.setting {
+                        Some(key) => MessageAction::ShowSetting(SettingRef::operation(o.id, key)),
+                        None => MessageAction::Show(item),
+                    }),
+                ),
+                None => Message::about(
+                    Severity::Error,
+                    topic::GENERATION,
+                    &Context::operation(&o.name),
+                    &clause(message),
+                    Some((item, label.clone())),
+                    Some(MessageAction::Show(item)),
+                ),
+            });
         }
         // An up-to-date path made with a warning: a known overcut, for
         // example, so the state stays a warning while the path is used
@@ -2167,14 +2196,21 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         // before anything is generated (decision record 0174).
         if let Some(reason) = crate::operation::brep_only(project, &app.strategies, o) {
             status = ItemStatus::new(ItemState::Error, sentence(&reason));
-            messages.push(Message::about(
+            let message = Message::about(
                 Severity::Error,
                 topic::STEP_PART,
                 &Context::operation(&o.name),
                 &clause(&reason),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
-            ));
+            );
+            // Said once, when a generation already failed with it.
+            if !messages
+                .iter()
+                .any(|m| m.source == Some(item) && m.text == message.text)
+            {
+                messages.push(message);
+            }
         }
         // A selection set the strategy cannot use on a STEP part: said at
         // once, from the same check generation makes (decision 0209 item
@@ -2186,21 +2222,22 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             status = ItemStatus::new(ItemState::Error, sentence(&first.text));
         }
         for refusal in refusals {
-            // Said once, when a generation already failed with it.
-            if messages
-                .iter()
-                .any(|m| m.source == Some(item) && m.text.contains(&refusal.text))
-            {
-                continue;
-            }
-            messages.push(Message::about(
+            let message = Message::about(
                 Severity::Error,
                 openchuck_path::topic::SELECTION_SET,
                 &Context::operation(&o.name),
                 &clause(&refusal.text),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
-            ));
+            );
+            // Said once, when a generation already failed with it: the same
+            // check gives the same line (decision record 0644).
+            if !messages
+                .iter()
+                .any(|m| m.source == Some(item) && m.text == message.text)
+            {
+                messages.push(message);
+            }
         }
         if let Some((_, notes)) = checks.and_then(|c| c.reach.get(&o.id)) {
             for note in notes {
@@ -2219,16 +2256,27 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     if let Some(Failure {
         operation: None,
         message,
+        refusal,
     }) = &record.failure
     {
-        messages.push(Message::about(
-            Severity::Error,
-            topic::GENERATION,
-            &Context::default(),
-            &clause(message),
-            None,
-            Some(MessageAction::Generate),
-        ));
+        messages.push(match refusal {
+            Some(refusal) => Message::about(
+                Severity::Error,
+                &refusal.topic,
+                &Context::operation(&refusal.name),
+                &refusal.text,
+                None,
+                Some(MessageAction::Generate),
+            ),
+            None => Message::about(
+                Severity::Error,
+                topic::GENERATION,
+                &Context::default(),
+                &clause(message),
+                None,
+                Some(MessageAction::Generate),
+            ),
+        });
     }
 
     // Selection sets.
@@ -3296,7 +3344,7 @@ mod tests {
         app.record.begin_run();
         app.record.finished(app.project(), op);
         app.record
-            .failed(app.project(), "a model file changed".into());
+            .failed(app.project(), "a model file changed".into(), None);
         let status = state_of(&app, op);
         assert_eq!(status.state, ItemState::Stale, "{status:?}");
         assert!(

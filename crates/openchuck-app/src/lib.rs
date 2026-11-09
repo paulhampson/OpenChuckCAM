@@ -1173,10 +1173,11 @@ impl Application {
         if op.strategy != openchuck_path::facing::NAME
             || !matches!(op.parameters.get("shape"),Some(openchuck_project::ParameterValue::Text(mode)) if mode=="box")
         {
-            return Err(AppError::Operation {
-                name: op.name.clone(),
-                reason: "All four requires Box sides facing".into(),
-            });
+            return Err(AppError::refused(
+                openchuck_path::topic::BOX_FACING,
+                &op.name,
+                "All four requires Box sides facing",
+            ));
         }
         let commands = ["positive_z", "positive_y", "negative_z", "negative_y"]
             .into_iter()
@@ -1534,7 +1535,13 @@ impl Application {
                             record.current(),
                             e,
                         );
-                        record.failed(&document.project, text);
+                        let refusal = crate::operation::refusal_of(
+                            &document.project,
+                            &strategies,
+                            record.current(),
+                            e,
+                        );
+                        record.failed(&document.project, text, refusal);
                     }
                 }
                 result.and_then(then)

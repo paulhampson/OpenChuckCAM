@@ -258,10 +258,7 @@ pub fn set_operation_preset(
         .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
     changed.material =
         chosen_material(project, changed.setup, changed.tool, material).map_err(|reason| {
-            AppError::Operation {
-                name: changed.name.clone(),
-                reason,
-            }
+            AppError::refused(crate::lead_in::topic::MATERIAL, &changed.name, reason)
         })?;
     let snapshot = snapshot(project, changed.tool);
     let applies = snapshot

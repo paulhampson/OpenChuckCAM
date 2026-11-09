@@ -882,9 +882,12 @@ pub(crate) fn mesh_edge_segments(
     hash: ContentHash,
     mesh: &TriangleMesh,
 ) -> Result<Option<Vec<[openchuck_types::geometry::Point3; 2]>>, AppError> {
-    let fail = |set: &SelectionSet, reason: String| AppError::Operation {
-        name: operation.name.clone(),
-        reason: format!("selection set '{}' cannot be used: {reason}", set.name),
+    let fail = |set: &SelectionSet, reason: String| {
+        AppError::refused(
+            openchuck_path::topic::SELECTION_SET,
+            &operation.name,
+            format!("the selection set '{}' cannot be used: {reason}", set.name),
+        )
     };
     let find = |id: SelectionSetId| {
         project
@@ -1268,9 +1271,12 @@ pub(crate) fn resolve(
     if operation.selection_refs().next().is_none() {
         return Ok(None);
     }
-    let fail = |set: &SelectionSet, reason: String| AppError::Operation {
-        name: operation.name.clone(),
-        reason: format!("selection set '{}' cannot be used: {reason}", set.name),
+    let fail = |set: &SelectionSet, reason: String| {
+        AppError::refused(
+            openchuck_path::topic::SELECTION_SET,
+            &operation.name,
+            format!("the selection set '{}' cannot be used: {reason}", set.name),
+        )
     };
     // The union of the sets of one role.
     let union =
