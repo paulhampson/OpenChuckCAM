@@ -15,6 +15,7 @@ Planning session of 9 Nov 2026 (owner: Paul Hampson; drafted with Claude Code). 
   | `2026.2` | 2 | Release 2, "Trustworthy beta" |
   | `2026.3` | 3 | Release 3, "Safe setups" |
   | `2026.4` | 4 | Release 4, "Capability and ecosystem" |
+  | `Future` | 5 | Backlog, no release yet |
 
 - **Do not add issues to `2026.1` or remove them from it without the owner's permission** (owner, 9 Nov 2026).
 
@@ -93,34 +94,37 @@ These themes go in 2026.2:
 - **Ecosystem:** GC-13 post scripting (#738), INT-05 Python (#739), INT-03, INT-04 and INT-08 (#740), VC-01 to VC-06 (#741).
 - **Stretch:** OP-18 (#742), SIM-10 (#743), the MCP server (#594).
 
-## Suggested features (not yet in the requirements, awaiting triage, no milestone)
+## Suggested features (triaged by the owner, 9 Nov 2026)
 
-| # | Suggestion | Issue |
-| --- | --- | --- |
-| 1 | Operation templates and presets | #744 |
-| 2 | Several parts on one stock along X | #745 |
-| 3 | Indexed 3+1 2.5D operations at a fixed A | #746 |
-| 4 | Probing routines for the rotary centreline and stock datum | #747 |
-| 5 | Tailstock and between-centres workholding | #748 |
-| 6 | Text engraving with a font chooser | #749 |
-| 7 | More posts and machine profiles, community post trust (OI-87) | #751 |
-| 8 | Toolpath editing | #752 |
-| 9 | Export the simulated stock | #753 |
-| 10 | Diagnostic bundle | #754 |
-| 11 | Undo in the command line (OI-313); simulation from the command line is #601 | #755 |
-| 12 | Forced regenerate | already #559 (not duplicated) |
-| 13 | Results filters; exact unreachable areas | already #686 and #683 (not duplicated) |
-| 14 | Localisation | #756 |
-| — | Automatic operation planning (owner's addition) | #757 |
+| # | Suggestion | Issue | Milestone |
+| --- | --- | --- | --- |
+| 1 | Operation templates and presets | #744 | 2026.4 (slipped from 2026.3 to balance load) |
+| 2 | Several parts on one stock along X | #745 | 2026.3 (designed with SET-07, #717) |
+| 3 | Indexed 3+1 2.5D operations at a fixed A | #746 | Future (likely part of a later plan to add 3-axis machining) |
+| 4 | Probing routines for the rotary centreline and stock datum | #747 | 2026.3 |
+| 5 | Tailstock and between-centres workholding | #748 | 2026.3 (with #714) |
+| 6 | Text engraving with a font chooser | #749 | 2026.4 (with IMP-08, #734) |
+| 7 | More posts and machine profiles, community post trust (OI-87) | #751 | 2026.4 (with GC-13, #738) |
+| 8 | Toolpath editing | #752 | Future |
+| 9 | Export the simulated stock | #753 | 2026.3 |
+| 10 | Diagnostic bundle | #754 | 2026.2 |
+| 11 | Undo in the command line (OI-313) | #755 | **Closed, not planned** (agrees with OI-313's proposal) |
+| 12 | Forced regenerate | #559 (existing) | 2026.2 |
+| 13 | Results filters; exact unreachable areas | #686, #683 (existing; #683 is OI-1988) | 2026.3 |
+| 14 | Localisation | #756 | Future; groundwork task #758 (string catalogue, English only) in 2026.3 |
+| — | Automatic operation planning (owner's addition) | #757 | Future (after OP-18, TL-09 and collision) |
+
+The `Future` milestone (number 5) holds backlog work with no release. Triaged issues had `awaiting-triage` swapped for `Phase2` and `awaiting-planning`.
 
 Accepting any of these needs a new requirement ID (CLAUDE.md: do not edit `requirements.md` to fit; propose, agree, then record).
 
 ## Open points for the next planning session
 
-- Triage the suggestions (#744 to #757, plus #559, #683 and #686) and pick a milestone for each one accepted.
+- OI-313 is settled by the owner's decision to close #755 (no undo in the command line). Move its row to the Closed table of `docs/open-items.md` in the next docs pull request; it is not done on this branch.
+- The suggestions accepted into a release (#744, #745, #747 to #749, #751, #753, #754, #758) still need requirement IDs before they are built.
 - **Not scheduled** (not in any milestone yet):
   - the remaining sev3 bugs and housekeeping issues: #685, #682, #680, #677, #676, #662, #658, #657, #645, #632, #629, #624, #621, #618, #609, #608, #589, #582, #581, #574, #563, #461;
-  - #421 STEPRAMP, #516 deviation by area, #528 tab management, #559, #601, #683, #686, #368 (Discussions).
+  - #421 STEPRAMP, #516 deviation by area, #528 tab management, #601, #368 (Discussions).
 - **Open-item themes with no ticket yet:**
   - STEP robustness: OI-25, OI-26, OI-73, OI-74, OI-81, OI-960, OI-121, OI-831, OI-1350, OI-1351;
   - post details: OI-89, OI-68, OI-936, OI-937, OI-934, OI-92;

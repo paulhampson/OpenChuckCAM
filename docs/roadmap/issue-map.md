@@ -2,7 +2,7 @@
 
 Snapshot of 9 Nov 2026 (see [README.md](README.md)). It maps each open item and requirement to its GitHub issue and milestone, so a later session can update issues without reviewing them all. When you change an issue's milestone, or close an issue or an `OI-`, update the row here too.
 
-Milestone numbers: `2026.1` = 1, `2026.2` = 2, `2026.3` = 3, `2026.4` = 4. "—" means no milestone.
+Milestone numbers: `2026.1` = 1, `2026.2` = 2, `2026.3` = 3, `2026.4` = 4, `Future` = 5. "—" means no milestone.
 
 ## Open item → issue
 
@@ -19,7 +19,7 @@ Milestone numbers: `2026.1` = 1, `2026.2` = 2, `2026.3` = 3, `2026.4` = 4. "—"
 | OI-61 | #721 | 2026.3 |
 | OI-64 | #695 | 2026.2 |
 | OI-75 | #695 | 2026.2 |
-| OI-87 | #751 | — (request) |
+| OI-87 | #751 | 2026.4 |
 | OI-102 | #715 | 2026.3 |
 | OI-104 | #696 | 2026.2 (nice to have) |
 | OI-105 | #691 | 2026.2 |
@@ -39,7 +39,7 @@ Milestone numbers: `2026.1` = 1, `2026.2` = 2, `2026.3` = 3, `2026.4` = 4. "—"
 | OI-237 | #713 | 2026.3 |
 | OI-267 | #689 | 2026.2 |
 | OI-281 | #733 | 2026.4 |
-| OI-313 | #755 | — (request) |
+| OI-313 | #755 | closed, not planned (owner, 9 Nov 2026) |
 | OI-315 | #701 | 2026.2 |
 | OI-318 | #710 | 2026.2 |
 | OI-337 | #710 | 2026.2 |
@@ -68,7 +68,7 @@ Milestone numbers: `2026.1` = 1, `2026.2` = 2, `2026.3` = 3, `2026.4` = 4. "—"
 | OI-1526 | #709 | 2026.2 |
 | OI-1780 | #692 | 2026.2 |
 | OI-1781 | #692 | 2026.2 |
-| OI-1988 | #683 | — (request) |
+| OI-1988 | #683 | 2026.3 |
 | OI-1993 | #698 | 2026.2 |
 | OI-2004 | #573 | 2026.4 |
 | OI-2022 | #698 | 2026.2 |
@@ -117,6 +117,8 @@ Dropped by the owner from 2026.2: OI-23 (lawyer review). It has no issue.
 | #681 | existing | PRJ-08 | | recovery warnings |
 | #607 #612 #613 #614 #615 #631 #633 | existing | | | wording |
 | #441 | existing | NFR-11 | | documentation |
+| #754 | request | — | | diagnostic bundle |
+| #559 | existing | — | | forced regenerate |
 
 Left in 2026.1 (not moved): #687, #660, #641, #642 (and #640, #643, #644, #586, #587, #588, #668, #750).
 
@@ -149,6 +151,13 @@ Left in 2026.1 (not moved): #687, #660, #641, #642 (and #640, #643, #644, #586, 
 | #540 | existing | COL-05 | OI-2025 |
 | #545 | existing | TL-10 (HSMLib) | |
 | #525 | existing | UI-17 (options search) | |
+| #745 | request | — (SET-07 related) | |
+| #747 | request | — | |
+| #748 | request | — (COL-03 related) | |
+| #753 | request | — | |
+| #758 | new (groundwork for #756) | — | |
+| #686 | existing request | — | |
+| #683 | existing request | — | OI-1988 |
 
 ### 2026.4 (release 4, "Capability and ecosystem")
 
@@ -171,10 +180,22 @@ Left in 2026.1 (not moved): #687, #660, #641, #642 (and #640, #643, #644, #586, 
 | #415 | existing | OP-05, OP-20 | OI-1450 |
 | #529 #527 | existing | OP-17 related | |
 | #594 | existing (stretch) | — (MCP server) | |
+| #744 | request | — | |
+| #749 | request | — (IMP-08 related) | |
+| #751 | request | — | OI-87 |
 
-### Suggestions awaiting triage (no milestone)
+### Future (milestone 5, backlog)
 
-#744 templates, #745 several parts on one stock, #746 indexed 2.5D, #747 probing, #748 tailstock, #749 text engraving, #751 posts and machines (OI-87), #752 toolpath editing, #753 export simulated stock, #754 diagnostic bundle, #755 CLI undo (OI-313), #756 localisation, #757 automatic operation planning. These already existed: #559, #601, #683, #686.
+| Issue | Kind | Note |
+| --- | --- | --- |
+| #746 | request | indexed 2.5D; likely part of a later plan to add 3-axis machining |
+| #752 | request | toolpath editing |
+| #756 | request | localisation (groundwork #758 is in 2026.3) |
+| #757 | request | automatic operation planning |
+
+### Closed by triage
+
+#755 (CLI undo, OI-313): closed as not planned.
 
 ## Requirement → issue (P2 and P3 marked Include)
 
