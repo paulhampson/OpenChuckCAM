@@ -209,7 +209,7 @@ All recommendations accepted as a package, with D7 changed as its row says. D10:
 - **A travel and rate.** The ring ramp adds Δ of A to each entry, several turns near the axis at a high A rate; partial rings reverse A during the entry (D3).
 - **Not proved.** Dominance is geometric. It says nothing about chip load, feed or tool suitability. No machine trial is claimed. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
 
-## Verification (planned; filled in when built)
+## Verification
 
 Tests written first, named by requirement (`req_op_11_*`, with `req_op_13_*`, `req_op_15_*`, `req_set_09_*`, `req_nfr_07_*` where they apply), in `crates/openchuck-path/tests/entry.rs` (a module of the crate's one integration binary, decision 0516) and the app's `tests/operation.rs`:
 
@@ -223,6 +223,27 @@ Tests written first, named by requirement (`req_op_11_*`, with `req_op_13_*`, `r
 - **Not re-run by the lane:** the owner's own projects behind OI-553 (helical finishing with a ramp) and OI-790 (roughing at a 3 degree ramp). The owner re-runs them and reports numbers only.
 
 Every new test is timed uninstrumented; the changed crates' line coverage is checked locally (decision 0102).
+
+### As built (lane RAMPENTRY, PR 1; 8 and 9 Nov 2026)
+
+Environment: managed Linux container, Rust 1.97.0, cargo-nextest, 4 cores, debug test profile. Branch `claude/lane-rampentry-wip`, merged with `main` at `645256c3` (#648). Synthetic fixtures and the repository's public examples only; no machine or air cut (NFR-12).
+
+**Reproduction first.** The probes of issue #639 (and #640) were re-run in release mode on `main` `1f3675d` before any change: every line of their output matched the issues. Issue #642 was reproduced by tests written first and seen failing on `main` (`entry_link_stock.rs`: the lead-in's and the ramp's sideways rapid at a low link height enter a block of stock beside the first cut point).
+
+**Tests** (path crate unless named; all uninstrumented, each under a few seconds unless given):
+- `assemble::pass_shape` (6): a pass's start is told apart as a line, full ring, spiral, partial ring or single point, either way of turning.
+- `assemble::path_ramp` (7): heights within the angle, never under the pass; even legs ending at the first point; minimum length and leg bound refused; a steep drop before the first point followed (D4, answer A); a partial ring reversing A only inside its arc.
+- `ramp_follows.rs` (14): a ring ramped round itself, A the pass's way, within the angle on the real path; beside the held region (refused on `main`); every roughing ring layer, with and without the held region; the same at 1, 2 and 8 threads; a spiral round the axis at its start X (D2); continuous roughing spiral layers, and its single-point pass refused or plunged by Allow single-point plunge (D7); a short step before a ring continued over the pass (point 1); a ring on the axis descending while A turns, the same with Allow single-point plunge on or off (point 2, option (b)); the 10-turn refusal by name; the steeper ramp near the axis fitting 10 turns up to its maximum and refused past it (point 3); face nubs plunged beyond the part's end and not where the part fills the nub (point 3); the singular note.
+- `entry.rs`: a line ramp within the pass's footprint, within the angle, an odd number of turns (even legs), ending at the first cut point; a ramp on a rising cone that the old ramp refused, without gouging; a single-point pass under a ramp refused unless the setting is on, under a lead plunged as before. The corridor ramp's tests (0242, 0248, 0312) were removed with it.
+- `entry_link_stock.rs` (3, issue #642): the rapid to a lead-in's start and to a ramp's start never sweeps the tool through the stock; the plunge control stays clear.
+- Application: a ring ramped round itself from the application; no refusal up front on a STEP part or with a wider shank; Allow single-point plunge in the form, refusing when off in the form of decision 0536, plunging when on, a tool that cannot plunge refused by name under Ramp and Lead; a ramp beside the held region generates (`held_region.rs`); a ramp that follows the toolpath posts cleanly on both posts and the same at 1, 2 and N threads (`posting.rs`); the inactive back-and-forth flag changes nothing.
+- `ramp_example.rs` (public baluster example, Allow single-point plunge on): Rings at 3 degrees generates (58 s); the spiral at 10 degrees generates (40 s). At 3 degrees the spiral is refused by name (last roughing layers 0.86 mm from the axis need 17.6 turns).
+- `step_strategies.rs` (kernel feature): helical finishing with ramp entry in Rings on the STEP cone and as a spiral on the STEP revolved spline: no gouge of the exact surface (deepest 0.0000 mm), clean replay on both posts, identical G-code at 1, 2 and N threads (36.7 s).
+- `openchuck-sim` roughing: helix, ramp and plunge entries in continuous roughing simulate without faults (found a spiral ramp beside nothing of the part refusing with infinite turns; fixed).
+
+**Suites.** Path crate: 834 of 834 before the point-3 commits; its entry, ramp and ring tests 52 of 52 on the final head. Application, UI, command line, simulation and project: 1916 of 1918 before the last fixes, the two failures being the sim spiral case and a stale UI assertion, both fixed and passing. Clippy clean; `cargo xtask deps`, `licences`, `records`, `trace`, `messages` and `topics` pass. No golden program uses ramp entry, so none changed.
+
+**Not verified.** No machine trial. The owner's own projects behind OI-553 and OI-790 are not in the repository: the owner re-runs them himself (numbers only). Chip load and tool suitability on entry are not modelled.
 
 ## Open items
 
