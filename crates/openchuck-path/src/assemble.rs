@@ -134,11 +134,13 @@ pub struct GeneratedPath {
     /// by a straight plunge where the tool may cut on its way down: a pass
     /// of a single point, a ring with its tip on the rotary axis, a face nub
     /// (decision 0543 D7 and section 4, points 2 and 3; decision 0544 item
-    /// 7). A host that knows the tool cannot cut straight down refuses such
-    /// a path. The descent through air at the approach distance that every
-    /// entry makes, and a ramp's descent where there is nothing to descend
-    /// into, are not listed; nor is Plunge entry, which the host checks on
-    /// the entry itself.
+    /// 7), and a lead whose descent to its arc's start goes down through
+    /// stock standing above it (decision 0544, 9 Nov 2026). A host that
+    /// knows the tool cannot cut straight down refuses such a path. The
+    /// descent through air at the approach distance that every entry makes,
+    /// and a ramp's descent where there is nothing to descend into, are not
+    /// listed; nor is Plunge entry, which the host checks on the entry
+    /// itself.
     pub straight_plunges: Vec<usize>,
 }
 
@@ -707,7 +709,7 @@ pub(crate) fn assemble_limited(
                 }
             }
         }
-        entry.exit(&mut b, common, input, i, points)?;
+        entry.exit(&mut b, common, input, stock, i, points, pass_rapids)?;
     }
 
     leave(

@@ -2657,8 +2657,8 @@ impl Strategy for OneLine {
 /// entered by a straight plunge into the stock (a single point, a ring on
 /// the rotary axis, a face nub: decision 0543 D7, decision 0544 item 7). The
 /// descent through air at the approach distance that every lead-in makes is
-/// not a plunge into the stock: such a tool generates a lead on a line and a
-/// ramp on a line or round a ring.
+/// not a plunge into the stock: such a tool generates a ramp on a line or
+/// round a ring.
 #[test]
 fn req_op_11_a_tool_that_cannot_plunge_still_leads_and_ramps_where_nothing_plunges_into_stock() {
     let (dir, mut app, op) = project("no-plunge-lead-ramp");
@@ -2667,11 +2667,10 @@ fn req_op_11_a_tool_that_cannot_plunge_still_leads_and_ramps_where_nothing_plung
     let mut tool = app.project().tools()[0].clone();
     tool.tool.centre_cutting = Some(false);
     app.execute(Command::Replace(Item::Tool(tool))).unwrap();
-    for (strategy, entry) in [
-        ("one_line", "lead"),
-        ("one_line", "ramp"),
-        ("one_ring", "ramp"),
-    ] {
+    // A lead on a line whose descent to its arc's start goes through the
+    // stock is refused for such a tool (the next test); this project's
+    // stock stands above its line, so only the ramps are here.
+    for (strategy, entry) in [("one_line", "ramp"), ("one_ring", "ramp")] {
         let mut operation = app.project().operation(op).unwrap().clone();
         operation.strategy = strategy.into();
         app.execute(Command::Replace(Item::Operation(operation)))
@@ -2684,6 +2683,36 @@ fn req_op_11_a_tool_that_cannot_plunge_still_leads_and_ramps_where_nothing_plung
             run.err().map(|e| e.to_string())
         );
     }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A lead whose descent to its arc's start goes down through the stock,
+/// where the stock stands above the arc (here the stock is 20 mm across
+/// round a 10 mm cube), cuts on its way down: it is refused, naming the pass
+/// and the tool, for a tool that cannot cut straight down, as a Plunge
+/// entry is, and generates for one that can (decision 0544, the
+/// coordinator's answer of 9 Nov 2026; main never refused it). The descent
+/// through air is not listed (`openchuck-path` `lead_follows.rs`).
+#[test]
+fn req_op_11_a_line_lead_whose_descent_goes_through_the_stock_needs_a_tool_that_can_plunge() {
+    let (dir, mut app, op) = project("lead-through-stock");
+    app.register_strategy(Arc::new(OneLine)).unwrap();
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "one_line".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    set_entry(&mut app, op, "lead", &[]);
+    app.start_regenerate()
+        .wait()
+        .unwrap_or_else(|e| panic!("a tool that can plunge: {e}"));
+    let mut tool = app.project().tools()[0].clone();
+    tool.tool.centre_cutting = Some(false);
+    app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    let e = app.start_regenerate().wait().unwrap_err().to_string();
+    assert!(
+        e.contains("pass 1") && e.contains("'4 mm ball' cannot cut straight down"),
+        "{e}"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

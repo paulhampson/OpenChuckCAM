@@ -36,6 +36,8 @@ mod golden_audit;
 mod held_region;
 #[path = "import_preview.rs"]
 mod import_preview;
+#[path = "lead_example.rs"]
+mod lead_example;
 #[path = "library.rs"]
 mod library;
 #[path = "material_preset.rs"]
