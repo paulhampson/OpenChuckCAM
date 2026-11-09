@@ -235,10 +235,13 @@ impl Builder<'_> {
             return Ok(());
         }
         if !self.collision.allows(&self.pose, &end, kind) {
-            return Err(PathError::Strategy(format!(
-                "move {} ({kind:?}) collides, and no way round it is known",
-                self.segments.len()
-            )));
+            return Err(PathError::refused(
+                crate::topic::LINKS,
+                format!(
+                    "move {} ({kind:?}) collides, and no way round it is known",
+                    self.segments.len()
+                ),
+            ));
         }
         let limits = &self.max_feeds;
         let (linear, z, rotary) = if kind.is_fed() {
@@ -404,11 +407,14 @@ fn check_point(p: &CutPoint, pass: usize, point: usize) -> Result<()> {
     if ok {
         Ok(())
     } else {
-        Err(PathError::Strategy(format!(
-            "pass {} point {} is not a finite position",
-            pass + 1,
-            point + 1
-        )))
+        Err(PathError::refused(
+            crate::topic::TOOLPATH,
+            format!(
+                "pass {} point {} is not a finite position",
+                pass + 1,
+                point + 1
+            ),
+        ))
     }
 }
 
@@ -455,10 +461,13 @@ pub(crate) fn assemble_limited(
     if let Some(r) = input.stock.max_radius()
         && r > link_height + EPS
     {
-        return Err(PathError::Strategy(format!(
-            "the stock reaches {r:.3} mm from the rotary axis, beyond the retract height of \
+        return Err(PathError::refused(
+            crate::topic::LINKS,
+            format!(
+                "the stock reaches {r:.3} mm from the rotary axis, beyond the retract height of \
              {link_height:.3} mm, so links could cross it (OP-14); enlarge the setup's clearance"
-        )));
+            ),
+        ));
     }
 
     let tolerance = common.tolerance.get().0;
@@ -518,7 +527,8 @@ pub(crate) fn assemble_limited(
         low_links.push(pass.low_link);
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::TOOLPATH,
             "the strategy produced no cut for this selection".to_owned(),
         ));
     };

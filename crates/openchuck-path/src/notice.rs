@@ -144,6 +144,24 @@ pub mod topic {
     /// A setting of the operation that is missing or out of range, when no
     /// label names it.
     pub const SETTING: &str = "Setting";
+    /// The stock to leave on the part, and the tools that can leave it.
+    pub const STOCK_TO_LEAVE: &str = "Stock to leave";
+    /// The stock model: its size and its ends.
+    pub const STOCK: &str = "Stock";
+    /// The toolpath as a whole: a cut to make, its points.
+    pub const TOOLPATH: &str = "Toolpath";
+    /// Facing's own needs, beside its checks above.
+    pub const FACING: &str = "Facing";
+    /// The material and the layers of rotary roughing.
+    pub const ROTARY_ROUGHING: &str = "Rotary roughing";
+    /// The surface and the passes of axial finishing.
+    pub const AXIAL_FINISHING: &str = "Axial finishing";
+    /// The surface and the passes of helical finishing.
+    pub const HELICAL_FINISHING: &str = "Helical finishing";
+    /// The surface and the moves of simultaneous 4-axis finishing.
+    pub const SIMULTANEOUS_FINISHING: &str = "Simultaneous 4-axis finishing";
+    /// The holes radial drilling finds and drills.
+    pub const RADIAL_DRILLING: &str = "Radial drilling";
 }
 
 /// How serious a [`Notice`] is (decision record 0536 section 1).
