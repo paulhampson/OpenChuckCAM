@@ -325,8 +325,8 @@ fn raised_note(path: &openchuck_path::GeneratedPath) -> Option<&str> {
     path.notices
         .iter()
         .find(|n| {
-            n.text.contains("start higher than the link")
-                || n.text.contains("starts higher than the link")
+            let t = n.text.to_lowercase();
+            t.contains("start higher than the link") || t.contains("starts higher than the link")
         })
         .map(|n| n.text.as_str())
 }
@@ -348,19 +348,20 @@ fn req_op_14_req_op_11_a_lead_in_raised_to_clear_the_stock_is_counted_in_a_note(
         &[(names::ENTRY, text("lead"))],
     )
     .unwrap();
-    assert_eq!(
-        raised_note(&path),
-        Some(
-            "1 entry starts higher than the link before it ends, so the move to the entry's \
-             start stays clear of the stock beside the first cut point"
-        ),
-        "{:?}",
-        path.notices
+    // Stable fragments, so the test holds whatever case or full stop the
+    // message form gives the text (decision 0536).
+    let text = raised_note(&path)
+        .unwrap_or_else(|| panic!("{:?}", path.notices))
+        .to_lowercase();
+    assert!(
+        text.starts_with("1 entry starts higher than the link before it ends")
+            && text.contains("stays clear of the stock beside the first cut point"),
+        "{text}"
     );
     let note = path
         .notices
         .iter()
-        .find(|n| n.text.starts_with("1 entry starts higher"))
+        .find(|n| n.text.to_lowercase().starts_with("1 entry starts higher"))
         .unwrap();
     assert_eq!(note.topic.as_deref(), Some(openchuck_path::topic::ENTRY));
     assert!(!note.is_warning());
@@ -406,8 +407,10 @@ fn req_op_14_req_nfr_07_stock_at_the_retract_height_is_refused() {
         &[(names::ENTRY, text("lead"))],
     )
     .unwrap_err();
+    let lower = err.to_lowercase();
     assert!(
-        err.contains("beyond the retract height") && err.contains("enlarge the setup's clearance"),
+        lower.contains("beyond the retract height")
+            && lower.contains("enlarge the setup's clearance"),
         "{err}"
     );
 }
