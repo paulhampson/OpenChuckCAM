@@ -685,3 +685,92 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
     }
     out
 }
+
+/// A copy of the public baluster example (its stock held 8 mm at the
+/// start) in a fresh folder, with its Finish operation (helical finishing)
+/// in Rings with `step` steps between them.
+fn baluster_in_rings(step: &str) -> PathBuf {
+    fn copy(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            let target = to.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), &target).unwrap();
+            }
+        }
+    }
+    let from = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/examples/baluster/baluster-project");
+    let dir = std::env::temp_dir().join(format!(
+        "openchuck-held-rings-{step}-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    copy(&from, &dir);
+    // Only the Finish operation is generated: the example's Rough is not
+    // what this checks, and it is most of the time.
+    std::fs::remove_file(dir.join("operations/1a280b59-8da1-4ee1-97e9-1e2b40c356f5.toml")).unwrap();
+    let finish = dir.join("operations/34e3aa5e-36cc-4614-be6d-ec39cf22f5f8.toml");
+    let text = std::fs::read_to_string(&finish).unwrap();
+    assert!(text.contains("strategy = \"helical_finishing\""));
+    std::fs::write(
+        &finish,
+        format!("{text}pass_shape = \"rings\"\nring_step = \"{step}\"\n"),
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn req_set_09_req_op_04_the_baluster_finish_in_sharp_rings_starts_on_a_whole_ring_beside_the_chuck()
+{
+    finish_in_rings_starts_on_a_whole_ring_beside_the_chuck("sharp");
+}
+
+#[test]
+fn req_set_09_req_op_04_the_baluster_finish_in_blended_rings_starts_on_a_whole_ring_beside_the_chuck()
+ {
+    finish_in_rings_starts_on_a_whole_ring_beside_the_chuck("blended");
+}
+
+/// Decision record 0550 (the owner chose option (a) on 9 Nov 2026,
+/// relayed): on the tutorial's piece, held 8 mm at the start, the Finish
+/// operation in rings starts on a whole ring at the edge of the held
+/// region's keep-out, not with a short cut along X at the start angle that
+/// the keep-out left of the step (or blend) into the first ring.
+fn finish_in_rings_starts_on_a_whole_ring_beside_the_chuck(step: &str) {
+    {
+        let dir = baluster_in_rings(step);
+        let app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+        let run = app.regenerate().unwrap();
+        let finish = run.canonical_toolpath.groups.last().unwrap();
+        let mut prev = finish.start;
+        let mut first_turn = None;
+        for s in &finish.segments {
+            if s.kind == openchuck_types::ir::MoveKind::Cutting {
+                let along = (s.end.tip.x - prev.tip.x).abs() > 1e-6;
+                let turns = (s.end.a.0 - prev.a.0).abs() > 1e-9;
+                if turns {
+                    first_turn = Some((prev.tip.x, along));
+                    break;
+                }
+                assert!(
+                    !along,
+                    "{step}: the pass cuts along X with A held from X {:.3} to {:.3} before its first ring",
+                    prev.tip.x, s.end.tip.x
+                );
+            }
+            prev = s.end;
+        }
+        let (x, along) = first_turn.expect("the pass turns A");
+        // The first ring is a whole turn at one X, not a blend.
+        assert!(!along, "{step}: the pass starts with a blend at X {x:.3}");
+        // At the edge of the keep-out: the held 8 mm from the stock's start
+        // (X -1) widened by the tool's reach, beyond X 7.
+        assert!(x > 7.0 && x < 12.0, "{step}: the first ring at X {x:.3}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

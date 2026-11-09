@@ -766,3 +766,100 @@ fn req_nfr_07_blended_roughing_counts_its_blends_against_the_node_limit() {
         assert!(e.contains(names::STEPOVER), "{stepover}: {e}");
     }
 }
+
+// ------------------------------------------- rings beside a held region
+//
+// Decision record 0550 (the owner chose option (a) on 9 Nov 2026,
+// relayed): helical finishing's and rest machining's rings start on a whole
+// ring at the edge of a held region's keep-out band, as roughing's do,
+// instead of a stub of the step or blend that the keep-out cut short.
+
+/// The first cutting move of the first cut, and the X of the first move
+/// that turns A, with whether any move before it runs along X.
+fn start_of_cut(p: &GeneratedPath) -> (Kind, f64, bool) {
+    let runs = cut_runs(p);
+    let run = runs.first().unwrap_or_else(|| panic!("no cut"));
+    let first = kind(&run[0].0, &run[0].1);
+    let mut along = false;
+    for (from, s) in run {
+        match kind(from, s) {
+            Kind::Ring | Kind::Blend => return (first, from.tip.x, along),
+            Kind::Step => along = true,
+            Kind::Other => {}
+        }
+    }
+    panic!("the cut never turns A");
+}
+
+#[test]
+fn req_set_09_req_op_04_helical_rings_start_on_a_whole_ring_at_a_held_regions_edge() {
+    let f = finish_fixture(&cone());
+    let keep = [(-10.0, 3.0)];
+    let mut input = f.input();
+    input.keep_out = &keep;
+    for step in [SHARP, BLENDED] {
+        let v = stepped(helical_values(&[]), step);
+        let p = run(|ctx| generate(&HelicalFinishing, &input, &v, ctx)).unwrap();
+        let (first, x, along) = start_of_cut(&p);
+        assert_eq!(first, Kind::Ring, "{step}: the cut starts with a {first:?}");
+        assert!(!along, "{step}: a move along X before the first ring");
+        assert!((x - 3.0).abs() < 1e-9, "{step}: the first ring at X {x}");
+        // Every ring is outside the band.
+        for run in cut_runs(&p) {
+            for (from, s) in &run {
+                if kind(from, s) == Kind::Ring {
+                    assert!(from.tip.x >= 3.0 - 1e-9, "{step}: a ring at {}", from.tip.x);
+                }
+            }
+        }
+        // And the whole ring there is cut (a whole turn at the edge).
+        let ring: f64 = cut_runs(&p)[0]
+            .iter()
+            .take_while(|(from, s)| kind(from, s) != Kind::Step && kind(from, s) != Kind::Blend)
+            .filter(|(from, s)| kind(from, s) == Kind::Ring)
+            .map(|(from, s)| (s.end.a.0 - from.a.0).abs())
+            .sum();
+        assert!(
+            (ring - 360.0).abs() < 1e-6,
+            "{step}: the edge ring turns {ring}"
+        );
+    }
+}
+
+#[test]
+fn req_set_09_req_op_09_rest_rings_start_on_a_whole_ring_at_a_held_regions_edge() {
+    let f = shaft();
+    // Between two ring places (the stepover is 1 mm), so that before this
+    // the keep-out cut a step short.
+    let keep = [(-10.0, 2.5)];
+    let mut input = f.input();
+    input.keep_out = &keep;
+    for step in [SHARP, BLENDED] {
+        let v = stepped(rest_values(&[]), step);
+        let p = run(|ctx| generate(&RestMachining, &input, &v, ctx)).unwrap();
+        let (first, x, along) = start_of_cut(&p);
+        assert_eq!(first, Kind::Ring, "{step}: the cut starts with a {first:?}");
+        assert!(!along, "{step}: a move along X before the first ring");
+        assert!((x - 2.5).abs() < 1e-9, "{step}: the first ring at X {x}");
+    }
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_rings_beside_a_held_region_are_identical_at_1_2_and_n_threads() {
+    let f = finish_fixture(&cone());
+    let keep = [(-10.0, 3.0)];
+    let v = stepped(helical_values(&[]), BLENDED);
+    let runs = openchuck_testkit::determinism::check(|| {
+        let mut input = f.input();
+        input.keep_out = &keep;
+        format!(
+            "{:?}",
+            run(|ctx| generate(&HelicalFinishing, &input, &v, ctx))
+                .unwrap()
+                .group
+        )
+        .into_bytes()
+    })
+    .unwrap();
+    assert_eq!(runs.len(), 4);
+}
