@@ -1655,6 +1655,14 @@ impl WorkholdingPanel {
             }
             Facts::None => None,
         };
+        // The Setup step hands the section the setup as edited this frame,
+        // and the command that stores it runs after the frame. The job reads
+        // the stored project, so starting it now would file the old stock's
+        // facts under the new key and keep them (issue 604). Wait a frame.
+        if app.project().setup(self.setup) != Some(setup) {
+            ctx.request_repaint();
+            return;
+        }
         if current != Some(&key) {
             self.facts = Facts::Running {
                 job: app.start_part_extent(self.setup),
@@ -2037,6 +2045,40 @@ mod tests {
         );
         assert!(!panel.has_unapplied_changes());
         assert!(panel.draft_view(&stored).draft.is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Issue 604: a change to the stock updates the default tabs and the
+    /// "No room" line at once, as it does the zone lines.
+    #[test]
+    fn req_ui_25_the_default_tabs_follow_a_change_to_the_stock() {
+        let (dir, mut app, _, setup_id) = cube_project("workholding-stock-change");
+        let setup = app.project().setup(setup_id).unwrap().clone();
+        let mut panel = WorkholdingPanel::new(&setup);
+        let ctx = egui::Context::default();
+        let text = settle(&mut panel, &ctx, &app, &setup);
+        assert!(
+            text.contains("No room for a default tab at the tail"),
+            "{text}"
+        );
+        let mut longer = setup.clone();
+        longer.stock = Some(openchuck_app::setup::Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(20.0),
+            x_start: Millimetres(-7.0),
+        });
+        // The Setup step hands the section the setup as edited this frame; the
+        // command that stores it runs after the frame (issue 604 cause).
+        let _ = painted(&mut panel, &ctx, &app, &longer);
+        app.execute(Command::Replace(Item::Setup(longer.clone())))
+            .unwrap();
+        let text = settle(&mut panel, &ctx, &app, &longer);
+        assert!(text.contains("Tail zone X"), "{text}");
+        assert!(
+            !text.contains("No room for a default tab at the tail"),
+            "{text}"
+        );
+        assert_eq!(panel.draft_view(&longer).offered.len(), 2, "{text}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
