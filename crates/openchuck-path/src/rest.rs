@@ -545,7 +545,10 @@ impl Strategy for RestMachining {
             // services to link (decision record 0420; OP-14). A face's turn
             // is one of the rings.
             let places: Vec<f64> = turns.iter().chain(&wall_rings).copied().collect();
-            let (xs, gap) = crate::helical::ring_places((x0, x1), stepover, &places);
+            // Over the part outside the held regions' bands, with a ring
+            // at each band's edge (decision record 0550).
+            let (span, inside) = crate::helical::ring_span((x0, x1), input.keep_out, &places);
+            let (xs, gap) = crate::helical::ring_places(span, stepover, &inside);
             let blend = crate::helical::ring_blend(parameters)?;
             let (passes, _) = crate::helical::ring_passes(
                 &fit,

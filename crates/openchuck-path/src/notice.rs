@@ -107,6 +107,9 @@ pub mod topic {
     /// 0543): passes plunged as single points, ramps that followed a steep
     /// drop of the pass, A reversed during an entry.
     pub const RAMP_ENTRY: &str = "Ramp entry";
+    /// How a lead entry was made (decision record 0544): passes plunged as
+    /// single points, which have no cut to lead into.
+    pub const LEAD_ENTRY: &str = "Lead entry";
     /// The move to an entry's start, raised to clear the stock beside the
     /// first cut point (decision record 0544 item 6).
     pub const ENTRY: &str = "Entry";

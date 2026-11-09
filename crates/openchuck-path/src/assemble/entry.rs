@@ -41,6 +41,11 @@ use crate::params::{CommonParameters, EntryParameters, EntryStyle};
 use crate::rotary::AxisPosition;
 use crate::strategy::{CutPoint, StrategyInput};
 
+// The lead on a pass that turns A (decision 0544); a child module, so it
+// shares this module's checks.
+#[path = "lead.rs"]
+mod lead;
+
 /// The most segments one entry may take.
 const MAX_SEGMENTS: usize = 100_000;
 
@@ -138,23 +143,39 @@ impl Entry {
         }
         match self.style {
             EntryStyle::Plunge => plunge(b, stock, common, head),
-            EntryStyle::Lead => self.lead_in(b, input, stock, common, pass, head, points),
+            EntryStyle::Lead => match self.turning_lead_in(b, points, rapids) {
+                Some((sign, behind)) => self.turning_lead_in_moves(
+                    b, input, stock, common, pass, points, rapids, sign, behind,
+                ),
+                None if self.starts_on_axis(b, points, rapids) => {
+                    b.straight_plunges.push(pass);
+                    lead::note_axis_start(b, pass);
+                    plunge(b, stock, common, head)
+                }
+                None => self.lead_in(b, input, stock, common, pass, head, points),
+            },
             EntryStyle::Ramp => self.ramp(b, input, stock, common, pass, head, points, rapids),
             EntryStyle::Helix => self.helix(b, input, stock, common, pass, head, points),
         }
     }
 
     /// Moves from the pass's last point; only the `lead` style has one.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn exit(
         &self,
         b: &mut Builder<'_>,
         common: &CommonParameters,
         input: &StrategyInput<'_>,
+        stock: View<'_>,
         pass: usize,
         points: &[CutPoint],
+        rapids: &[usize],
     ) -> Result<()> {
         if self.style != EntryStyle::Lead {
             return Ok(());
+        }
+        if let Some(done) = self.turning_lead_out(b, input, stock, common, pass, points, rapids) {
+            return done;
         }
         let Some(last) = points.last() else {
             return Ok(());
@@ -225,6 +246,7 @@ impl Entry {
         // decision 0204).
         let Some(d) = direction_at_start(b, points) else {
             b.straight_plunges.push(pass);
+            lead::note_single_point(b, pass);
             return plunge(b, stock, common, head);
         };
         let r = self.lead_radius;
@@ -269,6 +291,12 @@ impl Entry {
             let pose = b.pose(tip, head.a);
             b.push(MoveKind::Rapid, pose, None, None)?;
             let stop = stop_height(b, stock, common, start.height);
+            // As for the lead on a pass that turns A: where the stock stands
+            // above the arc's start, the plunge to it cuts on its way down
+            // and is listed for the host's tool check (decision 0544).
+            if stop > start.height + common.approach_distance.0 + EPS {
+                b.straight_plunges.push(pass);
+            }
             rapid_to(b, stop)?;
             let tip = b.rotary.to_model(start, head.a);
             let pose = b.pose(tip, head.a);
@@ -912,6 +940,9 @@ impl Entry {
         points: &[CutPoint],
         rapids: &[usize],
     ) -> Result<Option<CutPoint>> {
+        if let Some(start) = self.turning_lead_start(b, points, rapids) {
+            return Ok(Some(start));
+        }
         Ok(self
             .ring_plan(b, input, stock, common, pass, points, rapids)?
             .and_then(|plan| plan.start())
