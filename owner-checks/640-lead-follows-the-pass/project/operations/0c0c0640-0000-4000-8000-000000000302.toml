@@ -8,4 +8,7 @@ tool = "0c0c0640-0000-4000-8000-000000000105"
 selections = []
 
 [parameters]
+direction = "climb"
 entry = "lead"
+extend = "far end"
+face_free_ends = false

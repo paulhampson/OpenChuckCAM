@@ -1,11 +1,25 @@
 schema = 25
-name = "Baluster"
+name = "Owner check 640"
 
 [[models]]
 id = "75b05aaf-5593-4e0f-9bcb-76e2fef56cad"
 path = "models/419712af3f46aa8fa43fea3f17e544c6.stl"
 hash = "blake3:419712af3f46aa8fa43fea3f17e544c681583a620f009f62466e13887d9304ff"
 name = "baluster.stl"
+
+[[models.transform]]
+kind = "centre_on_rotary_axis"
+
+[[models]]
+id = "0c0c0640-0000-4000-8000-000000000011"
+path = "models/cylinder.step"
+hash = "blake3:d6c36647a154b1b5b05017988f6dbeb7e302749b201c0c30fe27671af0602027"
+name = "cylinder.step"
+
+[[models.transform]]
+kind = "rotate"
+axis = "y"
+angle = 90.0
 
 [[models.transform]]
 kind = "centre_on_rotary_axis"

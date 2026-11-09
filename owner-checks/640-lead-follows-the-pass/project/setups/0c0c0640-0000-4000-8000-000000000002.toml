@@ -1,8 +1,8 @@
 schema = 25
 id = "0c0c0640-0000-4000-8000-000000000002"
 order = "W"
-name = "Setup 2, long stock"
-part = "75b05aaf-5593-4e0f-9bcb-76e2fef56cad"
+name = "Setup 2, cylinder in long stock"
+part = "0c0c0640-0000-4000-8000-000000000011"
 material = "Hardwood"
 part_offset = 0.0
 
@@ -12,6 +12,6 @@ x = 0.0
 
 [stock]
 type = "cylinder"
-diameter = 24.000000238343276
-length = 75.0
-x_start = -13.0
+diameter = 24.0
+length = 62.0
+x_start = -10.0

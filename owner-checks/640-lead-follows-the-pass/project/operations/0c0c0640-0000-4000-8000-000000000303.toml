@@ -2,10 +2,13 @@ schema = 25
 id = "0c0c0640-0000-4000-8000-000000000303"
 order = "X"
 name = "Axial lead, through air"
-setup = "57ad6798-2544-4dfb-90a0-caf67ec69484"
+setup = "0c0c0640-0000-4000-8000-000000000003"
 strategy = "axial_finishing"
 tool = "0c0c0640-0000-4000-8000-000000000105"
 selections = []
 
 [parameters]
+direction = "climb"
 entry = "lead"
+extend = "far end"
+face_free_ends = false

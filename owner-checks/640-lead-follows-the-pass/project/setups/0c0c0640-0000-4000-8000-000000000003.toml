@@ -1,0 +1,17 @@
+schema = 25
+id = "0c0c0640-0000-4000-8000-000000000003"
+order = "X"
+name = "Setup 3, cylinder in flush stock"
+part = "0c0c0640-0000-4000-8000-000000000011"
+material = "Hardwood"
+part_offset = 0.0
+
+[work_offset]
+register = "g54"
+x = 0.0
+
+[stock]
+type = "cylinder"
+diameter = 24.0
+length = 52.0
+x_start = 0.0
