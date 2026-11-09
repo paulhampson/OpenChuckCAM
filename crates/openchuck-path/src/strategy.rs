@@ -20,7 +20,7 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{GeneratedPath, ShankBreak, Unreached, assemble_with_entry};
+use crate::assemble::{GeneratedPath, ShankBreak, Unreached, assemble_limited};
 use crate::error::{PathError, Result};
 use crate::notice::{Notice, topic};
 use crate::params::{
@@ -312,6 +312,15 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         false
     }
 
+    /// Whether a cutting move inside a pass that goes down along the tool
+    /// axis is slowed, as much as needed and no more, so that the tip goes
+    /// down no faster than the plunge feed (OP-11; decision record 0548).
+    /// Roughing turns it on: a drop to the layer goes into stock the layer
+    /// has not cut. Off by default; finishing keeps its feeds (OI-2134).
+    fn limits_descent_feed(&self, _parameters: &Parameters) -> bool {
+        false
+    }
+
     /// Whether the strategy works on the material earlier operations left
     /// (rest machining, pencil clean-up; OP-09). The host says so in the
     /// operation's notes when no earlier operation of the setup has made the
@@ -543,7 +552,12 @@ fn generate_with(
     let (passes, notes) = keep_clear(passes, notes, input.keep_out, mid)?;
     let mut path = {
         let _timing = context.time_stage("assembly");
-        assemble_with_entry(&passes, input, &common, &entry, context)?
+        // A roughing drop goes down no faster than the plunge feed
+        // (decision record 0548).
+        let descent = strategy
+            .limits_descent_feed(&parameters)
+            .then_some(common.plunge_feed);
+        assemble_limited(&passes, input, &common, &entry, descent, context)?
     };
     // The flutes against the deepest cut (TL-04, NFR-07; decision records
     // 0509 and 0522), on the path as assembly wrote it: its angles are the
