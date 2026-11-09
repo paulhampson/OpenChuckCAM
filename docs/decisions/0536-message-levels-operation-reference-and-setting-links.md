@@ -259,7 +259,7 @@ Tests, each named by requirement:
 - the end-to-end tests of #645 (`req_op_04_req_nfr_12_the_cli_writes_a_partial_path_only_when_acknowledged`, `req_gc_16_cli_writes_a_possible_collision_only_when_acknowledged`) check the notice on a refusal;
 - the existing tests that read these texts follow the form.
 
-The command line's sample output on the user guide's Command line page is from a real run of the baluster example with this build.
+Suites: `openchuck-app` ran 851 of 851 tests (1 skipped) at `99e9468d`; after merging `main` at `01aa5e32` (#652), `openchuck-ui`, `openchuck-cli`, `openchuck-types`, `openchuck-path`, `openchuck-sim` and `xtask` ran 1,975 of 1,975 (3 skipped), and the app's 14 unreached-area tests, which #652 changed, passed. `cargo clippy --workspace --all-targets` is clean, and `cargo xtask deps` (with `messages` and `topics`), `licences`, `records` and `trace` pass. The command line's sample output on the user guide's Command line page is from a real run of the baluster example with this build.
 
 Not verified here:
 
