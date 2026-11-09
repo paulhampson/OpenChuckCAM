@@ -1,5 +1,5 @@
-Owner check for issue #638: steps between rings can be blended
-DRAFT: to run on the release candidate, once the fix is merged.
+Owner check for issue #638 (fixed in #655): steps between rings can be blended
+Build: commit 1f2c0be6 or later (Help > About OpenChuckCAM), or main.
 
 1. Open the folder "project" with File > Open project.
 2. Operations, Generate.
@@ -17,5 +17,5 @@ project's G-code on a machine. Generated G-code must be verified by you
 before it is run on a machine.
 
 Reply on the issue with: PASS, or FAIL and what you saw.
-Full steps and what we saw: CHECK.md in owner-checks/rc/ on the branch
+Full steps and what we saw: CHECK.md in this folder on the branch
 owner-checks/2026.1-alpha.

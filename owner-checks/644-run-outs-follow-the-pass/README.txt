@@ -1,6 +1,6 @@
-Owner check for issue #644: on ring and spiral passes, Extend past the
+Owner check for issue #644 (fixed in #655): on ring and spiral passes, Extend past the
 stock follows the pass
-DRAFT: to run on the release candidate, once the fix is merged.
+Build: commit 1f2c0be6 or later (Help > About OpenChuckCAM), or main.
 
 1. Open the folder "project" with File > Open project.
 2. Operations, Generate. Zoom on the far end (X 61 to 67) of each.
@@ -15,5 +15,5 @@ project's G-code on a machine. Generated G-code must be verified by you
 before it is run on a machine.
 
 Reply on the issue with: PASS, or FAIL and what you saw.
-Full steps and what we saw: CHECK.md in owner-checks/rc/ on the branch
+Full steps and what we saw: CHECK.md in this folder on the branch
 owner-checks/2026.1-alpha.

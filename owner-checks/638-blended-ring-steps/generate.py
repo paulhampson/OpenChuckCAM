@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Writes the owner-check project for issue #638 (decision 0545: blended steps between rings):
 
-    python3 owner-checks/rc/638-blended-ring-steps/generate.py
+    python3 owner-checks/638-blended-ring-steps/generate.py
 
 It writes project/ beside this script: the public baluster of the user guide's tutorial in 74 mm
 of 24 mm stock from X -13 to 61, the chuck holding 8 mm (X -13 to -5), and a 3.175 mm ball.
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ownercheck as oc  # noqa: E402
 
 HERE = Path(__file__).resolve().parent

@@ -2,7 +2,7 @@
 """Writes the owner-check project for issue #644 (decision 0546: run-outs on ring and spiral
 passes follow the pass):
 
-    python3 owner-checks/rc/644-run-outs-follow-the-pass/generate.py
+    python3 owner-checks/644-run-outs-follow-the-pass/generate.py
 
 It writes project/ beside this script: the public baluster of the user guide's tutorial in 78 mm
 of 24 mm stock from X -13 to 65 (4 mm of stock past the part's far end at X 61), the chuck holding
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ownercheck as oc  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
