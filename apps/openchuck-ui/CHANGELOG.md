@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (MSGREVIEW, decision 0536 step 4)
+
+- MSGREVIEW (decision 0536 section 4; UI-12): Show setting opens a setup at its field (the Setup step, the field's section open) and a tool at its field in the tool library, brings the field into view and marks it with the message until a value is committed there.
+- MSGREVIEW (UI-12): a rapid that removes material and short blocks left in the program in Report mode are in Messages and mark their operation; the setup, model and export messages read in the one form, each ending with a full stop.
+- MSGREVIEW (NFR-12; V091): the note on the whole-part deviation under a Facing operation's Results line is shown only when the run was simulated.
+- MSGREVIEW (issue #645; NFR-12): the command line prints the notice that the G-code must be verified by the user when it refuses to write for a missing acknowledgement; its help text names no requirement, decision record or verification gate.
+
 ## Unreleased (MSGSTEP5, issue #660)
 
 - MSGSTEP5 (#660; decision 0536 section 8; PRJ-08, UI-12): when a recovered project's checkpoints cannot be written, Messages shows the error "Recovery checkpoint: …" with Save every time. The writer's failure could be taken for a Keep or Discard answer before the recovered project was installed, so it was shown as a warning with the old wording and the writer was dropped.

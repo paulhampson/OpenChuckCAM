@@ -24,11 +24,21 @@ Every message starts with what it is about, then says what happened, why and wha
 Flute length (operation 'Finish', tool 'Z1 ball 3.175x22'): the stock stands up to 27.249 mm above the tool's tip …
 ```
 
-The first words name the check ("Flute length", "Held region", "Feed limit"), the same in Messages, the **Results** tab, the export checks and on the command line. The brackets name the items it is about as they are called now: the operation, and the tool when its size or flutes matter. Rename an operation and its messages follow.
+The first words name the check ("Flute length", "Held region", "Feed limit"), the same in Messages, the **Results** tab, the export checks and on the command line. The brackets name the items it is about as they are called now: the operation, and the tool when its size or flutes matter; or the setup, the model or the tool. Rename an operation, a setup or a model and its messages follow. A few more examples:
+
+```text
+Clearance (setup 'Setup 1'): the safe cylinder (radius 15.000 mm) does not enclose the stock (radius 200.000 mm).
+Model file (model 'part.stl'): the file has changed since it was added. The toolpaths will use the file as it is now.
+Rapid cut (operation 'Rough'): move 9 is a rapid that removes 0.123 mm³ of material.
+```
 
 ## The Messages tab
 
 The **Messages** tab of the dock lists every current message; its name shows how many errors and warnings there are, for example "Messages (3)". The chips **Errors**, **Warnings** and **Information** show or hide each level.
+
+Information in Messages is about the project, not a run: a model's file notes, a model linked from outside the project folder, and a finished export. It is not counted in the tab's name and does not change the item's mark. What a run found at the information level is in the **Results** tab.
+
+A rapid move that removes material in the stock simulation is a warning to acknowledge before the files are written, and short blocks left in the program (the machine's short-block mode is Report) are a warning. Both mark the operation while its path is current.
 
 Each message has up to two links:
 
@@ -38,7 +48,7 @@ Each message has up to two links:
 | Action | What it does |
 | --- | --- |
 | **Show** | Selects the item. |
-| **Show setting** | Opens the operation at the setting the message names, brings it into view and marks it, whether it is a number, a tick box or a list. |
+| **Show setting** | Opens the item at the setting the message names, brings it into view and marks it, whether it is a number, a tick box or a list: an operation's setting in its inspector, a setup's (its clearance radius, safe Z or machine) in the Setup step, a tool's in the tool library. The mark stays until you enter a value there. |
 | **Show in view 1** (2, 3 ...) | Turns the view to an area simultaneous finishing could not reach. |
 | **Review setup** | Opens the Setup step on that setup. |
 | **Edit workholding** | Opens the setup's Workholding section. |

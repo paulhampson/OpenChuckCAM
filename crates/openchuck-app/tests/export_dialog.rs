@@ -281,6 +281,31 @@ fn req_gc_15_writing_is_allowed_with_warnings_for_an_unsimulated_operation() {
 }
 
 #[test]
+fn req_gc_16_a_rapid_that_cuts_reads_as_a_possible_collision_at_writing() {
+    // Decision record 0538 and 0536 section 3: a rapid the stock simulation
+    // found removing material is a warning to acknowledge in the export
+    // checks, in the one form, ending as a path's possible collision does
+    // (CodeRabbit on #659: it read "... of material.: a possible ...").
+    let (dir, mut app) = project("checks-rapid-cut", false);
+    let mut run = post(&mut app, OutputGrouping::Setup);
+    run.groups[0].rapid_cuts.push((9, 0.1234));
+    let name = app
+        .project()
+        .operation(run.groups[0].operation)
+        .unwrap()
+        .name
+        .clone();
+    let checks = app.export_checks(Some(&run), None, None);
+    let w = warnings(&checks);
+    let expected = format!(
+        "Rapid cut (operation '{name}'): move 9 is a rapid that removes 0.123 mm³ of material. A \
+         possible collision: acknowledge it before the files are written"
+    );
+    assert!(w.iter().any(|t| *t == expected), "{w:?}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_not_block_it() {
     // Decision 0175 (issue #226): a path made with a warning (a swarf
     // overcut above the tolerance) is written with it, so the checks before
@@ -305,7 +330,7 @@ fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_n
     let w = warnings(&checks);
     assert!(
         w.iter()
-            .any(|t| t.contains(&format!("'{name}'")) && t.contains(message)),
+            .any(|t| t.contains(&format!("'{name}'")) && t.contains("swarf on face 7 cuts into")),
         "{w:?}"
     );
     std::fs::remove_dir_all(dir).unwrap();
@@ -1067,7 +1092,7 @@ fn req_ui_12_req_gc_05_the_retained_export_message_keeps_every_path_exact() {
         .unwrap();
     assert_eq!(
         message.text,
-        "Export: Wrote 1 file; export incomplete.\n\
+        "Export: wrote 1 file; export incomplete.\n\
          Written: /out/01-part.nc\n\
          Failed: /out/02-part.nc — The disk is full\n\
          Not attempted: /out/part-setup-sheet.pdf\n\
@@ -1684,7 +1709,7 @@ fn setup_collision_needs_acknowledging(app: &mut Application, fragment: &str) {
     assert!(
         found
             .iter()
-            .any(|f| f.starts_with("Setup 'Setup 1': ") && f.contains(fragment)),
+            .any(|f| f.contains("setup 'Setup 1'): ") && f.contains(fragment)),
         "{found:?}"
     );
     assert!(openchuck_app::partial_operations(app.project(), &run).is_empty());
@@ -1692,9 +1717,9 @@ fn setup_collision_needs_acknowledging(app: &mut Application, fragment: &str) {
     assert!(checks.can_write(), "{:?}", blockers(&checks));
     let w = warnings(&checks);
     assert!(
-        w.iter().any(|t| t.starts_with(
-            "Setup 'Setup 1' has a possible collision, which must be acknowledged before the files are written: "
-        ) && t.contains(fragment)),
+        w.iter().any(|t| t.contains("setup 'Setup 1'): ")
+            && t.contains(fragment)
+            && t.ends_with(". A possible collision: acknowledge it before the files are written")),
         "{w:?}"
     );
     // Writing waits for the tick, then writes the run's own bytes.
@@ -1705,7 +1730,7 @@ fn setup_collision_needs_acknowledging(app: &mut Application, fragment: &str) {
     assert!(refused.written.is_empty());
     let reason = &refused.failed.as_ref().unwrap().reason;
     assert!(
-        reason.contains("possible collision") && reason.contains("Setup 'Setup 1'"),
+        reason.contains("possible collision") && reason.contains("setup 'Setup 1'"),
         "{reason}"
     );
     assert!(!out.exists(), "nothing is written");
@@ -1812,6 +1837,28 @@ fn req_gc_16_a_tool_too_long_to_clear_the_workholding_needs_acknowledging() {
         });
         s.clearance_rules.min_radius = Some(Millimetres(12.0));
     });
+    // Show setting opens the tool at its flute length, which sets how far
+    // it sticks out (decision record 0536 section 4).
+    let checks = app.start_checks(None).wait().unwrap();
+    let overview = app.overview(Some(&checks), &openchuck_app::JobLog::default());
+    let tool = app.project().tools()[0].id;
+    let message = overview
+        .messages
+        .iter()
+        .find(|m| {
+            m.text
+                .contains("tool 1 may be too long to clear the workholding")
+        })
+        .unwrap_or_else(|| panic!("{:?}", overview.messages));
+    assert_eq!(
+        message.action,
+        Some(openchuck_app::overview::MessageAction::ShowSetting(
+            openchuck_app::overview::SettingRef::tool(
+                tool,
+                openchuck_app::tool_edit::fields::FLUTE_LENGTH
+            )
+        ))
+    );
     setup_collision_needs_acknowledging(&mut app, "too long");
     std::fs::remove_dir_all(dir).unwrap();
 }

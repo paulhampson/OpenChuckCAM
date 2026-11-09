@@ -630,8 +630,8 @@ pub(crate) fn short_block_note(project: &Project, report: &ShortBlockReport) -> 
             report.added_seconds
         ),
     };
-    format!(
-        "Operation '{operation}': short blocks: {} windows below {:.3} ms averaged over {} {} (limit from {}, window from {}, mode from {}); {} moves below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
+    let text = format!(
+        "{} windows below {:.3} ms averaged over {} {} (limit from {}, window from {}, mode from {}); {} moves below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
         report.affected_windows,
         report.settings.min_block_ms,
         report.settings.block_window,
@@ -647,6 +647,12 @@ pub(crate) fn short_block_note(project: &Project, report: &ShortBlockReport) -> 
         report.longest_run,
         report.worst_window_ms,
         report.effective_feed
+    );
+    // In the one form (decision record 0536 section 3).
+    crate::lead_in::in_form(
+        crate::lead_in::topic::SHORT_BLOCKS,
+        &crate::lead_in::Context::operation(operation),
+        &text,
     )
 }
 

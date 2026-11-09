@@ -131,9 +131,20 @@ impl OutputReport {
         )
     }
 
-    /// The retained Messages text, also suitable for copying as a report.
+    /// The retained Messages text, also suitable for copying as a report:
+    /// "Export: " and the [`OutputReport::body`].
     pub fn text(&self) -> String {
-        let mut text = format!("Export: {}", self.summary());
+        crate::lead_in::in_form(
+            crate::lead_in::topic::EXPORT,
+            &crate::lead_in::Context::default(),
+            &self.body(),
+        )
+    }
+
+    /// The report after its topic: what was written, what failed and what
+    /// was not attempted, one per line.
+    pub fn body(&self) -> String {
+        let mut text = self.summary();
         for path in &self.written {
             text.push_str(&format!("\nWritten: {}", path.display()));
         }
@@ -594,7 +605,7 @@ mod tests {
         };
         assert_eq!(
             report.text(),
-            "Export: Wrote 1 file.\nWritten: /out/a.nc\nEnd of the export result."
+            "Export: wrote 1 file.\nWritten: /out/a.nc\nEnd of the export result."
         );
     }
 }

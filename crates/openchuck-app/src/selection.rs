@@ -224,8 +224,7 @@ fn check_edited(
         return Err(selection_error(
             &set.name,
             format!(
-                "'{}' has changed since the set was made; select again on the current model \
-                 (PRJ-06)",
+                "'{}' has changed since the set was made; select again on the current model",
                 reference.label()
             ),
         ));
@@ -252,7 +251,7 @@ fn check_replaced(
             &set.name,
             format!(
                 "'{}' has changed since it was added to the project; accept the change before \
-                 selecting on it (PRJ-02)",
+                 selecting on it",
                 reference.label()
             ),
         ));
@@ -365,7 +364,7 @@ impl Application {
                         &name,
                         format!(
                             "'{}' has changed since it was added to the project; accept the \
-                             change before selecting on it (PRJ-02)",
+                             change before selecting on it",
                             reference.label()
                         ),
                     ));

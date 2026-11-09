@@ -201,16 +201,17 @@ fn req_prj_02_a_linked_model_stays_supported_and_can_be_copied_in_later() {
             .messages
             .iter()
             .any(|m| m.severity == Severity::Info
-                && m.text
-                    .starts_with("'cube_ascii.stl' is outside the project folder")),
+                && m.text.starts_with(
+                    "Linked model (model 'cube_ascii.stl'): the file is outside the project folder"
+                )),
         "{:?}",
         overview.messages
     );
     assert_eq!(
         app.linked_model_notes(),
         [
-            "'cube_ascii.stl' is outside the project folder, so the folder is not \
-          self-contained. Model inspector, Copy model into project."
+            "Linked model (model 'cube_ascii.stl'): the file is outside the project folder, so \
+             the folder is not self-contained. Model inspector, Copy model into project."
         ]
     );
 

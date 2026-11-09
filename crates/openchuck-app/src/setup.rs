@@ -198,12 +198,15 @@ pub fn spindle_height(
 }
 
 /// The setup check's words for a tool of [`spindle_height`] (NFR-12).
-pub fn spindle_height_text(number: u32, name: &str, found: &SpindleHeight) -> String {
+/// The tool is named in the message's lead-in, "Tool length (tool '<name>',
+/// setup '<name>'): " (decision record 0536 section 3), so the text names
+/// only its number.
+pub fn spindle_height_text(number: u32, found: &SpindleHeight) -> String {
     let mut text = if let Some(minimum) = found.below_minimum {
         // Lowering the safe Z would take links into the workholding, so the
         // 0318 advice is not given (decision record 0495).
         format!(
-            "Tool {number} ({name}) may be too long to clear the workholding within the Z travel: \
+            "tool {number} may be too long to clear the workholding within the Z travel: \
              assuming it sticks out {:.3} mm (flute length + 5 mm), its tip can rise at most {:.3} mm \
              above the axis, inside the minimum clearance radius of {minimum:.3} mm, so no safe Z \
              clears both the chuck, jaws, headstock or tailstock and the top of the Z travel. \
@@ -213,7 +216,7 @@ pub fn spindle_height_text(number: u32, name: &str, found: &SpindleHeight) -> St
         )
     } else {
         format!(
-            "Tool {number} ({name}) may take the spindle above the top of the Z travel at the safe Z: \
+            "tool {number} may take the spindle above the top of the Z travel at the safe Z: \
          assuming it sticks out {:.3} mm (flute length + 5 mm), the spindle would be {:.3} mm past the top. \
          Lower the setup's safe Z and clearance to {:.3} mm or less, or use a shorter tool, \
          and check the clearance over the chuck and the Z travel on your machine before running.",
@@ -309,9 +312,9 @@ mod tests {
     fn req_nfr_12_the_spindle_height_warning_says_what_to_check() {
         let z1 = z1();
         let long = spindle_height(&z1, 40.0, None, &tool(42.0)).unwrap();
-        let text = spindle_height_text(7, "Z1 O-flute 3.175x42", &long);
+        let text = spindle_height_text(7, &long);
         for words in [
-            "Tool 7 (Z1 O-flute 3.175x42)",
+            "tool 7 may",
             "47.000 mm",
             "flute length + 5 mm",
             "13.900 mm",
@@ -322,7 +325,7 @@ mod tests {
             assert!(text.contains(words), "{words}: {text}");
         }
         let gate5 = spindle_height(&z1, 50.0, None, &tool(25.0)).unwrap();
-        let text = spindle_height_text(1, "104", &gate5);
+        let text = spindle_height_text(1, &gate5);
         assert!(!text.contains("recommended minimum"), "{text}");
     }
 
@@ -373,9 +376,9 @@ mod tests {
         let found = spindle_height(&z1, 40.0, Some(45.0), &tool(25.0)).unwrap();
         assert_eq!(found.below_minimum, Some(45.0));
         assert!(found.past_top < 0.0, "{found:?}");
-        let text = spindle_height_text(1, "104", &found);
+        let text = spindle_height_text(1, &found);
         for words in [
-            "Tool 1 (104)",
+            "tool 1 may",
             "too long to clear the workholding within the Z travel",
             "30.000 mm (flute length + 5 mm)",
             "43.100 mm",
@@ -390,9 +393,7 @@ mod tests {
         assert_eq!(spindle_height(&z1, 40.0, Some(43.1004), &tool(25.0)), None);
         // The recommended-minimum line still follows decision 0318.
         let long = spindle_height(&z1, 40.0, Some(45.0), &tool(42.0)).unwrap();
-        assert!(
-            spindle_height_text(7, "long", &long).contains("The recommended minimum is 30 mm."),
-        );
+        assert!(spindle_height_text(7, &long).contains("The recommended minimum is 30 mm."),);
         // Without measurement there is still no guess (decision 0318).
         let mut manual = z1.clone();
         manual.automatic_tool_length = false;

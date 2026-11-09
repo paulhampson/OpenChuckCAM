@@ -1644,7 +1644,7 @@ fn req_set_01_a_second_click_does_nothing_and_undo_allows_the_plus_again() {
     assert_eq!(project.setups().len(), 1);
     assert_eq!(
         openchuck_app::add_setup_blocked(project),
-        Some("More than one setup per project is not supported yet (SET-07)")
+        Some("More than one setup per project is not supported yet")
     );
     // The workflow bar's action is disabled too, with the same words.
     assert!(rig.shows("Add setup"));

@@ -325,7 +325,7 @@ impl AnalyticStock {
                 }))
             }
             _ => Err(PathError::Strategy(
-                "imported stock is not supported yet (SET-04)".to_owned(),
+                "imported stock is not supported yet".to_owned(),
             )),
         }
     }

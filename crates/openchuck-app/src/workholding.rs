@@ -626,14 +626,12 @@ pub fn path_reaches_tab(group: &openchuck_types::ir::ToolpathGroup, tab: &Tab, r
 /// The tool of an operation as [`uncleared_tab_notes`] needs it (decision
 /// 0503): its cutting radius, its largest radius (profile or shank), which
 /// keeps it from a held region (decision 0161), the operation's stock to
-/// leave, and the names the note gives.
+/// leave. The note's lead-in names the operation and the tool.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ClearingTool<'a> {
+pub(crate) struct ClearingTool {
     pub(crate) cutting_radius: f64,
     pub(crate) reach: f64,
     pub(crate) leave: f64,
-    pub(crate) tool: &'a str,
-    pub(crate) operation: &'a str,
 }
 
 /// A note for each zone between a held region and the part that holds a tab
@@ -650,7 +648,7 @@ pub(crate) fn uncleared_tab_notes(
     workholding: &Workholding,
     stock: &Stock,
     part: &PartExtent,
-    tool: &ClearingTool<'_>,
+    tool: &ClearingTool,
 ) -> Vec<String> {
     let Some(bounds) = stock.bounds(Some(part)) else {
         return Vec::new();
@@ -696,14 +694,15 @@ pub(crate) fn uncleared_tab_notes(
             } else {
                 format!("{clearance} and {leave}")
             };
+            // The lead-in names the operation and the tool (decision record
+            // 0536 section 3), so the text does not.
             Some(format!(
-                "{} cannot cut down beside {word} {list}: between the held region and the \
-                 part (X {lo:.3} to {hi:.3} mm) the tool {} ({diameter:.3} mm) has {room:.3} mm \
-                 of room, once {taken} are taken off. It leaves the stock round the tab \
-                 above it there. Use a smaller tool or less stock to leave, shorten the held \
-                 region or move the part away from it, or clear it with a later operation. \
-                 Check the program and the simulation before running it.",
-                tool.operation, tool.tool
+                "the tool cannot cut down beside {word} {list}: between the held region and \
+                 the part (X {lo:.3} to {hi:.3} mm) it is {diameter:.3} mm wide and has \
+                 {room:.3} mm of room, once {taken} are taken off. It leaves the stock round \
+                 the tab above it there. Use a smaller tool or less stock to leave, shorten \
+                 the held region or move the part away from it, or clear it with a later \
+                 operation. Check the program and the simulation before running it."
             ))
         })
         .collect()
@@ -1976,13 +1975,11 @@ mod tests {
         (w, stock, part(4.0, 54.0))
     }
 
-    fn flat(leave: f64, reach: f64) -> ClearingTool<'static> {
+    fn flat(leave: f64, reach: f64) -> ClearingTool {
         ClearingTool {
             cutting_radius: 1.5875,
             reach,
             leave,
-            tool: "T104 Flat 3.175",
-            operation: "1 Roughing",
         }
     }
 
@@ -1997,11 +1994,10 @@ mod tests {
         assert_eq!(notes.len(), 1, "{notes:?}");
         let text = &notes[0];
         for want in [
-            "1 Roughing",
-            "tab 1",
+            "the tool cannot cut down beside tab 1",
             "X 0.000 to 4.000 mm",
             "3.000 mm",
-            "T104 Flat 3.175 (3.175 mm)",
+            "it is 3.175 mm wide",
             "0.500 mm stock to leave",
             "smaller tool",
             "Check the program",
