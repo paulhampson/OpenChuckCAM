@@ -670,7 +670,7 @@ mod tests {
             (&z1.replace(&current, &newer), "newer"),
             (
                 &z1.replace("rotary_axis = \"x\"", "rotary_axis = \"y\""),
-                "SET-02",
+                "a rotary axis about Y is not supported yet",
             ),
             (
                 &z1.replace("linear = 1200.0", "linear = -1.0"),
