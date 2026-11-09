@@ -520,7 +520,7 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
         ParameterSpec {
             name: PLUNGE_FACE_NUBS.to_owned(),
             label: "Plunge to remove face nubs".to_owned(),
-            description: "Where roughing in rings has narrowed the stock round the rotary axis to a nub no wider than the Face nub diameter, and the part leaves nothing inside it, the tool plunges at the axis to remove the nub instead of ramping round ever smaller rings. The tool must be able to plunge (centre cutting), and it cuts with its full width.".to_owned(),
+            description: "Where roughing in rings has narrowed the stock round the rotary axis to a nub no wider than the Face nub diameter, and the part leaves nothing inside it, the tool plunges at the axis to remove the nub instead of ramping round ever smaller rings. This happens only where the part comes to a point near the axis; past a flat free end, use Facing (End) before roughing. The tool must be able to plunge (centre cutting), and it cuts with its full width.".to_owned(),
             kind: ParameterKind::Flag { default: false },
         },
         number(
