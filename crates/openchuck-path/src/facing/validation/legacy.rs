@@ -116,7 +116,7 @@ fn round(
                     || (a.height - b.height).abs() > reserve
                 {
                     return Err(refuse(
-                        "raised/off-axis Round composite-target completion is not certified",
+                        "raised/off-axis Round composite-target completion is not checked",
                     ));
                 }
                 let (low, high, x0, x1) = if from.a.0 < to.a.0 {
@@ -194,7 +194,7 @@ fn round(
         }
     }
     if lines.is_empty() {
-        return Err(refuse("Round has no verified full-circumference finish"));
+        return Err(refuse("Round has no checked full-circumference finish"));
     }
     Ok(())
 }
@@ -212,7 +212,7 @@ fn flat_completion(
         sweeps, radius, tolerance, context)
         .map_err(|error| match error {
             PathError::Cancelled => error,
-            _ => refuse("restricted legacy Flat has an unfinished or raised composite-target region; complete coverage of that composite surface is not certified"),
+            _ => refuse("restricted legacy Flat has an unfinished or raised composite-target region; complete coverage of that composite surface is not checked"),
         })
 }
 
