@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="650" viewBox="0 0 820 650" font-family="Helvetica, Arial, sans-serif" font-size="13" role="img">
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<title>Run-out past the stock: today against option 1</title>
+<rect x="0" y="0" width="820" height="650" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#222222"/></marker></defs>
+<text x="20.0" y="24.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">X_ext = the stock's end + the tool radius + Distance past the stock. The far end is the same, mirrored.</text>
+<text x="20.0" y="56.0" fill="#222222" text-anchor="start" font-size="14" font-weight="bold" font-style="normal">Today (0212 part B item 3): a line along X at one A</text>
+<text x="70.0" y="94.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">X_ext</text>
+<text x="70.0" y="144.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal"></text>
+<text x="70.0" y="194.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_0</text>
+<line x1="80.0" y1="90.0" x2="80.0" y2="190.0" stroke="#c0392b" stroke-width="3" stroke-linecap="round"/>
+<circle cx="80.0" cy="90.0" r="4" fill="#222222"/>
+<text x="92.0" y="136.0" fill="#c0392b" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">run-out along X at the pass's start A:</text>
+<text x="92.0" y="152.0" fill="#c0392b" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">cuts one strip of the stock past the part</text>
+<line x1="80.0" y1="190.0" x2="260.0" y2="190.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<text x="268.0" y="194.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">the pass's first ring (or its spiral)</text>
+<text x="92.0" y="210.0" fill="#c0392b" text-anchor="start" font-size="11" font-weight="normal" font-style="normal">a 90-degree turn into the pass</text>
+<text x="20.0" y="266.0" fill="#222222" text-anchor="start" font-size="14" font-weight="bold" font-style="normal">Option 1 (chosen, Q1), rings: rings at the ring spacing out to X_ext, with the operation's own steps</text>
+<text x="70.0" y="304.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">X_ext</text>
+<text x="70.0" y="354.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_0 - s</text>
+<text x="70.0" y="404.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_0</text>
+<line x1="80.0" y1="300.0" x2="260.0" y2="300.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<circle cx="80.0" cy="300.0" r="4" fill="#222222"/>
+<line x1="260.0" y1="300.0" x2="282.5" y2="350.0" stroke="#1e8449" stroke-width="3" stroke-linecap="round"/>
+<text x="290.5" y="330.0" fill="#1e8449" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">blend (a step with Sharp)</text>
+<line x1="282.5" y1="350.0" x2="462.5" y2="350.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<line x1="462.5" y1="350.0" x2="485.0" y2="400.0" stroke="#1e8449" stroke-width="3" stroke-linecap="round"/>
+<line x1="485.0" y1="400.0" x2="665.0" y2="400.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<text x="575.0" y="420.0" fill="#222222" text-anchor="middle" font-size="12" font-weight="normal" font-style="normal">the pass's first ring</text>
+<text x="20.0" y="476.0" fill="#222222" text-anchor="start" font-size="14" font-weight="bold" font-style="normal">Option 1 (chosen, Q1), spiral: the spiral continued at its own pitch</text>
+<text x="70.0" y="514.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">X_ext</text>
+<text x="70.0" y="564.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_0 - p</text>
+<text x="70.0" y="614.0" fill="#222222" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">x_0</text>
+<line x1="80.0" y1="510.0" x2="440.0" y2="610.0" stroke="#1e8449" stroke-width="3" stroke-linecap="round"/>
+<circle cx="80.0" cy="510.0" r="4" fill="#222222"/>
+<line x1="440.0" y1="610.0" x2="500.0" y2="626.7" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<circle cx="440.0" cy="610.0" r="5" fill="#1f5fbf"/>
+<text x="510.0" y="620.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">the pass's first point, on its spiral</text>
+<text x="380.0" y="522.0" fill="#1e8449" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">the spiral continued at its pitch p:</text>
+<text x="380.0" y="538.0" fill="#1e8449" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">one turn (360 degrees) per p of X</text>
+</svg>
