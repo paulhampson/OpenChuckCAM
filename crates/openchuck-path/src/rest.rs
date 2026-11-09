@@ -391,12 +391,21 @@ impl Strategy for RestMachining {
                 ),
             ]
             .into_iter()
+            .chain(crate::helical::ring_step_specs())
             .chain(crate::finishing::specs(true, false))
             .chain(std::iter::once(crate::order::spec()))
             .chain(std::iter::once(crate::axial::link_height_spec()))
             .collect(),
         )
         })
+    }
+
+    /// Steps between rings only with Rings (decision record 0545).
+    fn schema_for(
+        &self,
+        values: &std::collections::BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        crate::helical::ring_step_schema_for(self.schema(), values)
     }
 
     fn needs_earlier_operations(&self) -> bool {
@@ -537,16 +546,35 @@ impl Strategy for RestMachining {
             // is one of the rings.
             let places: Vec<f64> = turns.iter().chain(&wall_rings).copied().collect();
             let (xs, gap) = crate::helical::ring_places((x0, x1), stepover, &places);
-            let (passes, _) =
-                crate::helical::ring_passes(&fit, &xs, step, false, "rest machining", context)?;
-            ring_note = Some(
-                Notice::information(format!(
+            let blend = crate::helical::ring_blend(parameters)?;
+            let (passes, _) = crate::helical::ring_passes(
+                &fit,
+                &xs,
+                step,
+                blend,
+                false,
+                "rest machining",
+                context,
+            )?;
+            let text = match blend {
+                None => format!(
                     "rest machining cut rings no more than {gap:.4} mm apart, each a whole turn \
                      at one place along the part, joined by steps along it at A {start}, where \
                      material is left"
-                ))
-                .about(topic::RINGS),
-            );
+                ),
+                Some(_) => {
+                    let b = input.surface.bounds();
+                    let radius = [b.min.y, b.max.y, b.min.z, b.max.z]
+                        .into_iter()
+                        .fold(0.0_f64, |r, v| r.max(v.abs()));
+                    format!(
+                        "rest machining cut rings no more than {gap:.4} mm apart, each a whole \
+                         turn at one place along the part, where material is left{}",
+                        crate::helical::blend_words(blend, gap, radius)
+                    )
+                }
+            };
+            ring_note = Some(Notice::information(text).about(topic::RINGS));
             passes
         } else {
             let passes = fit_region(&fit, seeds, "rest machining", context)?;

@@ -110,6 +110,8 @@ mod region;
 mod region_offsets;
 #[path = "rest.rs"]
 mod rest;
+#[path = "ring_steps.rs"]
+mod ring_steps;
 #[path = "roughing.rs"]
 mod roughing;
 #[path = "roughing_region.rs"]

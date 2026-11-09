@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RINGSTEP; issue #638; decision 0545, accepted)
+
+- **Changed output for new operations:** `Application::add_operation_on` writes `ring_step = blended` into a new operation of every strategy that has **Steps between rings** (helical finishing, rest machining, rotary roughing, Facing and simultaneous finishing), so a new ring operation blends its steps; an operation saved without it keeps sharp steps and its G-code (decision 0545 item 1, the owner's choice D3).
+
 ## Unreleased (MSGREVIEW, a fix after decision 0536 step 4)
 
 - **Fixed (OWNERCHECKS2; issue #567):** `collision_refusal` no longer doubles a full stop. Since decision 0536 step 4 every message ends with one, so the refusal read "... before running.. Read them ..." and, with several collisions, "... running.; ...". Each message's closing full stop is now left out of the list, which ends the sentence once.

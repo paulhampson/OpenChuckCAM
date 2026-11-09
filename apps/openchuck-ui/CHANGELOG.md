@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RINGSTEP; issue #638; decision 0545, accepted)
+
+- **Added:** **Steps between rings** reads Sharp or Blended in the inspector.
+
 ## Unreleased (MSGREVIEW, decision 0536 step 4)
 
 - MSGREVIEW (decision 0536 section 4; UI-12): Show setting opens a setup at its field (the Setup step, the field's section open) and a tool at its field in the tool library, brings the field into view and marks it with the message until a value is committed there.
