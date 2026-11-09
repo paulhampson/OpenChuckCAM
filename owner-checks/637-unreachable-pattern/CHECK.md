@@ -21,7 +21,7 @@ The project (in the zip, and as files in [`project/`](project/)) is the project 
 Use the release candidate, or a build from `main` at commit `01aa5e32` or later (**Help > About OpenChuckCAM** shows the commit).
 
 1. Download [`637-unreachable-pattern.zip`](637-unreachable-pattern.zip) (or take it from the [raw link](https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/637-unreachable-pattern/637-unreachable-pattern.zip)), unzip it anywhere, and open the folder `637-unreachable-pattern/project` with **File > Open project**.
-2. Click **Operations**, then **Generate**. Click **1 Floor finish**. If the area is not shown, turn on **Unreachable areas** in the view's **Show** menu.
+2. Click **Operations**, then **Generate**. Click **1 Floor finish**. If the area is not shown, turn on **Unreachable areas** in the view's **Show or hide** menu.
 3. In **Messages**, follow the link on "Unreached areas (operation 'Floor finish'): ..." so the view turns to the area.
 4. Look at the strip close up, then turn the part with the mouse and zoom out a long way, and back in.
 5. Look at the legend row "Unreachable (Floor finish)".

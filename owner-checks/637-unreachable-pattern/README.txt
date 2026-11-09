@@ -3,7 +3,7 @@ on the surface
 Build: commit 01aa5e32 or later (Help > About OpenChuckCAM), or main.
 
 1. Open the folder "project" with File > Open project (the #512 project).
-2. Operations, Generate, click "1 Floor finish" (Show menu: Unreachable
+2. Operations, Generate, click "1 Floor finish" (Show or hide: Unreachable
    areas on). Follow the link of "Unreached areas (operation 'Floor
    finish'): ..." in Messages.
 3. Look close up, turn the part, zoom far out and back.
