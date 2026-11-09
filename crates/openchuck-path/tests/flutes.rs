@@ -24,7 +24,7 @@ use openchuck_path::flutes::{Deepest, check, deepest};
 use openchuck_path::params::names;
 use openchuck_path::rotary::AxisPosition;
 use openchuck_path::strategy::{CutPoint, Pass};
-use openchuck_path::{AnalyticStock, MeshSurface, ParameterValue, StockModel};
+use openchuck_path::{AnalyticStock, MeshSurface, ParameterValue, StockModel, topic};
 use openchuck_testkit::parts::{RadialPart, revolve};
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
 use openchuck_types::tool::{Tool, ToolShape};
@@ -301,7 +301,9 @@ fn req_nfr_07_req_nfr_12_the_warning_gives_the_numbers_in_plain_words() {
     let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 25.0);
     let warning = check(&f.input(), &turn(&f, -2.5), Some("finishing_layers")).unwrap();
     assert_eq!(warning.setting.as_deref(), Some("finishing_layers"));
-    let e = warning.text;
+    // The check's topic leads the warning (decision record 0536 section 3).
+    assert_eq!(warning.topic.as_deref(), Some(topic::FLUTE_LENGTH));
+    let e = warning.sentence();
     eprintln!("{e}");
     for words in [
         "Flute length: the stock stands up to 27.249 mm above the tool's tip",
@@ -339,7 +341,7 @@ fn values(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, ParameterValue> 
 fn flute_warning(path: &openchuck_path::GeneratedPath) -> Option<openchuck_path::Notice> {
     path.warnings()
         .into_iter()
-        .find(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
+        .find(|w| w.topic.as_deref() == Some(openchuck_path::topic::FLUTE_LENGTH))
         .cloned()
 }
 

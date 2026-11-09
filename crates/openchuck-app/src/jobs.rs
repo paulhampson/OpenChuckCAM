@@ -316,6 +316,10 @@ pub enum JobOutcome {
     Failed(String),
     /// It was cancelled on request.
     Cancelled,
+    /// Not a job but what the user just did ("Saved …", "Opened …",
+    /// "Added …"): the label says it all. It is listed with its time, and is
+    /// never a message and never counted (decision record 0536 section 8).
+    Action,
 }
 
 /// One job in a [`JobLog`].
@@ -380,6 +384,24 @@ pub struct JobLog {
     /// result over just after it reports finishing, so its owner can see the
     /// result first.
     pending: Vec<(JobId, String)>,
+    /// How many of the user's actions have been recorded, for their ids.
+    actions: u64,
+}
+
+/// The ids of the user's actions in a [`JobLog`] start here, far above any
+/// id the [`JobManager`] gives out, so the two never meet.
+const ACTION_IDS: u64 = 1 << 63;
+
+/// How long ago something happened, as the Jobs tab says it: "just now",
+/// "3 min ago", "2 h ago" (decision record 0536 section 8). Read from the
+/// session's own clock, so it needs no time zone.
+pub fn ago(elapsed: Duration) -> String {
+    let minutes = elapsed.as_secs() / 60;
+    match minutes {
+        0 => "just now".to_owned(),
+        1..60 => format!("{minutes} min ago"),
+        _ => format!("{} h ago", minutes / 60),
+    }
 }
 
 /// How many finished jobs a [`JobLog`] keeps.
@@ -472,6 +494,29 @@ impl JobLog {
                 }
             }
         }
+    }
+
+    /// Lists what the user just did ("Saved …", "Opened …", "Added …",
+    /// "Copied 2 models into the project folder") as a finished entry with
+    /// its time. It is not a message: Messages never shows it and no count
+    /// includes it (decision record 0536 section 8, the owner's answer of
+    /// 8 Nov 2026; specification section 9, Jobs).
+    pub fn record(&mut self, text: &str) {
+        self.record_at(text, Instant::now());
+    }
+
+    fn record_at(&mut self, text: &str, now: Instant) {
+        self.actions += 1;
+        self.finished.push_front(JobEntry {
+            id: JobId(ACTION_IDS + self.actions),
+            name: String::new(),
+            label: text.to_owned(),
+            started: now,
+            took: None,
+            progress: None,
+            outcome: Some(JobOutcome::Action),
+        });
+        self.finished.truncate(FINISHED_JOBS_KEPT);
     }
 
     /// The running jobs, oldest first.
@@ -644,6 +689,49 @@ mod tests {
             done.outcome,
             Some(JobOutcome::Done(Some("Generated 2, reused 1".into())))
         );
+    }
+
+    /// What the user just did ("Saved …", "Opened …") is a finished entry in
+    /// the Jobs tab with its time, never a message (decision record 0536
+    /// section 8, the owner's answer of 8 Nov 2026).
+    #[test]
+    fn req_ui_09_what_the_user_did_is_a_finished_jobs_entry_with_its_time() {
+        let mut log = JobLog::default();
+        let t0 = Instant::now();
+        log.update_at([started(1, "regenerate"), finished(1, None, false)], t0);
+        log.record_at("Saved /parts/bracket", t0 + Duration::from_secs(2));
+        log.record_at("Opened /parts/bracket", t0 + Duration::from_secs(3));
+        let entries: Vec<_> = log.finished().collect();
+        assert_eq!(entries.len(), 3);
+        // Newest first, finished, with the user's words and no job of the
+        // manager behind it.
+        assert_eq!(entries[0].label, "Opened /parts/bracket");
+        assert_eq!(entries[0].outcome, Some(JobOutcome::Action));
+        assert!(!entries[0].is_running());
+        assert_eq!(entries[0].started, t0 + Duration::from_secs(3));
+        assert_eq!(entries[1].label, "Saved /parts/bracket");
+        // Its id never meets one the manager gives out, and is its own.
+        assert_ne!(entries[0].id, entries[1].id);
+        assert_ne!(entries[1].id, JobId(1));
+        assert!(log.running().is_empty());
+        // It is no failure, so it clears none and reports none.
+        assert!(log.latest_failure("regenerate").is_none());
+        // The finished list stays bounded.
+        for i in 0..2 * FINISHED_JOBS_KEPT {
+            log.record_at(&format!("Added model {i}"), t0);
+        }
+        assert_eq!(log.finished().count(), FINISHED_JOBS_KEPT);
+    }
+
+    #[test]
+    fn req_ui_09_the_time_of_what_the_user_did_reads_as_how_long_ago() {
+        assert_eq!(ago(Duration::from_secs(0)), "just now");
+        assert_eq!(ago(Duration::from_secs(59)), "just now");
+        assert_eq!(ago(Duration::from_secs(60)), "1 min ago");
+        assert_eq!(ago(Duration::from_secs(150)), "2 min ago");
+        assert_eq!(ago(Duration::from_secs(3599)), "59 min ago");
+        assert_eq!(ago(Duration::from_secs(3600)), "1 h ago");
+        assert_eq!(ago(Duration::from_secs(5 * 3600 + 59)), "5 h ago");
     }
 
     /// A fast job can start, finish and hand over its result between two

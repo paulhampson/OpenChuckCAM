@@ -201,7 +201,7 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
     }
     type_unconfirmed(&mut rig, "Stepover", "1.6");
     let action = openchuck_app::overview::MessageAction::ReviewExport(0);
-    rig.shell.message_action(action);
+    rig.shell.message_action(action.clone());
     rig.frame(Vec::new());
     assert!(rig.shows("Unconfirmed changes"));
     assert!(!rig.shows("Export result"));
@@ -1283,12 +1283,12 @@ fn req_ui_07_req_ui_04_keep_placement_rebuilds_before_resuming_a_direction_pick(
     assert!(
         picked.contains(&0),
         "the intended face must survive rotation: {picked:?}; guard={}, scene={}, selected={:?}, \
-         entries={:?}, status={}, texts={:?}",
+         entries={:?}, dropped={:?}, texts={:?}",
         rig.shell.edit_guard.active(),
         rig.shell.scene_job.is_some(),
         rig.shell.selected,
         crate::pending_edits::entries(&rig.ctx),
-        rig.shell.status,
+        rig.shell.dropped_pick,
         rig.texts()
     );
     assert_eq!(picked.len(), 2);

@@ -207,7 +207,7 @@ fn flute_warned(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
     let path = generated(fixture, extra);
     path.warnings()
         .into_iter()
-        .find(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
+        .find(|w| w.topic.as_deref() == Some(openchuck_path::topic::FLUTE_LENGTH))
         .map(|w| w.text.clone())
         .unwrap_or_else(|| panic!("no flute warning: {:?}", path.warnings()))
 }
@@ -217,7 +217,7 @@ fn flute_clear(path: &openchuck_path::GeneratedPath) -> bool {
     !path
         .warnings()
         .into_iter()
-        .any(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
+        .any(|w| w.topic.as_deref() == Some(openchuck_path::topic::FLUTE_LENGTH))
 }
 
 fn refused(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
@@ -1406,7 +1406,7 @@ fn req_op_07_a_selection_of_several_faces_is_cut_face_by_face_in_order() {
     assert_eq!(
         path.notices
             .iter()
-            .filter(|n| n.text.starts_with("swarf on face"))
+            .filter(|n| n.topic.as_deref() == Some(openchuck_path::topic::SWARF))
             .count(),
         2
     );

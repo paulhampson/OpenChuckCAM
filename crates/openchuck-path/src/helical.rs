@@ -29,7 +29,7 @@
 //! surface does not reach under it) the pass is split there and the shared
 //! services link the pieces.
 
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use openchuck_types::geometry::Point3;
 use std::collections::BTreeMap;
 
@@ -324,7 +324,7 @@ fn passes(
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<String>, Vec<Notice>)> {
+) -> Result<(Vec<Pass>, Vec<Notice>, Vec<Notice>)> {
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;
@@ -448,11 +448,12 @@ fn passes(
                 )?),
                 None => None,
             };
-            let note = format!(
+            let note = Notice::information(format!(
                 "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a whole \
                  turn at one place along the part, joined by steps along it at A {start}",
                 xs.len()
-            );
+            ))
+            .about(topic::RINGS);
             (passes, spaced, Some(note))
         } else {
             let passes = fit_region(&fit, seeds, "helical finishing", context)?;

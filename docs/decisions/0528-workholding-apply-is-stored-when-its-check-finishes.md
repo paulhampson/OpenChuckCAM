@@ -67,4 +67,4 @@ The owner confirmed he pressed Apply. His other answers (whether the tab was aut
 ## Open items
 
 - **OI-2059 (closed, not applicable now):** choosing another setup drops the workholding section, and with it an Apply whose check is still running, without notice. Closed by the owner's clarification of 6 Nov 2026 (relayed): multiple setups are not yet supported. Re-open it if editing more than one setup is added.
-- **OI-2060:** confirm with the owner's CrankShaft project (numbers only) that #558 was the hidden-check case of this record, and not another path. If it was another path, extend `stale_setup_edits.rs` and fix it.
+- **OI-2060:** confirm with the owner's CrankShaft project (numbers only) that #558 was the hidden-check case of this record, and not another path. If it was another path, extend `stale_setup_edits.rs` and fix it. Closed on 8 Nov 2026: the owner's check of #558 passed.

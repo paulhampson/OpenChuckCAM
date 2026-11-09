@@ -50,7 +50,7 @@
 //! split. A move that still cuts in by more than the tolerance at its middle
 //! after [`MAX_DEPTH`] halvings is refused with a message naming it.
 
-use crate::notice::{Level, Notice};
+use crate::notice::{Level, Notice, topic};
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
@@ -834,7 +834,7 @@ fn run(
         passes.extend(cut.passes);
         corners.extend(cut.corners);
         turned.extend(ring_faces.iter().map(|f| f.0));
-        ring_note = Some(cut.note);
+        ring_note = Some(Notice::information(cut.note).about(topic::RINGS));
     }
     context.report(
         "simultaneous finishing: following the surface",
@@ -904,11 +904,14 @@ fn run(
     if let Some(at) = findings.slope_at
         && findings.slope > 0.05
     {
-        notes.push(format!(
-            "the surface slopes along the rotary axis, which A cannot follow: the tool axis is \
-             up to {:.1} degrees from the surface normal for that reason (at X {:.3})",
-            findings.slope, at.x
-        ));
+        notes.push(
+            Notice::information(format!(
+                "the surface slopes along the rotary axis, which A cannot follow: the tool axis \
+                 is up to {:.1} degrees from the surface normal for that reason (at X {:.3})",
+                findings.slope, at.x
+            ))
+            .about(topic::TOOL_TILT),
+        );
     }
     if max_tilt > 0.0 {
         let lead_text = if lead != 0.0 {
@@ -916,16 +919,21 @@ fn run(
         } else {
             String::new()
         };
-        notes.push(format!(
-            "A is smoothed within {max_tilt} degrees of the normal{lead_text}; the largest tilt \
-             used is {:.1} degrees from that",
-            findings.tilt
-        ));
+        notes.push(
+            Notice::information(format!(
+                "A is smoothed within {max_tilt} degrees of the normal{lead_text}; the largest \
+                 tilt used is {:.1} degrees from that",
+                findings.tilt
+            ))
+            .about(topic::TOOL_TILT),
+        );
     }
     if findings.mesh {
         notes.push(
-            "the tolerance is measured against the mesh, not the design surface it came from"
-                .to_owned(),
+            Notice::information(
+                "the tolerance is measured against the mesh, not the design surface it came from",
+            )
+            .about(topic::TESSELLATION),
         );
     }
     let off: Vec<String> = zones
@@ -934,12 +942,15 @@ fn run(
         .map(|z| format!("X {:.3} to {:.3}", z.x0, z.x1))
         .collect();
     if !off.is_empty() {
-        notes.push(format!(
-            "the part's section does not surround the rotary axis at {}, so the path there goes \
-             round the section's own centre: the tool moves across the axis as A turns, to stay \
-             on the surface normal",
-            off.join(", ")
-        ));
+        notes.push(
+            Notice::information(format!(
+                "the part's section does not surround the rotary axis at {}, so the path there \
+                 goes round the section's own centre: the tool moves across the axis as A \
+                 turns, to stay on the surface normal",
+                off.join(", ")
+            ))
+            .about(topic::OFF_AXIS_SECTION),
+        );
     }
     notes.extend(ring_note);
     notes.extend(faces::note(&turned));
@@ -954,19 +965,25 @@ fn run(
         // them is a warning of its own, with nothing to acknowledge (decision
         // 0536 step 2, the owner's answer to question Q-E; path inventory
         // P74).
-        notes.push(format!(
-            "surfaces hidden from the drive (such as the walls of a slot, an undercut, or sides \
-             of the section facing each other) between X {:.3} and {:.3} are finished with \
-             passes of their own after the main ones, the tool leaning from the surface normal \
-             as little as the part lets it reach them: up to {:.1} degrees (at X {x:.3}, \
-             A {a:.3}); {shank}",
-            hidden_x.0, hidden_x.1, findings.lean
-        ));
-        hidden_warning = Some(Notice::warning(format!(
-            "the tool holder is not checked on the passes that finish the surfaces hidden from \
+        notes.push(
+            Notice::information(format!(
+                "surfaces hidden from the drive (such as the walls of a slot, an undercut, or \
+                 sides of the section facing each other) between X {:.3} and {:.3} are finished \
+                 with passes of their own after the main ones, the tool leaning from the surface \
+                 normal as little as the part lets it reach them: up to {:.1} degrees (at \
+                 X {x:.3}, A {a:.3}); {shank}",
+                hidden_x.0, hidden_x.1, findings.lean
+            ))
+            .about(topic::HIDDEN_SURFACES),
+        );
+        hidden_warning = Some(
+            Notice::warning(format!(
+                "the tool holder is not checked on the passes that finish the surfaces hidden from \
              the drive between X {:.3} and {:.3}, where the tool leans up to {:.1} degrees",
-            hidden_x.0, hidden_x.1, findings.lean
-        )));
+                hidden_x.0, hidden_x.1, findings.lean
+            ))
+            .about(topic::TOOL_HOLDER),
+        );
     }
     let shank_breaks = places(std::mem::take(&mut findings.shank_breaks));
     let mut warnings: Vec<Notice> = unreached_warning(
@@ -1005,6 +1022,7 @@ fn under_warning(under: f64) -> Option<Notice> {
             "some moves leave up to {under:.4} mm of material, more than the tolerance, because \
              the surface changes faster than the path can follow"
         ))
+        .about(topic::MATERIAL_LEFT)
         .with_setting(names::TOLERANCE)
     })
 }
@@ -1059,7 +1077,7 @@ fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<Notice> {
     let plural = if breaks.len() == 1 { "" } else { "s" };
     Some(Notice {
         level: Level::Warning,
-        topic: None,
+        topic: Some(topic::SHANK_CLEARANCE.to_owned()),
         segment: None,
         text: format!(
             "simultaneous finishing breaks the path at {} place{plural} and links round them, \
@@ -1092,7 +1110,7 @@ fn unreached_warning(
         .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
     Some(Notice {
         level: Level::Warning,
-        topic: None,
+        topic: Some(topic::UNREACHED_AREAS.to_owned()),
         segment: None,
         text: format!(
             "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
@@ -2760,6 +2778,7 @@ mod tests {
                     "some moves leave up to 0.0123 mm of material, more than the tolerance, \
                      because the surface changes faster than the path can follow"
                 )
+                .about(topic::MATERIAL_LEFT)
                 .with_setting(names::TOLERANCE)
             )
         );
