@@ -290,3 +290,26 @@ fn req_gc_01_req_op_15_connections_preserve_declared_pass_boundaries_in_canonica
     let split = connect_group(None, &next, &options(&m), &ctx).unwrap();
     assert_eq!(split.group.rotary_reset_after, vec![1]);
 }
+
+/// Decision record 0644: a connection that cannot be made safely refuses
+/// under the topic "Links", and leaves the operation's name to the
+/// application, which shows it in the one form.
+#[test]
+fn req_ui_12_connection_refusals_carry_their_topic() {
+    let m = machine();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let p = group(&m, 0.0, 720.0);
+    let n = group(&m, 45.0, 90.0);
+    let mut opts = options(&m);
+    opts.enclosing_radius = f64::NAN;
+    assert_eq!(
+        connect_group(Some(&p), &n, &opts, &ctx).unwrap_err(),
+        openchuck_path::PathError::Refused {
+            topic: openchuck_path::topic::LINKS.into(),
+            text: "cannot connect safely: the enclosing radius is not a finite non-negative bound"
+                .into(),
+            setting: None,
+        }
+    );
+}
