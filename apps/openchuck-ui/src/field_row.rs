@@ -55,6 +55,12 @@ impl FieldState {
         self.shown = Some((key.into(), text.into(), true));
     }
 
+    /// Forgets the mark "Show setting" left, keeping typed text and errors:
+    /// a link to a setting with no field of its own (CodeRabbit on #659).
+    pub fn clear_shown(&mut self) {
+        self.shown = None;
+    }
+
     /// Whether "Show setting" has marked the field `key`.
     #[cfg(test)]
     pub fn is_shown(&self, key: &str) -> bool {

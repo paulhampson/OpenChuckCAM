@@ -631,9 +631,12 @@ pub(crate) fn export_checks_with(
                 for cut in rapid_cuts(run, operation) {
                     push(
                         CheckLevel::Warning,
+                        // As a path's possible collision reads (CodeRabbit on
+                        // #659: the cut's text ends with a full stop).
                         format!(
-                            "{cut}: a possible collision, which must be acknowledged before \
-                             the files are written"
+                            "{}. A possible collision: acknowledge it before the files are \
+                             written",
+                            cut.trim_end_matches('.')
                         ),
                     );
                 }

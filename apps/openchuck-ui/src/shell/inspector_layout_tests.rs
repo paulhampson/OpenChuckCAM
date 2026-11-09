@@ -212,6 +212,19 @@ fn req_ui_12_show_setting_opens_a_setup_or_a_tool_at_its_field() {
             .is_shown(&inspector::setup_field_key(SetupField::SafeZ))
     );
 
+    // A link to the setup's machine, which has no field of its own, leaves
+    // no earlier mark behind (CodeRabbit on #659).
+    rig.shell
+        .message_action(MessageAction::ShowSetting(SettingRef::setup_machine(setup)));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(
+        !rig.shell
+            .form
+            .is_shown(&inspector::setup_field_key(SetupField::SafeZ))
+    );
+
     rig.shell
         .message_action(MessageAction::ShowSetting(SettingRef::tool(
             tool,

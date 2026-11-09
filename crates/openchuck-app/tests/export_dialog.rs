@@ -281,6 +281,31 @@ fn req_gc_15_writing_is_allowed_with_warnings_for_an_unsimulated_operation() {
 }
 
 #[test]
+fn req_gc_16_a_rapid_that_cuts_reads_as_a_possible_collision_at_writing() {
+    // Decision record 0538 and 0536 section 3: a rapid the stock simulation
+    // found removing material is a warning to acknowledge in the export
+    // checks, in the one form, ending as a path's possible collision does
+    // (CodeRabbit on #659: it read "... of material.: a possible ...").
+    let (dir, mut app) = project("checks-rapid-cut", false);
+    let mut run = post(&mut app, OutputGrouping::Setup);
+    run.groups[0].rapid_cuts.push((9, 0.1234));
+    let name = app
+        .project()
+        .operation(run.groups[0].operation)
+        .unwrap()
+        .name
+        .clone();
+    let checks = app.export_checks(Some(&run), None, None);
+    let w = warnings(&checks);
+    let expected = format!(
+        "Rapid cut (operation '{name}'): move 9 is a rapid that removes 0.123 mm³ of material. A \
+         possible collision: acknowledge it before the files are written"
+    );
+    assert!(w.iter().any(|t| *t == expected), "{w:?}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_not_block_it() {
     // Decision 0175 (issue #226): a path made with a warning (a swarf
     // overcut above the tolerance) is written with it, so the checks before

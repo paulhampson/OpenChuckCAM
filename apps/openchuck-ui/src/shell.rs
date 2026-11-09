@@ -1508,9 +1508,14 @@ impl Shell {
                         };
                         self.open_step(Step::Setup);
                         self.choose_setup(setup, section);
-                        if let Some(field) = field {
-                            self.form
-                                .show_setting(inspector::setup_field_key(field), text);
+                        // A link to a setting with no field of its own (the
+                        // machine) leaves no earlier mark behind.
+                        match field {
+                            Some(field) => {
+                                self.form
+                                    .show_setting(inspector::setup_field_key(field), text);
+                            }
+                            None => self.form.clear_shown(),
                         }
                     }
                     SettingPlace::Post => self.open_export(),
