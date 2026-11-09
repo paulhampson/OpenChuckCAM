@@ -49,3 +49,5 @@ Reply on issue #638 with: **PASS**, or **FAIL and what you saw** (the operation,
 ## What we saw when preparing this
 
 `openchuck-cli validate project` on `main` at `81bade8a3` (Linux x86_64, release build, 8 November 2026) refuses **Rings, blended** with the message above; `regenerate` on a copy holding only **Rings, as saved** prints the Rings note quoted above. When the fix merges, both operations will be run on the merged build and on `81bade8a3`, and the programs of **Rings, as saved** compared. The interface (the setting, the view) cannot be run without a display here.
+
+**On lane RINGSTEP's branch** (`claude/lane-ringstep` at `eb33ebf4a`, not merged; run 8 November 2026): both operations generate. **Rings, as saved**: the same note as today, and its program is byte-identical to `main`'s at `81bade8a3`. **Rings, blended**: "Rings (operation 'Rings, blended'): helical finishing cut 75 rings, no more than 1.0000 mm apart, each a whole turn at one place along the part; steps between rings blended over 45°, 6° off the ring at a radius of 12.0 mm (steeper nearer the axis)", 11,062 moves against 10,332 (cut 1056.3 s against 961.6 s).

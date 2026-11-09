@@ -54,3 +54,12 @@ Run with the command-line tool on `main` at `81bade8a3` (Linux x86_64, release b
 ```
 
 After the fix, the same command should show many more moves past X 61 and A turning over them (several turns). The view and the simulation cannot be run without a display here.
+
+**On lane RINGSTEP's branch** (`claude/lane-ringstep` at `eb33ebf4a`, not merged; run 8 November 2026), the same commands give:
+
+```text
+01-setup-1-spiral-extend.nc: fed moves ending past X 61: 424; greatest X 66.888; A turned over them: 2119.5 degrees
+02-setup-1-rings-extend.nc: fed moves ending past X 61: 14; greatest X 66.888; A turned over them: 2160.0 degrees
+```
+
+with the notes "Past the ends (operation 'Spiral, extend'): the passes carry on past the part in their own motion (the spiral continued at its pitch) to the extended ends, 0.0 turns at the start end and 5.9 at the far end, 99 mm of path in all" and "Past the ends (operation 'Rings, extend'): ... (rings at the ring spacing) ..., 0.0 turns at the start end and 6.0 at the far end, 106 mm of path in all".

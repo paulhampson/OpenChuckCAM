@@ -1,17 +1,20 @@
-Owner check for issues #639, #640 and #642: a ramp follows the pass, and a
-lead on a ring stays in the plane of the cut
+Owner check for issues #639 and #640: a ramp follows the pass, and a lead
+on a ring stays in the plane of the cut
 DRAFT: to run on the release candidate, once the fix is merged.
 
-1. Open the folder "project" with File > Open project.
+1. Open the folder "project" with File > Open project (the tutorial job,
+   five operations, 3 degree ramps).
 2. Operations, Generate.
-3. Look at the start of each operation's path at the head end (X 0).
-Expected: all three generated. "Rough, ramp" and "Rings, ramp": the ramp
-lies over the pass (on rings, down around the first ring at its X).
-"Rings, lead": the arcs turn with the part at the ring's X. Nothing runs
-along X towards the chuck; no message about the held region.
-Old behaviour: all three refused, e.g. "operation 'Rings, ramp' cannot be
-generated: pass 1: the ramp needs a run of 134.860 mm ... would run over
-the held region at the start of the stock at X -5.070 mm ...".
+Expected: 1 Rough rings, ramp: generated (single points plunged, as Allow
+single-point plunge asks). 2 Rough spiral, ramp: refused, "... 17.6
+turns, more than the 10 allowed ...". 3 Rough spiral, steeper: generated,
+the ramp near the axis steeper. 4 Finish rings, ramp: generated, the tool
+descends on the axis while the part turns. 5 Finish rings, lead:
+generated, the lead turns with the part at the ring's X.
+Each ramp comes down over the pass, around the ring at its X; nothing runs
+along X towards the chuck.
+Old behaviour: the new settings unknown; ramps and leads along X refused
+at the held region ("... over the held region ... at X 7.604 mm ...").
 
 Nothing in this check shows that a program is safe to run. Do not run this
 project's G-code on a machine. Generated G-code must be verified by you

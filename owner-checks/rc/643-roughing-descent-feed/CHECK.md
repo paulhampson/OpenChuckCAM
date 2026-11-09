@@ -41,3 +41,5 @@ Reply on issue #643 with: **PASS**, or **FAIL and what you saw** (the count, or 
 ## What we saw when preparing this
 
 Run on `main` at `81bade8a3` (Linux x86_64, release build, 8 November 2026): `openchuck-cli regenerate project --post linuxcnc --tool-numbers keep --out OUT` (generated in under 2 s, 13,094 moves, cut 2577.1 s), then `gcode_descent.py OUT/01-setup-1.ngc 300`, which gives the line above: the 193 moves and the 600 mm/min of the record. On the tutorial baluster's own roughing the same script finds no such move, so the baluster is not a stand-in here. When the fix merges, the same run will be repeated on the merged build.
+
+**On lane PATHFEED's branch** (`claude/lane-pathfeed-643-wip` at `259528e9a`, not merged; run 8 November 2026), the same commands give `descending fed moves: 2268; faster down the axis than 300 mm/min: 0` and a cut time of 2585.4 s against 2577.1 s on `main` (8.3 s more, within the record's 7.8 to 10.8 s), with the same 13,094 moves.
