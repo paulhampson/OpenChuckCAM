@@ -4,9 +4,11 @@
 //! the first ring in the plane of the cut at the ring's X, A and Z moving
 //! together, and leaves the last ring the same way (decision 0544, accepted;
 //! issue #640; OP-11, OP-15). A public stand-in for the owner check of #640.
-//! With the example's 8 mm grip the pass starts with a short step along X
-//! before its first ring (helical finishing's rings cut short at the held
-//! region), and gets the line lead: an owner question, parked.
+//! With the example's 8 mm grip the pass starts today with a short step
+//! along X before its first ring (helical finishing's rings cut short at
+//! the held region), and gets the line lead; the owner decided that those
+//! rings start on a whole ring at the held region's edge (lane RINGSTEP),
+//! after which the grip case gets this lead too.
 #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 
 use std::path::{Path, PathBuf};
