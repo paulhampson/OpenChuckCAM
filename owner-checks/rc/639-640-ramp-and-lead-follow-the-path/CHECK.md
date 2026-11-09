@@ -1,7 +1,7 @@
 # Check for issues #639 and #640: a ramp follows the pass, and a lead on a ring stays in the plane of the cut
 
 > [!NOTE]
-> **Draft, to run on the release candidate. The code is not merged.** [Decision 0543](https://github.com/paulhampson/OpenChuckCAM/pull/646/files) (a ramp entry follows the toolpath, with its points found while building) and decision 0544 (a lead on a pass that turns A) are in docs pull request #646. The ramp is built on lane RAMPENTRY's branch `claude/lane-rampentry-wip`, the lead on lane RAMPLEAD's `claude/lane-rampentry-lead-wip`; no pull request is merged. This file gives `main` at `81bade8a3`, what those branches did on 8 Nov 2026, and what the records say. When the code merges, the expected texts are copied from the merged build, the pull request is named here, and this note is removed.
+> **Draft for the lead part (#640) only, to run on the release candidate.** The ramp part (#639) is finished in [`639-ramp-follows-the-path`](../../639-ramp-follows-the-path/CHECK.md), from #663 on `main` at `fa1c2de1`. The lead (decision 0544, lane RAMPLEAD) waits for pull request #665; when it merges, this folder becomes the #640 check with operation 5 only, and this note is removed.
 
 **What is to change:**
 

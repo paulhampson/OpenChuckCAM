@@ -1,0 +1,15 @@
+schema = 25
+id = "0c0c0639-0000-4000-8000-000000000304"
+order = "Z"
+name = "Finish rings, ramp"
+setup = "57ad6798-2544-4dfb-90a0-caf67ec69484"
+strategy = "helical_finishing"
+tool = "c0de0001-0000-4000-8000-000000000204"
+selections = []
+
+[parameters]
+adaptive_spacing = false
+allow_single_point_plunge = true
+entry = "ramp"
+pass_shape = "rings"
+ramp_angle = 3.0
