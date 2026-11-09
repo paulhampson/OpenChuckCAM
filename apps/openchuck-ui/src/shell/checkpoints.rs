@@ -709,7 +709,14 @@ impl State {
                 );
             }
         }
-        if let Some(session) = &mut self.review_session {
+        // While a recovered project waits to be installed, the review session
+        // is its writer, not a Keep or Discard answer: its notices wait until
+        // the install makes it the active writer, so a writer that fails at
+        // once is reported as a checkpoint that could not be written
+        // (decision record 0536 section 8).
+        if !self.awaiting_install
+            && let Some(session) = &mut self.review_session
+        {
             let notices = session.poll(session.elapsed());
             self.review_answered(notices);
         }
@@ -939,6 +946,54 @@ mod tests {
     use super::super::checkpoint_tests::{click, ready_project};
     use super::*;
     use std::time::Instant;
+
+    /// The recovered project's writer opens before the project is installed.
+    /// If it fails at once (a recovery folder it cannot write), its failure
+    /// must wait for the install and be shown as the error of a checkpoint
+    /// that could not be written (decision record 0536 section 8). It used to
+    /// be read as a review answer, shown as a warning and the writer dropped,
+    /// whenever the worker failed before the install's frame (a race seen on
+    /// macOS in CI).
+    #[test]
+    fn req_prj_08_req_ui_12_a_writer_that_fails_before_the_install_is_reported_as_an_error() {
+        let mut rig = ready_project("checkpoint-install-race");
+        let folder = rig.dirs[0].join("project");
+        let ignore = folder.join(".openchuck-recovery/.gitignore");
+        std::fs::remove_file(&ignore).unwrap();
+        std::fs::create_dir(&ignore).unwrap();
+        let config = rig.shell.recovery.config.clone().unwrap();
+        // The state just after a recovered checkpoint was read: its writer
+        // is open, waiting for the project to be installed.
+        rig.shell.recovery.review = None;
+        rig.shell.recovery.awaiting_install = true;
+        rig.shell.recovery.review_session = Some(Session::open(folder.clone(), config, 3).unwrap());
+        rig.shell.recovery.review_folder = Some(folder.clone());
+        // Let the worker fail first, as it did in the race.
+        std::thread::sleep(Duration::from_millis(500));
+        rig.frame(Vec::new());
+        assert!(
+            rig.shell.recovery.review_session.is_some(),
+            "the install's writer was read as a review answer and dropped: {:?}",
+            rig.shell.recovery.problem
+        );
+        assert!(rig.shell.recovery.problem.is_none());
+        // The install adopts the writer, and its failure is the error.
+        rig.shell.recovery.attach(&folder, 0, 3);
+        rig.shell.recovery.finish_install();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while rig.shell.recovery.write_failed.is_none() {
+            rig.frame(Vec::new());
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let notices = rig.shell.recovery.notices();
+        assert!(
+            notices.iter().any(
+                |m| m.severity == Severity::Error && m.text.starts_with("Recovery checkpoint:")
+            ),
+            "{notices:?}"
+        );
+    }
 
     #[test]
     fn req_prj_08_req_nfr_04_headless_frames_remain_responsive_during_checkpoint_publication() {

@@ -7,6 +7,10 @@
 - MSGREVIEW (NFR-12; V091): the note on the whole-part deviation under a Facing operation's Results line is shown only when the run was simulated.
 - MSGREVIEW (issue #645; NFR-12): the command line prints the notice that the G-code must be verified by the user when it refuses to write for a missing acknowledgement; its help text names no requirement, decision record or verification gate.
 
+## Unreleased (MSGSTEP5, issue #660)
+
+- MSGSTEP5 (#660; decision 0536 section 8; PRJ-08, UI-12): when a recovered project's checkpoints cannot be written, Messages shows the error "Recovery checkpoint: …" with Save every time. The writer's failure could be taken for a Keep or Discard answer before the recovered project was installed, so it was shown as a warning with the old wording and the writer was dropped.
+
 ## Unreleased (MSGSTEP5, decision 0536 step 5)
 
 - MSGSTEP5 (decision 0536 section 8; OI-2098; UI-09, UI-12): the status line that was never drawn is gone. "Saved …", "Opened …", "Added …" and "Copied n models into the project folder" are finished entries in the Jobs tab with how long ago, never messages. A recovered checkpoint not yet saved is a warning in Messages with Save; tool numbers the export changed and the project has not saved are a warning with Save and Undo; a pick dropped because the geometry changed is an error on its selection set (Reselect) or workholding (Edit workholding); dropping a model with no project open is an error dialog.

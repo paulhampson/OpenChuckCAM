@@ -64,6 +64,15 @@ pub mod parameter {
 pub struct Facing;
 
 impl Strategy for Facing {
+    fn limits_descent_feed(&self, parameters: &Parameters) -> bool {
+        // Flat and Round rough the stock in layers; End and Box sides cut
+        // at one height per pass (decision record 0548).
+        matches!(
+            parameters.text(parameter::SHAPE),
+            Ok(parameter::FLAT | parameter::ROUND)
+        )
+    }
+
     fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
         // Facing holds its Stepdown and each End view to the flutes itself
         // (decision records 0252 and 0504).
