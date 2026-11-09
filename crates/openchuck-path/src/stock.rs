@@ -314,7 +314,8 @@ impl AnalyticStock {
             Stock::Box { bounds } => Ok(Self::Box(*bounds)),
             Stock::OffsetBoundingBox { offset } => {
                 let b = part_bounds.ok_or_else(|| {
-                    PathError::Strategy(
+                    PathError::refused(
+                        crate::topic::STOCK,
                         "bounding-box stock needs the part, and the setup has none".to_owned(),
                     )
                 })?;
@@ -324,7 +325,8 @@ impl AnalyticStock {
                     max: b.max + d,
                 }))
             }
-            _ => Err(PathError::Strategy(
+            _ => Err(PathError::refused(
+                crate::topic::STOCK,
                 "imported stock is not supported yet".to_owned(),
             )),
         }
