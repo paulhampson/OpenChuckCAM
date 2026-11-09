@@ -1,7 +1,7 @@
 # 0644: Every refusal to generate takes the one form, and the Facing notes and the setup checks too (decision 0536 step 6; lane MSGREVIEW; issue #567)
 
-- **Status:** proposed by lane MSGREVIEW on 9 Nov 2026, on the owner's answers of 9 Nov 2026 relayed by the coordinator (decision 0049): (3) the Facing line and the other note without a topic always take the standard form; (4) OI-360 closes for now; (5) the strategy refusals take the standard form before the freeze, in a follow-up to decision 0536 step 4 (#659). The number is provisional (the Merge Manager assigns it at release), as is the library-family version.
-- **Amends:** [decision 0536](0536-message-levels-operation-reference-and-setting-links.md) section 7: adds build step 6 (section 7's item 6, decisions 0538 to 0540, is built in #623, #591 and #584). Builds on RAMPENTRY's `AppError::Refused` ([decision 0543](0543-a-ramp-entry-follows-the-toolpath.md), #663), which stays the one mechanism.
+- **Status:** accepted by the project owner on 9 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full, with the list of topic names in the archive folder. Proposed by lane MSGREVIEW on 9 Nov 2026, on the owner's answers of 9 Nov 2026 relayed by the coordinator (decision 0049): (3) the Facing line and the other note without a topic always take the standard form; (4) OI-360 closes for now; (5) the strategy refusals take the standard form before the freeze, in a follow-up to decision 0536 step 4 (#659). The number is provisional (the Merge Manager assigns it at release), as is the library-family version.
+- **Amends:** [decision 0536](0536-message-levels-operation-reference-and-setting-links.md) section 7, which this record extends with build step 6 until that section is edited (section 7's item 6, decisions 0538 to 0540, is built in #623, #591 and #584). Builds on RAMPENTRY's `AppError::Refused` ([decision 0543](0543-a-ramp-entry-follows-the-toolpath.md), #663), which stays the one mechanism.
 
 ## Context
 
@@ -17,7 +17,7 @@ RAMPENTRY (#663) added `AppError::Refused`, which shows a refusal in the one for
 
 The inventory of the refusals on `main`, #656 and #663 (about 270 sites in the pathing library and 60 in the application), and the topic each now takes, is in [docs/archive/0644-refusals-take-the-one-form/](../archive/0644-refusals-take-the-one-form/).
 
-## Decision (proposed)
+## Decision
 
 1. **One library variant for a refusal.** `openchuck-path` gets `PathError::Refused { topic, text, setting }`:
    - the check's topic, a constant of `openchuck_path::topic`;
@@ -52,6 +52,7 @@ The inventory of the refusals on `main`, #656 and #663 (about 270 sites in the p
    - `cargo xtask deps`' topics check also fails on a `PathError::refused` whose topic is not a constant of `openchuck_path::topic`.
    - The same check counts, per file, the refusals made with a variant that carries no topic, against a `[strategy_refusals]` baseline in `xtask/messages.toml` that only falls.
    - **No internal references** (OWNERCHECKS2, relayed by the coordinator on 9 Nov 2026, which found "… so links could cross it (OP-14); enlarge the setup's clearance"). `cargo xtask messages` fails on a string literal of product code that names a requirement ("(OP-14)", "SET-02"), an open item ("OI-360") or a decision record ("decision 0495"), counted per file against an `[ids]` baseline that only falls, and the command line's guard test fails on one too. Five texts lose theirs: the links refusal ("… so links could cross it. Enlarge the setup's clearance."), the stock to leave on followed edges (OP-11), two swarf refusals (decision record 0021, OI-94), the Entry setting's description (decision record 0026) and the Tool number tooltip (TL-06). Left in the baseline, as they are not messages: the frame-time benchmark's labels, the header written into the default tools file ("(TL-12). Do not edit.", for the owner to decide at the end, the coordinator says) and the determinism checker's test-support panic. The scan also no longer reads a test module whose `#[cfg(test)]` has other attributes after it.
+   - **A count agrees with its noun** (OWNERCHECKS2, relayed on 9 Nov 2026, which found the Free ends note "goes down beside it in 1 layers of 1 mm"). A text whose count can be one writes it with `openchuck_path::counted(n, one, many)` ("1 layer", "3 layers"), in the pathing library, the application, the interface and the command line alike. `cargo xtask messages` counts, per file, a format placeholder straight before a plural noun of a fixed list (`{} layers`, `{} rings`, `{} moves` …) in the string literals of product code, against a `[plural_counts]` baseline in `xtask/messages.toml` that only falls. Left in it are counts that are never one: refusals for a count that is too many, branches for two or more, a mesh's, a G-code file's or a drawn path's size, "turns" as a verb or a fractional number of turns, a selection set's role name and the action log's internal line.
 6. **OI-360 closes** (the owner's answer (4)): closed on 9 Nov 2026 by the owner, relayed; the read of every message a dialog can show is not done.
 
 ## Before and after (examples)
@@ -70,6 +71,8 @@ The inventory of the refusals on `main`, #656 and #663 (about 270 sites in the p
 | Machine profile | operation 'X' cannot be generated: the project has no machine profile | Machine profile (operation 'X'): the project has no machine profile. |
 | Tool | operation 'X' cannot be generated: it has no tool | Tool (operation 'X'): it has no tool. |
 | Facing note | Facing covered the end faces it was asked to. | Facing (operation 'Face'): facing covered the end faces it was asked to. |
+| Free ends note | … the tool goes down beside it in 1 layers of 11 mm to the rotary axis … | … the tool goes down beside it in 1 layer of 11 mm to the rotary axis … |
+| Results summary | 1 operation(s), 1 moves, 0.1 s to generate | 1 operation, 1 move, 0.1 s to generate |
 | Setup listing | `  - the safe cylinder (radius 6.000 mm) does not enclose the stock …` | `  - Clearance (setup 'Setup 1'): the safe cylinder (radius 6.000 mm) does not enclose the stock ….` |
 
 The full list, with each refusal's topic and setting, is in the archive folder.
