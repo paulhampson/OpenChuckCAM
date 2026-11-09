@@ -1,11 +1,11 @@
 # 0550: Helical finishing's and rest machining's rings start on a whole ring at a held region's edge (OP-04, OP-09, OP-11, OP-15, SET-09, GC-07, NFR-06, NFR-12; lane RINGSTEP)
 
-- **Status:** proposed by lane RINGSTEP on 9 Nov 2026. The owner chose (a) on 9 Nov 2026, relayed by the coordinator (decision 0049): the rings start on a whole ring at the held region's keep-out edge, as roughing's do. The owner accepts the record after reading it. The number is provisional: the Merge Manager assigns the final number at release.
+- **Status:** accepted by the project owner on 9 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full, with its drawing. Proposed by lane RINGSTEP the same day; the owner had chosen option (a) on 9 Nov 2026, relayed by the coordinator. The number is provisional: the Merge Manager assigns the final number at release.
 - **Date:** 9 Nov 2026.
 - **Found by:** lane RAMPENTRY's second session (RAMPLEAD, issue #640), on the owner-check project for #639/#640: a ring operation beside the chuck started with a short cut along X, and a lead-in there was refused. The cause was traced by lane RINGSTEP and put to the owner as a parked question (options (a), (b) and (c) below).
 - **What it amends:** [0390](0390-helical-finishing-in-rings.md) item 3 ("The part's length is divided into `n = ceil(length / pitch)` equal gaps, with rings at both ends of the part") and [0420](0420-rings-for-rest-roughing-and-round-facing.md) item 1 ("The rings go from one end to the other"), for helical finishing and rest machining when a held region's keep-out band covers an end of the part: the rings then go from the band's edge.
 - **Builds on:** [0161](0161-tools-keep-clear-of-the-gripped-length.md) (the keep-out bands and the shared filter that drops what reaches into them), [0363](0363-simultaneous-finishing-off-axis-sections-walls-and-held-ends.md) item 1 (simultaneous finishing's range already stops at the bands), [0420](0420-rings-for-rest-roughing-and-round-facing.md) item 4 (roughing's rings start on a ring at a held region's end), [0545](0545-blended-steps-between-rings.md) (steps between rings, Sharp or Blended).
-- **Open items:** new OI-2114 (the owner's acceptance of this record).
+- **Open items:** OI-2114 (the owner's acceptance of this record), new, closed on 9 Nov 2026 with the acceptance.
 
 ## Context
 
@@ -20,7 +20,7 @@ Rotary roughing and round Facing do not have this: `Job::cut_range` shortens the
 
 ![Rings beside a held region. Today: the rings go over the whole part; the keep-out band drops the first rings and cuts the step into the first ring outside it short, so the pass starts with a stub along X with A held. Decision 0550: the rings go from the band's edge, with a whole ring there, then the step or blend to the next ring.](0550-rings-start-at-the-keep-out-edge.svg)
 
-## Decision (proposed; the owner chose (a) on 9 Nov 2026, relayed)
+## Decision (accepted; the owner chose (a) on 9 Nov 2026, relayed)
 
 1. **The range (option (a), the owner's choice, relayed).** Helical finishing and rest machining place their rings over the part's X range cut short at the keep-out bands that cover its ends, with a ring at each band's edge, as roughing and simultaneous finishing do. The places are otherwise 0390 item 3's: equal gaps no wider than the pitch (or stepover) over that range, and a ring at each face across the axis (0297) that lies inside it. A face inside a band is not a ring place (the filter dropped it before).
 2. **Both step shapes.** The pass starts and ends on a whole ring whether the steps are Sharp or Blended (0545).
