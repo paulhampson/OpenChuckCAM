@@ -270,7 +270,8 @@ fn req_op_11_req_set_09_continuous_roughing_spiral_layers_ramp_and_a_single_poin
         assert!(
             path.notices
                 .iter()
-                .any(|n| n.text.contains("single points")),
+                .any(|n| n.text.contains("is a single point")
+                    || n.text.contains("are single points")),
             "{:?}",
             path.notices
         );
@@ -353,6 +354,14 @@ fn req_op_11_req_op_15_a_step_shorter_than_the_tool_radius_is_ramped_on_along_th
     }
     assert!(
         path.notices.iter().any(|n| n.text.contains("reversing A")),
+        "{:?}",
+        path.notices
+    );
+    // Said in the singular where there is one (no "1 times", no "passes 1").
+    assert!(
+        path.notices
+            .iter()
+            .all(|n| !n.text.contains(" 1 times") && !n.text.contains("passes 1 ")),
         "{:?}",
         path.notices
     );
@@ -559,4 +568,79 @@ fn req_op_11_req_nfr_07_steeper_ramp_near_the_axis_fits_ten_turns_up_to_the_maxi
     );
     let err = make(&f, &HelicalFinishing, &v, &[]).unwrap_err();
     assert!(err.contains("Raise Ramp angle"), "{err}");
+}
+
+/// One line pass whose first point lies 1 mm below the rest, so the ramp's
+/// last leg follows the pass's own drop to it (decision 0543 D4, answer A).
+#[derive(Debug)]
+struct DropBeforeHead;
+
+impl Strategy for DropBeforeHead {
+    fn name(&self) -> &str {
+        "test_drop_before_head"
+    }
+    fn label(&self) -> &str {
+        "Drop before head (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        _: &openchuck_path::Parameters,
+        _: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        use openchuck_path::rotary::AxisPosition;
+        use openchuck_types::units::Degrees;
+        let points = (0..=40)
+            .map(|k| {
+                let along = 10.0 + 0.5 * f64::from(k);
+                let height = if k == 0 { 15.0 } else { 16.0 };
+                let tip = input.rotary.to_model(
+                    AxisPosition {
+                        along,
+                        across: 0.0,
+                        height,
+                    },
+                    Degrees(0.0),
+                );
+                openchuck_path::CutPoint {
+                    tip,
+                    a: Degrees(0.0),
+                    contact: tip,
+                }
+            })
+            .collect();
+        Ok(vec![openchuck_path::Pass {
+            helical_pass_start: false,
+            low_link: false,
+            points,
+            stock: None,
+            rapids: Vec::new(),
+        }])
+    }
+}
+
+#[test]
+fn req_op_11_req_nfr_07_the_steep_drop_note_is_singular_for_one_pass() {
+    let f = cylinder();
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let path = make(&f, &DropBeforeHead, &v, &[]).unwrap();
+    let note = path
+        .notices
+        .iter()
+        .find(|n| n.text.contains("more steeply than the ramp angle"))
+        .unwrap_or_else(|| panic!("{:?}", path.notices));
+    assert!(
+        note.text.starts_with("pass 1 drops more steeply")
+            && note.text.contains("its ramp follows")
+            && note.text.contains("as the pass itself does"),
+        "{}",
+        note.text
+    );
 }

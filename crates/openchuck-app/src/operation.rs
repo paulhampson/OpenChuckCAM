@@ -352,6 +352,15 @@ pub(crate) fn generate_with_part(
     })
 }
 
+/// The topics the pathing library leads its entry refusals with
+/// (decisions 0543 and 0544): such a refusal is shown in the one form.
+const REFUSAL_TOPICS: [&str; 4] = [
+    openchuck_path::topic::RAMP_ENTRY,
+    "Lead entry",
+    openchuck_path::topic::ENTRY,
+    openchuck_path::topic::FACE_NUBS,
+];
+
 /// `error` from generating `operation`, naming it (issue #547): an error
 /// from the pathing library does not know which operation it is about, so
 /// the user could not tell which one to change. Its own words are kept,
@@ -360,10 +369,25 @@ pub(crate) fn generate_with_part(
 fn named(operation: &Operation, error: AppError) -> AppError {
     match error {
         AppError::Path(openchuck_path::PathError::Cancelled) => error,
-        AppError::Path(other) => AppError::Operation {
-            name: operation.name.clone(),
-            reason: other.to_string(),
-        },
+        AppError::Path(other) => {
+            let reason = other.to_string();
+            // A refusal that leads with its topic is shown in the one form
+            // of decision record 0536 section 3.
+            match REFUSAL_TOPICS
+                .iter()
+                .find_map(|topic| Some((*topic, reason.strip_prefix(&format!("{topic}: "))?)))
+            {
+                Some((topic, text)) => AppError::Refused {
+                    topic: topic.to_owned(),
+                    name: operation.name.clone(),
+                    text: text.to_owned(),
+                },
+                None => AppError::Operation {
+                    name: operation.name.clone(),
+                    reason,
+                },
+            }
+        }
         other => other,
     }
 }
@@ -893,21 +917,21 @@ fn generate_unnamed(
             .iter()
             .any(|s| s.kind == openchuck_types::ir::MoveKind::Plunge)
     {
-        return Err(missing(
-            operation,
-            &format!(
-                "{} entry: a pass is entered by a straight plunge (a single point, or a ring \
+        return Err(AppError::Refused {
+            topic: if entry_parameters.style == EntryStyle::Ramp {
+                openchuck_path::topic::RAMP_ENTRY.to_owned()
+            } else {
+                "Lead entry".to_owned()
+            },
+            name: operation.name.clone(),
+            text: format!(
+                "a pass is entered by a straight plunge (a single point, or a ring \
                  on the rotary axis, where the tool descends while the part turns), and the \
                  tool '{}' cannot cut straight down (it is not centre cutting). Set Entry to \
                  Helix, or choose a tool that can plunge",
-                if entry_parameters.style == EntryStyle::Ramp {
-                    "Ramp"
-                } else {
-                    "Lead"
-                },
                 snapshot.name
             ),
-        ));
+        });
     }
     // The tabs a limited operation's path can touch, against its tool
     // (issue #548; decision 0523): a tab it never comes near says nothing;
