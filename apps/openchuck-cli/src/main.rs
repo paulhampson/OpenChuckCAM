@@ -603,15 +603,17 @@ fn run(cli: Cli) -> Result<()> {
                 );
             }
             for report in app.check_setups()? {
-                for warning in &report.warnings {
-                    eprintln!("warning: setup '{}': {warning}", report.name);
+                // In the one form, as Messages says them (decision record
+                // 0644).
+                for line in report.warning_lines() {
+                    eprintln!("warning: {line}");
                 }
                 for note in report
                     .notes
                     .iter()
                     .filter(|n| !n.contains("no machine profile"))
                 {
-                    eprintln!("warning: setup '{}': {note}", report.name);
+                    eprintln!("warning: {note}");
                 }
             }
             for report in check_tools(app.project(), None) {
@@ -2124,8 +2126,10 @@ fn print_setup(app: &Application, report: &SetupReport) {
     if report.warnings.is_empty() && report.notes.is_empty() {
         println!("checks:     no problems found");
     }
-    for warning in &report.warnings {
-        println!("  - {warning}");
+    // Each check and note in the one form, with its topic (decision
+    // record 0644).
+    for line in report.warning_lines() {
+        println!("  - {line}");
     }
     for note in &report.notes {
         println!("note:       {note}");

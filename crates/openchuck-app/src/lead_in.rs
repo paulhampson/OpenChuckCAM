@@ -185,6 +185,9 @@ pub mod topic {
     pub const PART: &str = "Part";
     /// The stock material whose cutting data an operation takes.
     pub const MATERIAL: &str = "Material";
+    /// What a Facing operation covered, and what it left unfaced on
+    /// purpose (decision record 0644 item 3).
+    pub const FACING: &str = openchuck_path::topic::FACING;
 
     /// Every topic above, for a check that a message takes one.
     pub const ALL: &[&str] = &[
@@ -223,6 +226,7 @@ pub mod topic {
         TOOL,
         PART,
         MATERIAL,
+        FACING,
     ];
 }
 

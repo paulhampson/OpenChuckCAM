@@ -1022,8 +1022,10 @@ impl Application {
                         // record 0201).
                         Some(Ok(extent)) => extent.map(|e| e.in_setup(&s.frame)),
                         Some(Err(e)) => {
-                            notes.push(format!(
-                                "the part cannot be read, so it is not checked: {e}"
+                            notes.push(lead_in::in_form(
+                                lead_in::topic::MODEL_FILE,
+                                &lead_in::Context::setup(&s.name),
+                                &format!("the part cannot be read, so it is not checked: {e}"),
                             ));
                             None
                         }
@@ -1044,10 +1046,11 @@ impl Application {
                     Some(setup::expected_work_offset(profile, &s.frame)),
                 ),
                 None => {
-                    notes.push(
-                        "the project has no machine profile, so the setup is not checked"
-                            .to_owned(),
-                    );
+                    notes.push(lead_in::in_form(
+                        lead_in::topic::MACHINE_PROFILE,
+                        &lead_in::Context::setup(&s.name),
+                        "the project has no machine profile, so the setup is not checked",
+                    ));
                     (Vec::new(), None)
                 }
             };
@@ -1079,7 +1082,17 @@ impl Application {
             // A tab shorter along X than a tool is wide that operations of the setup use is
             // refused when they are generated (OI-159); say so here, when the
             // tab or the tool is chosen.
-            notes.extend(workholding::narrow_tab_notes(project, s, part.as_ref()));
+            notes.extend(
+                workholding::narrow_tab_notes(project, s, part.as_ref())
+                    .into_iter()
+                    .map(|note| {
+                        lead_in::in_form(
+                            lead_in::topic::TAB_LENGTH,
+                            &lead_in::Context::setup(&s.name),
+                            &note,
+                        )
+                    }),
+            );
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),
