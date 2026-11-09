@@ -2,7 +2,7 @@
 """Writes the owner-check project for issue #643 (decision 0548: a steep descent inside a
 roughing pass is fed no faster than the plunge feed):
 
-    python3 owner-checks/rc/643-roughing-descent-feed/generate.py
+    python3 owner-checks/643-roughing-descent-feed/generate.py
 
 It writes project/ beside this script: the public test blisk testdata/stl/blisk.stl (X 0 to 50,
 radius 20) centred on the rotary axis in a 42 mm cylinder of stock 52 mm long from X -1, no
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ownercheck as oc  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
