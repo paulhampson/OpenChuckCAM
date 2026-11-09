@@ -364,7 +364,7 @@ mod tests {
             Dialog::Keys.log_name(),
             Dialog::About.log_name(),
             Dialog::Settings.log_name(),
-            Dialog::Error("x".into()).log_name(),
+            Dialog::Error(crate::failure::Failure::new("Save", "x")).log_name(),
             Dialog::Unsaved(super::super::Next::Quit).log_name(),
             Dialog::OfferCreate { folder: "f".into() }.log_name(),
         ];

@@ -100,7 +100,19 @@ fn req_prj_02_opening_a_project_with_a_linked_model_asks_to_copy_it() {
         copied.path.as_str()
     );
     assert!(root.join("project").join(copied.path.as_str()).is_file());
-    assert_eq!(rig.shell.status, "Copied 1 model into the project folder");
+    // What the user did is a Jobs entry, not a message (decision record
+    // 0536 section 8).
+    assert_eq!(
+        rig.shell.jobs.finished().next().map(|e| e.label.as_str()),
+        Some("Copied 1 model into the project folder")
+    );
+    assert!(
+        !rig.shell
+            .overview
+            .messages
+            .iter()
+            .any(|m| m.text.contains("Copied"))
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -193,7 +205,18 @@ fn req_prj_02_req_nfr_07_a_changed_linked_file_is_refused_with_what_to_do() {
     let refusal =
         "'cube.stl' has changed since it was added, so copying it would change the model.";
     match &rig.shell.dialog {
-        Some(Dialog::Error(text)) => assert!(text.starts_with(refusal), "{text}"),
+        Some(Dialog::Error(failure)) => {
+            // The dialog names the action that failed (decision record 0536
+            // step 5).
+            assert_eq!(failure.title(), "Copy models into the project failed");
+            assert!(
+                failure
+                    .text
+                    .starts_with(&format!("Copy models into the project: {refusal}")),
+                "{}",
+                failure.text
+            );
+        }
         other => panic!("expected the refusal, got {other:?}"),
     }
     assert!(model(&rig, id).path.is_outside_project());

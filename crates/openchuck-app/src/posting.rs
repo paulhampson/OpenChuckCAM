@@ -862,12 +862,12 @@ pub(crate) fn post_toolpath(
                     && matches!(o.parameters.get("entry"),Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp"));
                 if reversing {
                     let canonical = toolpath.groups.iter().find(|g| g.tags == group.tags)
-                        .ok_or_else(|| AppError::Post("back-and-forth ramp has no canonical numeric precision certificate; regenerate the toolpath".into()))?;
+                        .ok_or_else(|| AppError::Post("back-and-forth ramp has no canonical numeric precision check result; regenerate the toolpath".into()))?;
                     let canonical_end =
                         canonical.segments.last().map_or(canonical.start, |s| s.end);
                     let counter_offset = (end.a.0 - canonical_end.a.0) * sign + a_shift;
                     if !counter_offset.is_finite() || counter_offset.abs() > 720.0 + 1e-7 {
-                        return Err(AppError::Post("back-and-forth ramp cannot certify controller numeric precision at this rotary counter; use a supported counter-reset post or choose another entry".into()));
+                        return Err(AppError::Post("back-and-forth ramp cannot check the controller's numeric precision at this rotary counter; use a supported counter-reset post or choose another entry".into()));
                     }
                 }
                 for pose in std::iter::once(group.start)
@@ -896,7 +896,7 @@ pub(crate) fn post_toolpath(
                             || f64::from(f32::from_bits(word.to_bits() + 1)) - f64::from(word)
                                 > 0.0001
                         {
-                            return Err(AppError::Post("back-and-forth ramp cannot certify controller numeric precision at this work offset; choose another entry".into()));
+                            return Err(AppError::Post("back-and-forth ramp cannot check the controller's numeric precision at this work offset; choose another entry".into()));
                         }
                     }
                 }

@@ -191,10 +191,10 @@ impl Session {
                 Err(mpsc::TryRecvError::Disconnected) => {
                     if !self.worker_done {
                         if self.closing {
-                            notices.push(Notice::Closed {problem:Some("Recovery worker stopped before cleanup completed. Existing checkpoints were preserved.".into())});
+                            notices.push(Notice::Closed {problem:Some("Recovery checkpoints stopped before their cleanup finished. The checkpoints already written were kept.".into())});
                         } else if self.ready {
                             notices.push(Notice::Problem(
-                                "Recovery worker stopped. Existing checkpoints were preserved."
+                                "Recovery checkpoints stopped. The checkpoints already written were kept."
                                     .into(),
                             ));
                         }
@@ -249,7 +249,7 @@ impl Session {
 
     fn send(&self, command: Command) -> Result<(), String> {
         self.tx.send(command).map_err(|_| {
-            "Recovery worker is unavailable; existing checkpoints were preserved.".to_owned()
+            "Recovery checkpoints are not being written; the checkpoints already written were kept.".to_owned()
         })
     }
     /// Call only after the ordinary explicit Save succeeds.

@@ -381,10 +381,9 @@ fn label_text(ui: &mut egui::Ui, label: &str, description: &str) {
 
 /// The reason in red under the value, indented past the label column.
 fn reason_line(ui: &mut egui::Ui, reason: &str, colour: egui::Color32) {
-    ui.horizontal_wrapped(|ui| {
-        ui.add_space(label_column(ui) + ui.spacing().item_spacing.x);
-        ui.label(RichText::new(reason).color(colour));
-    });
+    // The whole width under the field, one block, as a warning is (issue
+    // #635).
+    ui.add(egui::Label::new(RichText::new(reason).color(colour)).wrap());
 }
 
 /// Draws a text or number row. Returns what the user did.
@@ -638,14 +637,15 @@ pub fn unreadable_entries(ctx: &egui::Context) -> Vec<String> {
 }
 
 /// A warning under a field or a section: the warning shape the tree uses and
-/// a plain sentence, indented past the label column. It says what is missing
-/// (issue 224; UI-11) or why a setting is marked by its path's warning
-/// (decision record 0175).
+/// a plain sentence. It says what is missing (issue 224; UI-11) or why a
+/// setting is marked by its path's warning (decision record 0175). It spans
+/// the whole width under the field as one block, every line starting after
+/// the shape, for every kind of field (issue #635): not a first line pushed
+/// past the label column with the rest flush left.
 pub fn warning_line(ui: &mut egui::Ui, text: &str) {
-    ui.horizontal_wrapped(|ui| {
-        ui.add_space(label_column(ui) + ui.spacing().item_spacing.x);
+    ui.horizontal_top(|ui| {
         crate::shell::mark(ui, openchuck_app::overview::ItemState::Warning, text);
-        ui.label(RichText::new(text).color(DARK.warning));
+        ui.add(egui::Label::new(RichText::new(text).color(DARK.warning)).wrap());
     });
 }
 
@@ -750,6 +750,34 @@ pub fn read_only_row(
 /// towards the part").
 pub fn note_line(ui: &mut egui::Ui, text: &str, colour: egui::Color32) {
     reason_line(ui, text, colour);
+}
+
+/// How "Show setting" marks a row of any kind (decision record 0536 section
+/// 4; decision record 0175): the warning that points at the setting, and
+/// whether to bring the row into view this frame. A text or number row
+/// carries the same two in [`TextRow::warned`] and [`TextRow::scroll_to`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Mark<'a> {
+    /// The warning that points at this setting, in a plain sentence; drawn
+    /// under the row with the warning shape, so the mark does not rest on
+    /// colour alone.
+    pub warned: Option<&'a str>,
+    /// Scroll the row into view this frame.
+    pub scroll_to: bool,
+}
+
+/// Draws a row of any kind (a check box, a choice, a list) with `mark`: the
+/// row is scrolled into view first when asked, and the warning line is
+/// drawn under it. Returns what `draw` returns.
+pub fn marked<R>(ui: &mut egui::Ui, mark: Mark<'_>, draw: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    if mark.scroll_to {
+        ui.scroll_to_cursor(Some(egui::Align::Center));
+    }
+    let out = draw(ui);
+    if let Some(text) = mark.warned {
+        warning_line(ui, text);
+    }
+    out
 }
 
 /// Draws a check box row. Returns the new value when it was toggled.

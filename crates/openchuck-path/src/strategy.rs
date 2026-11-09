@@ -22,7 +22,7 @@ use openchuck_types::units::Degrees;
 
 use crate::assemble::{GeneratedPath, ShankBreak, Unreached, assemble_with_entry};
 use crate::error::{PathError, Result};
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
 };
@@ -645,16 +645,13 @@ pub(crate) fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
 }
 
 /// A strategy's notices from its warnings and its notes: the warnings first,
-/// then each note as information, in their order (decision record 0536 item
-/// 6.1).
+/// then the notes, each information with its topic, in their order
+/// (decision record 0536 item 6.1 and section 3).
 pub(crate) fn notices(
     warnings: Vec<Notice>,
-    notes: impl IntoIterator<Item = String>,
+    notes: impl IntoIterator<Item = Notice>,
 ) -> Vec<Notice> {
-    warnings
-        .into_iter()
-        .chain(notes.into_iter().map(Notice::information))
-        .collect()
+    warnings.into_iter().chain(notes).collect()
 }
 
 /// The passes with every stretch that reaches into `keep_out` left out
@@ -758,16 +755,22 @@ fn keep_clear(
     if cut_short {
         // What is left uncut beside the grip is a warning (decision record
         // 0536 step 2), and so is a hole not drilled.
-        notes.push(Notice::warning(format!(
-            "Nothing within one tool radius of {names} is cut: no part of the tool reaches \
+        notes.push(
+            Notice::warning(format!(
+                "Nothing within one tool radius of {names} is cut: no part of the tool reaches \
              over the gripped length of the stock."
-        )));
+            ))
+            .about(topic::HELD_REGION),
+        );
     }
     if holes > 0 {
-        notes.push(Notice::warning(format!(
-            "{holes} {} not drilled: the tool would reach over {names}.",
-            if holes == 1 { "hole is" } else { "holes are" }
-        )));
+        notes.push(
+            Notice::warning(format!(
+                "{holes} {} not drilled: the tool would reach over {names}.",
+                if holes == 1 { "hole is" } else { "holes are" }
+            ))
+            .about(topic::HELD_REGION),
+        );
     }
     Ok((kept, notes))
 }
@@ -893,6 +896,105 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
+    /// The internal references a user-facing text may not hold: a decision
+    /// record, an open item or a requirement number (interface
+    /// specification section 15; issue #634).
+    fn internal_references(text: &str) -> Vec<String> {
+        let words: Vec<&str> = text
+            .split(|c: char| !(c.is_alphanumeric() || c == '-'))
+            .filter(|w| !w.is_empty())
+            .collect();
+        let mut found = Vec::new();
+        for (i, word) in words.iter().enumerate() {
+            let next_is_number = words
+                .get(i + 1)
+                .is_some_and(|n| n.chars().all(|c| c.is_ascii_digit()));
+            let lower = word.to_lowercase();
+            if (lower == "decision" || lower == "decisions") && next_is_number {
+                found.push(format!("{word} {}", words[i + 1]));
+            }
+            // "OI-2097", "OP-05", "NFR-12", "GC-07": capitals, a hyphen,
+            // digits.
+            if let Some((head, tail)) = word.split_once('-')
+                && (2..=4).contains(&head.len())
+                && head.chars().all(|c| c.is_ascii_uppercase())
+                && !tail.is_empty()
+                && tail.chars().all(|c| c.is_ascii_digit())
+            {
+                found.push((*word).to_owned());
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn req_ui_12_internal_references_are_found() {
+        assert_eq!(
+            internal_references("Measured (decision 0338): slower. See OI-2097 and OP-05."),
+            vec!["decision 0338", "OI-2097", "OP-05"]
+        );
+        assert!(internal_references("A 3-axis tool, 0.5 mm, T-slot, G-code").is_empty());
+    }
+
+    /// The Exact STEP surface contact tooltip says what the setting does,
+    /// what it costs and that a mesh part is not affected, and nothing more
+    /// (issue #634, the owner's answer of 8 Nov 2026).
+    #[test]
+    fn req_ui_12_the_exact_contact_tooltip_is_short() {
+        let registry = Registry::builtin();
+        let tooltip = |strategy: &str| {
+            registry
+                .get(strategy)
+                .unwrap()
+                .schema()
+                .parameters
+                .into_iter()
+                .find(|p| p.name == crate::contact::parameter::EXACT_CONTACT)
+                .unwrap()
+                .description
+        };
+        assert_eq!(
+            tooltip("helical_finishing"),
+            "On a STEP part, drop a ball-end tool on the part's exact surfaces instead of its \
+             tessellation. More accurate and can be slower. No effect on a mesh part."
+        );
+        assert_eq!(
+            tooltip("axial_finishing"),
+            "On a STEP part, drop the tool (a ball, tapered ball or flat end) on the part's exact \
+             surfaces instead of its tessellation. More accurate and much slower. No effect on a \
+             mesh part."
+        );
+    }
+
+    /// No strategy's description, nor any setting's label, tooltip or
+    /// choice, names a decision record, an open item or a requirement
+    /// (interface specification section 15: no internal language; issue
+    /// #634, the Exact STEP surface contact tooltip).
+    #[test]
+    fn req_ui_12_no_setting_text_names_a_decision_or_a_requirement() {
+        let registry = Registry::builtin();
+        let mut found = Vec::new();
+        for strategy in registry.iter() {
+            let mut texts = vec![
+                strategy.label().to_owned(),
+                strategy.description().to_owned(),
+            ];
+            for spec in strategy.schema().parameters {
+                texts.push(spec.label.clone());
+                texts.push(spec.description.clone());
+                if let crate::params::ParameterKind::Choice { options, .. } = &spec.kind {
+                    texts.extend(options.iter().cloned());
+                }
+            }
+            for text in texts {
+                for reference in internal_references(&text) {
+                    found.push(format!("{}: {reference}", strategy.name()));
+                }
+            }
+        }
+        assert!(found.is_empty(), "{found:#?}");
+    }
     use openchuck_types::geometry::UnitVec3;
     use openchuck_types::ir::{MoveKind, PathTags, Segment, ToolPose, ToolpathGroup};
     use openchuck_types::units::Seconds;
@@ -963,6 +1065,7 @@ mod tests {
                      stock is cut: no part of the tool reaches over the gripped length of the \
                      stock."
                 )
+                .about(topic::HELD_REGION)
             ]
         );
         // A move that jumps over the whole keep-out is not kept either.
@@ -1007,10 +1110,13 @@ mod tests {
         // UI-12).
         assert_eq!(
             notes,
-            vec![Notice::warning(
-                "1 hole is not drilled: the tool would reach over the held region at the start \
+            vec![
+                Notice::warning(
+                    "1 hole is not drilled: the tool would reach over the held region at the start \
                  of the stock."
-            )]
+                )
+                .about(topic::HELD_REGION)
+            ]
         );
     }
 
