@@ -884,3 +884,85 @@ fn req_op_11_req_op_15_a_ring_that_starts_over_the_middle_of_a_flat_face_gets_it
     assert_turning_lead_in(&f, &lead_ins(&path)[0]);
     assert_turning_lead_out(&f, &lead_outs(&path)[0]);
 }
+
+/// One pass along X at A = 0 from X 10 to 20 in 0.5 mm steps, dropped onto
+/// the part. Not a product strategy.
+#[derive(Debug)]
+struct AlongX;
+
+impl Strategy for AlongX {
+    fn name(&self) -> &str {
+        "test_along_x"
+    }
+
+    fn label(&self) -> &str {
+        "Along X (test)"
+    }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+
+    fn schema(&self) -> ParameterSchema {
+        ParameterSchema::with_common(Vec::new())
+    }
+
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        _p: &Parameters,
+        _context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let points = (0..=20)
+            .filter_map(|i| {
+                let line = input.rotary.tool_line(
+                    Millimetres(10.0 + 0.5 * f64::from(i)),
+                    Degrees(0.0),
+                    Millimetres(0.0),
+                );
+                input
+                    .surface
+                    .drop_tool(input.tool, &line)
+                    .map(|c| CutPoint {
+                        tip: c.tip,
+                        a: Degrees(0.0),
+                        contact: c.contact,
+                    })
+            })
+            .collect();
+        Ok(vec![Pass {
+            points,
+            ..Pass::default()
+        }])
+    }
+}
+
+#[test]
+fn req_op_11_a_line_lead_s_plunge_counts_only_where_it_goes_into_the_stock() {
+    // A line lead's arc lies at the cut's height beside it: on the 15 mm
+    // cylinder, at 15 mm from the axis. In stock of radius 15 the descent to
+    // it is through air; in stock of radius 18 it goes 3 mm down through
+    // the stock, so it is listed for the host's tool check (decision 0544,
+    // the coordinator's answer of 9 Nov 2026; main never listed it). The
+    // moves themselves are the same either way.
+    let cyl = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    for (stock, plunges) in [(15.0, vec![]), (18.0, vec![0])] {
+        let f = Fixture::new(
+            MeshSurface::new(&cyl.mesh(3, 360)).unwrap(),
+            stock,
+            &ball(6.0),
+        );
+        let path = make(&f, &AlongX, &lead_values(), &[]).unwrap();
+        assert!(
+            path.group
+                .segments
+                .iter()
+                .any(|s| s.kind == MoveKind::LeadIn),
+            "stock {stock}: a lead"
+        );
+        assert_eq!(path.straight_plunges, plunges, "stock {stock}");
+    }
+}

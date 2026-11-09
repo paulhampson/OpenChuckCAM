@@ -291,6 +291,12 @@ impl Entry {
             let pose = b.pose(tip, head.a);
             b.push(MoveKind::Rapid, pose, None, None)?;
             let stop = stop_height(b, stock, common, start.height);
+            // As for the lead on a pass that turns A: where the stock stands
+            // above the arc's start, the plunge to it cuts on its way down
+            // and is listed for the host's tool check (decision 0544).
+            if stop > start.height + common.approach_distance.0 + EPS {
+                b.straight_plunges.push(pass);
+            }
             rapid_to(b, stop)?;
             let tip = b.rotary.to_model(start, head.a);
             let pose = b.pose(tip, head.a);
