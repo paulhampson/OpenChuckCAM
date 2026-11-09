@@ -94,8 +94,8 @@ A check set keeps the tool the operation's stock to leave away from its faces. H
 6. Click **Generate stale** at the bottom right. It took about 26 s on the test computer.
 
 <figure>
-<a href="images/blisk_selection_sets/06-faceflow-result.png"><img src="images/blisk_selection_sets/06-faceflow-result.png" width="1920" height="1080" alt="The face-flow passes in orange along the hub floor, with dotted patches marking the unreachable area along the blade walls, and the check set Blade wall hatched. Results: 1 operation(s), 2133 moves, 26.3 s to generate, and the lines quoted in the text."></a>
-<figcaption><b>Figure 6.</b> The passes follow the floor along the guide. The dotted area beside the walls is the part of the floor the 3 mm ball cannot reach.</figcaption>
+<a href="images/blisk_selection_sets/06-faceflow-result.png"><img src="images/blisk_selection_sets/06-faceflow-result.png" width="1920" height="1080" alt="The face-flow passes in orange along the hub floor, with white-cased black diagonal hatching marking the unreachable area along the blade walls, and the check set Blade wall hatched. Results: 1 operation(s), 2133 moves, 26.3 s to generate, and the lines quoted in the text."></a>
+<figcaption><b>Figure 6.</b> The passes follow the floor along the guide. The hatched area beside the walls is the part of the floor the 3 mm ball cannot reach.</figcaption>
 </figure>
 
 The Results say:

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="260" viewBox="0 0 760 260" font-family="Helvetica, Arial, sans-serif" font-size="13" role="img">
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<title>The blend angle off the ring</title>
+<rect x="0" y="0" width="760" height="260" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#222222"/></marker></defs>
+<text x="20.0" y="30.0" fill="#222222" text-anchor="start" font-size="14" font-weight="bold" font-style="normal">The blend in the unrolled surface at radius r</text>
+<line x1="70.0" y1="70.0" x2="150.0" y2="70.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<text x="66.0" y="74.0" fill="#1f5fbf" text-anchor="end" font-size="13" font-weight="normal" font-style="normal">ring k</text>
+<line x1="150.0" y1="70.0" x2="570.0" y2="70.0" stroke="#999999" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 5"/>
+<text x="360.0" y="60.0" fill="#222222" text-anchor="middle" font-size="12" font-weight="normal" font-style="normal">r * phi of arc round the part (the ring's direction)</text>
+<line x1="570.0" y1="70.0" x2="570.0" y2="180.0" stroke="#999999" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 5"/>
+<text x="578.0" y="125.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">s_k: the gap to the next</text>
+<text x="578.0" y="140.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">ring, along X</text>
+<line x1="150.0" y1="70.0" x2="570.0" y2="180.0" stroke="#1e8449" stroke-width="3" stroke-linecap="round"/>
+<line x1="570.0" y1="180.0" x2="660.0" y2="180.0" stroke="#1f5fbf" stroke-width="3" stroke-linecap="round"/>
+<text x="630.0" y="200.0" fill="#1f5fbf" text-anchor="middle" font-size="13" font-weight="normal" font-style="normal">ring k+1</text>
+<path d="M 220.0 70.0 A 70 70 0 0 1 217.7 87.7" fill="none" stroke="#222222" stroke-width="1.5"/>
+<text x="230.0" y="84.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">angle off the ring = atan(s_k / (r * phi))</text>
+<text x="381.0" y="152.5" fill="#1e8449" text-anchor="middle" font-size="13" font-weight="normal" font-style="normal">blend</text>
+<text x="20.0" y="232.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">Example: s_k 1.27 mm, r 10 mm, phi 45 degrees: 9 degrees off the ring.</text>
+<text x="20.0" y="248.0" fill="#222222" text-anchor="start" font-size="12" font-weight="normal" font-style="normal">Smaller r (nearer the axis): steeper. Larger phi: shallower.</text>
+</svg>

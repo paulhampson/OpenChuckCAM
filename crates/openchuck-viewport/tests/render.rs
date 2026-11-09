@@ -23,7 +23,7 @@ use openchuck_viewport::camera::{IDENTITY, multiply, place, rigid_inverse, rotat
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
     Camera, DisplayMode, Frame, Hatch, HatchKind, Layer, LayerStats, LineStyle, Outline,
-    Projection, Renderer, Scene, Slot, StandardView,
+    Projection, Renderer, SURFACE_HATCH_SPACING_MM, Scene, Slot, StandardView,
 };
 
 const SIZE: u32 = 64;
@@ -31,6 +31,7 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 const BLUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
+const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
 const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
 /// Runs a wgpu future to completion; native wgpu futures are ready at once
@@ -1003,10 +1004,10 @@ fn req_nfr_03_a_path_of_many_runs_is_one_draw_per_look_and_looks_the_same() {
     let stats = renderer.layer_stats(Layer::Paths);
     assert_eq!(stats.line_draws, 1, "{stats:?}");
     // One vertex buffer and one uniform buffer for the whole path: four
-    // points of 16 bytes per run, and 192 bytes of uniforms (160 before the
-    // dot pattern of decision 0515 added two vectors).
+    // points of 16 bytes per run, and 176 bytes of uniforms (160 before the
+    // area hatch of decision 0515 added a vector for its casing colour).
     assert_eq!(stats.buffers, 2, "{stats:?}");
-    assert_eq!(stats.bytes, 30 * 4 * 16 + 192, "{stats:?}");
+    assert_eq!(stats.bytes, 30 * 4 * 16 + 176, "{stats:?}");
     renderer.prepare(&device, &queue, &f);
     assert_eq!(renderer.uniform_writes(), 1);
     // A second look is a second draw, whatever the number of runs.
@@ -1023,7 +1024,7 @@ fn req_nfr_03_a_path_of_many_runs_is_one_draw_per_look_and_looks_the_same() {
     renderer.set_layer(&device, Layer::Stock, &fit);
     let stock = renderer.layer_stats(Layer::Stock);
     assert_eq!((stock.meshes, stock.line_draws, stock.buffers), (1, 0, 4));
-    assert_eq!(stock.bytes, 8 * 12 + 12 * 3 * 4 + 2 * 192, "{stock:?}");
+    assert_eq!(stock.bytes, 8 * 12 + 12 * 3 * 4 + 2 * 176, "{stock:?}");
 
     // The picture is the one drawn run by run: every run keeps its own dash
     // pattern. Half the runs in another layer are drawn as other draws.
@@ -1097,52 +1098,173 @@ fn share_of(pixels: &[[u8; 4]], colour: [f32; 4]) -> f64 {
     n as f64 / pixels.len() as f64
 }
 
-/// Decision 0515 item 4: dots are drawn over what lies beneath, in two
-/// tones, on the screen, at a fixed spacing whatever the zoom or the pixel
-/// density; where there is no dot, what lies beneath shows through.
-#[test]
-fn req_nfr_15_a_dot_pattern_is_drawn_in_two_tones_over_what_lies_beneath() {
-    let Some((device, queue)) = device() else {
-        return;
-    };
-    const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+/// The scene of the surface-hatch tests: the part's block, and its front
+/// face (triangles 4 and 5) carrying the hatch in a transparent layer of its
+/// own, drawn over the part's red face. Core blue, casing green.
+fn hatched_face() -> (Scene, Scene, Scene) {
     let block = block([-40.0; 3], [40.0; 3]);
     let mut fit = Scene::default();
     fit.add_mesh(&openchuck_viewport_block(20.0), &[], RED, BLACK);
     let mut part = Scene::default();
     part.add_mesh(&block, &[], RED, BLACK);
-    // The front face (triangles 4 and 5) carries the dots, over the part's
-    // own face; the dots' fill is transparent.
-    let dots = |zoom: f64, density: f32| {
-        let mut marked = Scene::default();
-        marked.add_mesh(&some(&block, &[4, 5]), &[], [0.0, 0.0, 0.0, 0.0], BLACK);
-        marked.meshes[0].hatch = Some(Hatch {
-            colour: BLUE,
-            kind: HatchKind::Dots { ring: GREEN },
-        });
-        let mut f = front(&fit, zoom);
-        f.pixels_per_point = density;
-        let pixels = render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], &f);
-        (
-            share_of(&pixels, BLUE),
-            share_of(&pixels, GREEN),
-            share_of(&pixels, RED),
-        )
+    let mut marked = Scene::default();
+    marked.add_mesh(&some(&block, &[4, 5]), &[], [0.0; 4], BLACK);
+    marked.meshes[0].hatch = Some(Hatch {
+        colour: BLUE,
+        kind: HatchKind::Surface { ring: GREEN },
+    });
+    (fit, part, marked)
+}
+
+/// The front view of `fit` zoomed by `zoom` and panned `pan` mm along X.
+fn panned_front(fit: &Scene, zoom: f64, pan: f64) -> Frame {
+    let mut f = front(fit, zoom);
+    f.camera.target[0] += pan;
+    f
+}
+
+/// The world X (millimetres) of the middle of each run of hatch pixels (not
+/// the part's red) along pixel row `y` of a front view.
+fn hatch_centres(pixels: &[[u8; 4]], y: u32, f: &Frame) -> Vec<f64> {
+    let per_mm = f64::from(f.pixels_per_mm());
+    let on = |x: u32| {
+        let p = pixels[(y * SIZE + x) as usize];
+        p[1] > 60 || p[2] > 60
     };
-    // A dot of radius 3.5 with a core of 2 on a 12 by 12 cell: the core is
-    // 12 pixels of 144 (8 %), the ring 20 (14 %).
-    let (core, ring, red) = dots(1.0, 1.0);
-    assert!((0.06..0.11).contains(&core), "core {core}");
-    assert!((0.10..0.19).contains(&ring), "ring {ring}");
-    assert!(red > 0.65, "the part shows between the dots: {red}");
-    // The same share at another zoom.
-    let (core_far, ring_far, _) = dots(0.5, 1.0);
-    assert!((core_far - core).abs() < 0.03 && (ring_far - ring).abs() < 0.05);
-    // At twice the pixel density the dots are as far apart in logical pixels,
-    // so the same share.
-    let (core_dense, ring_dense, _) = dots(1.0, 2.0);
-    assert!((core_dense - core).abs() < 0.04, "{core_dense}");
-    assert!((ring_dense - ring).abs() < 0.07, "{ring_dense}");
+    let mut out = Vec::new();
+    let mut x = 0;
+    while x < SIZE {
+        if on(x) {
+            let start = x;
+            while x < SIZE && on(x) {
+                x += 1;
+            }
+            let middle = f64::from(start + x) / 2.0;
+            out.push(f.camera.target[0] + (middle - f64::from(SIZE) / 2.0) / per_mm);
+        } else {
+            x += 1;
+        }
+    }
+    out
+}
+
+/// Decision record of the area pattern (issue 637, amending 0515 item 4),
+/// NFR-15: the hatch lines lie where parallel planes 1 mm apart cut the
+/// surface, so along the face their spacing is a length in millimetres,
+/// whatever the zoom; where there is no line, what lies beneath shows.
+#[test]
+fn req_nfr_15_a_surface_hatch_is_spaced_in_millimetres_whatever_the_zoom() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let (fit, part, marked) = hatched_face();
+    // Along X on a face the planes cut the surface every sqrt(3) times the
+    // spacing.
+    let period = 3.0_f64.sqrt() * f64::from(SURFACE_HATCH_SPACING_MM);
+    for zoom in [0.1, 0.14] {
+        let f = front(&fit, zoom);
+        assert!(f64::from(f.pixels_per_mm()) * period > 9.0, "zoom {zoom}");
+        let pixels = render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], &f);
+        let centres = hatch_centres(&pixels, 32, &f);
+        assert!(centres.len() >= 3, "zoom {zoom}: {centres:?}");
+        // Centres are found to a pixel (0.4 mm at this zoom), so each gap is
+        // within a pixel of the period and the mean over the row within a
+        // tenth of a millimetre.
+        let pixel = 1.0 / f64::from(f.pixels_per_mm());
+        for pair in centres.windows(2) {
+            assert!(
+                (pair[1] - pair[0] - period).abs() <= pixel + 0.1,
+                "zoom {zoom}: {centres:?} against {period}"
+            );
+        }
+        let mean = (centres[centres.len() - 1] - centres[0]) / (centres.len() - 1) as f64;
+        assert!((mean - period).abs() < 0.1, "zoom {zoom}: mean {mean}");
+        let red = share_of(&pixels, RED);
+        assert!(red > 0.5, "the part shows between the lines: {red}");
+    }
+}
+
+/// The same surface point gives the same hatch from two cameras: panning the
+/// camera moves the pixels, not the lines on the surface.
+#[test]
+fn req_nfr_15_a_surface_hatch_stays_on_the_surface_when_the_camera_moves() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let (fit, part, marked) = hatched_face();
+    let render_at =
+        |f: &Frame| render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], f);
+    let a = panned_front(&fit, 0.1, 0.0);
+    let b = panned_front(&fit, 0.1, 0.7);
+    let from_a = hatch_centres(&render_at(&a), 32, &a);
+    let from_b = hatch_centres(&render_at(&b), 32, &b);
+    assert!(from_a.len() >= 3 && from_b.len() >= 3);
+    // Each line seen from one camera is seen at the same world X from the
+    // other, within a fifth of a millimetre.
+    for x in &from_a {
+        if let Some(near) = from_b
+            .iter()
+            .map(|y| (x - y).abs())
+            .min_by(|p, q| p.total_cmp(q))
+            && x.abs() < 3.0
+        {
+            assert!(near < 0.2, "{x} from A has no line in {from_b:?}");
+        }
+    }
+    // At another zoom, too.
+    let c = panned_front(&fit, 0.14, 0.0);
+    let from_c = hatch_centres(&render_at(&c), 32, &c);
+    for x in from_c.iter().filter(|x| x.abs() < 3.0) {
+        let near = from_a
+            .iter()
+            .map(|y| (x - y).abs())
+            .fold(f64::INFINITY, f64::min);
+        assert!(near < 0.25, "{x} from C has no line in {from_a:?}");
+    }
+    // A pattern fixed to the screen would not move with the pan.
+    let screen_a = hatch_pixels(&render_at(&a));
+    let screen_b = hatch_pixels(&render_at(&b));
+    assert_ne!(screen_a, screen_b, "the lines moved on the screen");
+}
+
+/// The pixels of row 32 that are hatch.
+fn hatch_pixels(pixels: &[[u8; 4]]) -> Vec<u32> {
+    (0..SIZE)
+        .filter(|x| {
+            let p = pixels[(32 * SIZE + x) as usize];
+            p[1] > 60 || p[2] > 60
+        })
+        .collect()
+}
+
+/// Far away the lines would be a pixel or less apart: they fade to a flat
+/// tint instead of aliasing into moire (no shimmer when the view moves).
+#[test]
+fn req_nfr_15_a_surface_hatch_fades_to_a_flat_tint_at_a_distance() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let (fit, part, marked) = hatched_face();
+    let spread = |f: &Frame| {
+        let pixels = render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], f);
+        // The red channel along a row of the face, away from its edges.
+        let row: Vec<i32> = (26..38)
+            .map(|x| i32::from(pixels[(32 * SIZE + x) as usize][0]))
+            .collect();
+        let (low, high) = (
+            row.iter().copied().min().unwrap(),
+            row.iter().copied().max().unwrap(),
+        );
+        (high - low, pixels)
+    };
+    let (near, _) = spread(&front(&fit, 0.1));
+    assert!(near > 120, "lines near: {near}");
+    // About a pixel to a line: below what can be told apart.
+    let (far, pixels) = spread(&front(&fit, 1.5));
+    assert!(far < 45, "the far view is flat: {far}");
+    // It is still marked: the face is no longer the bare part's red.
+    let bare = render_layers(&device, &queue, &part, None, &[], &front(&fit, 1.5));
+    assert_ne!(pixels, bare, "a flat tint remains");
 }
 
 /// A cube of half-size `h` about the origin.

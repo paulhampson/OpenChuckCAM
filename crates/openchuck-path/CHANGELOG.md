@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.52.0 (PATHFEED, issue #641; decision 0547, accepted)
+## 0.52.0 (PATHFEED, issues #641 and #643; decisions 0547 and 0548, accepted)
 
 - **Breaking (0.52.0, or the next free version, as the Merge Manager sequences it):** `Pass` gains the public field `plunge_fed`, the indices of points reached at the plunge feed as an entry move (`MoveKind::LeadIn`); assembly writes them so, and leaves such a pass unmerged at walls (decision 0050) so the indices keep their points. `facing::end::EndPassPlan` gains `passes_above_area`. `topic::STOCK_ABOVE_THE_AREA` is added. A host that builds `Pass` by literal adds `plunge_fed: Vec::new()`.
 - **Changed output (End facing):**
@@ -9,6 +9,8 @@
   - Where the stock rises above the requested area (Part or Part plus tabs), bands from the stock's top down to the area are added, each no deeper than the Stepdown, with an information note (topic "Stock above the area") counting the passes and their time at the cutting feed (the owner's answer to question 4).
   - Final validation checks the depth each End sweep cuts along the tool, from the stock's top at its view or the band above it, against the Stepdown, and refuses a deeper cut naming it.
   - The slice check allows the written-motion share of the tolerance, so a depth that divides exactly into full-size slices posts.
+- **Changed output (decision 0548, accepted by the owner on 8 Nov 2026):** in rotary roughing and in Facing's Flat and Round modes, a cutting move inside a pass that goes down along the tool axis faster than the plunge feed is slowed so its tip goes down at the plunge feed: its time becomes the descent at the plunge feed and its contact feed is lowered to match. Nothing else changes: a move already that slow, a level or rising move, entries, exits and links keep their feeds, and every other strategy (finishing included) is unchanged (OI-2134). A program changes only where a roughing pass came down faster than the plunge feed; no stored golden program is a roughing job.
+- **Added:** `Strategy::limits_descent_feed` (a provided method, `false` by default) says whether a strategy takes that rule; `RotaryRoughing` returns `true`, and `Facing` returns `true` for the Flat and Round shapes.
 
 ## 0.51.0 (MSGREVIEW, decision 0538 part a and decision 0536 steps 2 and 3, and MSGSTEP5, decision 0536 step 5)
 

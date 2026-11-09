@@ -1,6 +1,6 @@
 # 0548: A steep descent inside a pass goes down no faster than the plunge feed (lane PATHFEED; issue #643)
 
-- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane PATHFEED on 8 Nov 2026; the owner answered questions 1 and 2 the same day (option A for each, as recommended, with finishing revisited after the release, OI-2134), and the decision below is written to those answers. Not yet built (issue #643).
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane PATHFEED on 8 Nov 2026; the owner answered questions 1 and 2 the same day (option A for each, as recommended, with finishing revisited after the release, OI-2134), and the decision below is written to those answers. Built in lane PATHFEED's pull request #654 (issue #643; section "As built").
 - **What it amends:** the shared path assembly's feed for moves inside a pass (`crates/openchuck-path/src/assemble.rs`), alongside [decision 0050](0050-walls-merge-micro-moves.md) (wall moves, which it leaves merged and timed as they are) and [decision 0026](0026-entry-moves.md) (entries, already at the plunge feed). The verification plan's OP-11 row gains the tests below. The requirements and the architecture are unchanged.
 - **Requirements:** OP-11 (feeds), OP-03 (rotary roughing), GC-07 / NFR-06 (golden programs and determinism), NFR-12.
 - **Date:** 8 Nov 2026.
@@ -88,6 +88,31 @@ No stored golden program is a rotary roughing job. A rule for every strategy cha
 - **OI-2133:** the owner's answers to questions 1 and 2. Closed: A for each (8 Nov 2026, relayed).
 - **OI-2134:** whether finishing descents get the same rule, revisited after the release (the owner's answer to question 1).
 
+## As built (lane PATHFEED, #643, pull request #654)
+
+- **Where.** `Strategy::limits_descent_feed` (a provided method, `false` by default) is `true` for `RotaryRoughing` and, for `Facing`, for the Flat and Round shapes. `generate` passes the plunge feed to a crate-private `assemble_limited`; the public `assemble_with_entry` is unchanged and passes none. No public item changes, so there is no version bump.
+- **The rule.** Right after each cutting move inside a pass is assembled, a move whose tip goes down along the tool axis is given a time of at least (descent + 0.001 mm) / plunge feed, and its contact feed is lowered to match; a move already that slow is left as it is.
+- **The 0.001 mm.** One written unit: rounding the two heights to three decimals can add up to that to a descent. Without it the LinuxCNC program read from its own words went down up to 2.4 % faster than the plunge feed on short drops of the Baluster. It is decision 0034's allowance, for the tool axis.
+- **Notes.** A "the machine's feed limits slow this move" note on a move this rule slows is dropped, since the rule now sets its time.
+- **Entries.** Entry plunges at a plunge feed of 100 mm/min are written `F100.1` on `main` too (rounded Z); this record leaves entries alone, so they are not changed here.
+
 ## Verification
 
-Measured on `main` `1f3675d` (8 Nov 2026), Linux x86_64 container, release build, with a throwaway example (`crates/openchuck-app/examples/probe_pathfeed.rs`, not committed) on the public Baluster example and the public `testdata/stl/blisk.stl` (placed in a copy of the Baluster project with a 42 x 52 mm cylinder and no workholding), and a throwaway script over the stored LinuxCNC golden programs. Nothing was run on a machine.
+**Before building.** Measured on `main` `1f3675d` (8 Nov 2026), Linux x86_64 container, release build, with a throwaway example (`crates/openchuck-app/examples/probe_pathfeed.rs`, not committed) on the public Baluster example and the public `testdata/stl/blisk.stl` (placed in a copy of the Baluster project with a 42 x 52 mm cylinder and no workholding), and a throwaway script over the stored LinuxCNC golden programs. Nothing was run on a machine.
+
+
+**As built (#654; branch `claude/lane-pathfeed-643-wip`, on `main` at release).** Each test was written from this record and watched failing before the code. Times are uninstrumented (`cargo nextest run`), Linux x86_64 container.
+
+| Test | What it checks | Seconds |
+| --- | --- | ---: |
+| `descent_feed::req_op_11_req_op_03_roughing_drop_off_a_raised_floor_goes_down_no_faster_than_the_plunge_feed` (`openchuck-path`) | Rotary roughing of a cylinder with a steep raised band and one with a raised lobe: no cutting move goes down faster than the plunge feed (683 mm/min against 150 before) | 3.0 |
+| `descent_feed::req_op_11_shallow_descent_and_level_moves_keep_the_cutting_feed` | Only drops that would go down too fast change, each to exactly (descent + 0.001 mm) / plunge feed | 1.5 |
+| `descent_feed::req_op_11_finishing_descent_is_unchanged` | Helical finishing on the same part keeps every feed | 1.3 |
+| `descent_feed::req_op_11_only_roughing_strategies_limit_their_descents` | Roughing and Facing Flat and Round take the rule; End, Box and finishing do not | 0.007 |
+| `descent_feed::req_gc_07_req_nfr_06_descent_feed_is_deterministic_at_1_2_n_threads` | The same path at 1, 2 and 4 threads | 5.9 |
+| `descent_feed::req_op_11_req_op_03_baluster_roughing_goes_down_no_faster_than_the_plunge_feed` (`openchuck-app`) | The public Baluster example (plunge feed 100, Stepdown 2, Stepover 3): the path, and the LinuxCNC program read from its words to the F word's 0.1 mm/min resolution, go down no faster than the plunge feed (278 mm/min with the rule off) | 6.3 |
+| `descent_feed::req_gc_07_req_nfr_06_descent_feed_is_deterministic_at_1_2_n_threads` (`openchuck-app`) | Identical G-code at 1, 2 and 4 threads with both posts | 35.6 |
+
+Results on the branch at `main` `1f3675d`: `openchuck-path` 856 of 856 and `openchuck-app` with `openchuck-cli` 922 of 922 passed, including every golden program, none of which changed (none is a roughing job, as predicted). After merging `main` at release the descent tests pass again. `cargo fmt`, `cargo clippy --workspace --all-targets` (clean) and `cargo xtask deps`, `licences`, `records`, `trace` and `messages` pass. Line coverage on the new tests: every new line runs except three defensive branches (no segment at the index, a contact length of zero, a plunge feed that is not positive), which cannot happen after a successful move with checked settings; the instrumented build was cleaned afterwards.
+
+Not verified: no LinuxCNC replay was run, and nothing was run on a machine. Generated G-code remains the user's to verify before it is run (NFR-12).
