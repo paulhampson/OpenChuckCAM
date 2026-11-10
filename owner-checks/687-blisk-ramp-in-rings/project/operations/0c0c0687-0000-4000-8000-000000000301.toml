@@ -1,0 +1,22 @@
+schema = 27
+id = "0c0c0687-0000-4000-8000-000000000301"
+order = "V"
+name = "Rough rings, ramp"
+setup = "b1150000-0000-4000-8000-000000000002"
+strategy = "rotary_roughing"
+tool = "b1150000-0000-4000-8000-000000000101"
+selections = []
+
+[parameters]
+allow_single_point_plunge = true
+entry = "ramp"
+feed = 600.0
+form = "continuous"
+pass_shape = "rings"
+plunge_feed = 200.0
+ramp_angle = 3.0
+ramp_angle_max = 20.0
+ramp_steeper_near_axis = true
+stepdown = 1.0
+stepover = 1.0
+stock_to_leave = 0.0
