@@ -38,7 +38,7 @@ def run(cap, work):
     cap.click(1762, 712, 1.5)                  # Finishing layers
     cap.generate()
     cap.shot("05-finishing-layers")
-    cap.click(1762, 626, 1.5)                  # untick Face free ends
+    cap.click(1763, 760, 1.5)                  # untick Face free ends (Tool and feeds is open again here)
     cap.generate()
     cap.click(452, 789, 2)                     # Results
     cap.click(813, 831, 1)                     # Information off: warnings only (the feed-limit lines, #600)

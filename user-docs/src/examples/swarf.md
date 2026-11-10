@@ -31,10 +31,10 @@ Make two face sets as in step 1 of [Selection sets on a blisk](selection-sets.md
 <figcaption><b>Figure 1.</b> A swarf operation with only the face to cut.</figcaption>
 </figure>
 
-3. Click **Generate stale**. It took about 29 s on the test computer.
+3. Click **Generate stale**. It took about 30 s on the test computer.
 
 <figure>
-<a href="images/blisk_swarf/02-flat.png"><img src="images/blisk_swarf/02-flat.png" width="1920" height="1080" alt="The swarf pass drawn in orange along the blade root. Results: 1 operation(s), 47 moves, Generated Blade swarf, and the warnings quoted in the text."></a>
+<a href="images/blisk_swarf/02-flat.png"><img src="images/blisk_swarf/02-flat.png" width="1920" height="1080" alt="The swarf pass drawn in orange along the blade root. Results: 1 operation, 47 moves, 29.7 s to generate, Errors 0, Warnings 3, Generated Blade swarf, and the warnings quoted in the text."></a>
 <figcaption><b>Figure 2.</b> One pass along the blade with the 3 mm flat end mill.</figcaption>
 </figure>
 
@@ -46,10 +46,10 @@ This is **Keep off the end faces** at work. It is on by default: each pass stops
 
 The other two swarf warnings are about the faces along the ends of the rulings:
 
-- "Swarf on face 19 cuts 0.023 mm into face 20, which meets it along the ends of its rulings, at (57.593, 1.020, 9.305), more than this operation's tolerance of 0.01 mm. To keep the tool off it, put face 20 in an avoid set on Cut short, which lifts the tool clear of it, or set a negative Tip extension to pull the tool up the face ..."
+- "Overcut (operation 'Blade swarf'): swarf on face 19 cuts 0.023 mm into face 20, which meets it along the ends of its rulings, at (57.593, 1.020, 9.305), more than this operation's tolerance of 0.01 mm. To keep the tool off it, put face 20 in an avoid set on Cut short, which lifts the tool clear of it, or set a negative Tip extension to pull the tool up the face ..."
 - The same for face 1, the outer cylinder at the tips: 0.014 mm.
 
-And one is about the blade itself: "Swarf on face 19 cuts into the finished surface by 0.0158 mm ... The face is ruled but not developable: it is made of straight lines, but its surface turns 8.62 degrees along each of them, so the straight side of the tool cannot lie flat on it everywhere". The blade twists, so a straight tool cannot follow it exactly. The warning says what you can do: accept it by raising **Tolerance** to 0.0158 mm, or use a tool with a smaller radius or a taper.
+And one is about the blade itself: "Overcut (operation 'Blade swarf'): swarf on face 19 cuts into the finished surface by 0.0158 mm ... The face is ruled but not developable: it is made of straight lines, but its surface turns 8.62 degrees along each of them, so the straight side of the tool cannot lie flat on it everywhere". The blade twists, so a straight tool cannot follow it exactly. The warning says what you can do: accept it by raising **Tolerance** to 0.0158 mm, or use a tool with a smaller radius or a taper.
 
 ## 3. Swarf with a ball end mill
 
