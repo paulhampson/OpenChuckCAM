@@ -5,7 +5,7 @@
 3. Press **Apply** at the bottom of the section.
 
 <figure>
-  <img src="images/06-workholding.png" width="1366" height="768"
+  <img src="images/06-workholding.png" width="1920" height="1080"
        alt="The Workholding and tabs section with an 8 mm held region at the start of the stock, shown hatched in the view.">
   <figcaption><b>Figure 1.</b> An 8 mm held region at the start of the stock, drawn hatched in the view.</figcaption>
 </figure>

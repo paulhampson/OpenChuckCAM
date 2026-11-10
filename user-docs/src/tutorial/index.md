@@ -14,7 +14,7 @@ OpenChuckCAM is in early development. See the [known limitations](../start/limit
 - The program. See [Install and first run](../start/install.md).
 - One file from the OpenChuckCAM repository: [`testdata/examples/baluster/baluster.stl`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/baluster) (269 KB). Save it somewhere you will find it again. A finished copy of the project is in `testdata/examples/baluster/baluster-project` in the same folder, if you want to compare or skip ahead. `generate.py` beside the model writes it again.
 
-The screenshots were taken at 1366 x 768 with a software renderer, so colours and line widths on your screen may differ a little. File paths in them are from the machine that took them; yours will be your own. The program is changing, so a label may differ from the one shown here; the steps stay the same.
+The screenshots were taken at 1920 x 1080 with a software renderer, so colours and line widths on your screen may differ a little. File paths in them are from the machine that took them; yours will be your own. The program is changing, so a label may differ from the one shown here; the steps stay the same.
 
 ## Words used in this tutorial
 

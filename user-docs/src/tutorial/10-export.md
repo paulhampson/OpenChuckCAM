@@ -3,7 +3,7 @@
 1. On the Simulate step, press **Post and export...** (bottom right), or choose **File > Post and export...**. The dialog opens.
 
 <figure>
-  <img src="images/16-export-dialog.png" width="1366" height="768"
+  <img src="images/16-export-dialog.png" width="1920" height="1080"
        alt="The Post and export dialog: the Makera Z1 post, one file per setup, the output folder, file name templates and a preview of the start of the program.">
   <figcaption><b>Figure 1.</b> The Post and export dialog, with a preview of the start of the program.</figcaption>
 </figure>
@@ -28,7 +28,7 @@ Files to write
 2. Scroll down to **Checks before writing**.
 
 <figure>
-  <img src="images/17-export-checks.png" width="1366" height="768"
+  <img src="images/17-export-checks.png" width="1920" height="1080"
        alt="The Checks before writing part of the dialog: the tool numbers table, a warning that machine values are not confirmed, and the notice to verify the G-code before running it with the box I will verify this G-code before running it on a machine.">
   <figcaption><b>Figure 2.</b> The checks before writing: the tool numbers, the warning about unconfirmed machine values, and the notice to verify the G-code.</figcaption>
 </figure>
@@ -38,7 +38,7 @@ Files to write
 5. Press **Write G-code**.
 
 <figure>
-  <img src="images/18-export-result.png" width="1366" height="768"
+  <img src="images/18-export-result.png" width="1920" height="1080"
        alt="The Export result window: Wrote 3 files, listing 01-setup-1.nc, baluster-setup-sheet.html and baluster-setup-sheet.pdf in the output folder.">
   <figcaption><b>Figure 3.</b> The result: three files written to the output folder.</figcaption>
 </figure>

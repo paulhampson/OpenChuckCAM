@@ -7,7 +7,7 @@ The Setup step describes the machine, the stock and how the work is held.
 3. Press **Use this machine**.
 
 <figure>
-  <img src="images/04-machine.png" width="1366" height="768"
+  <img src="images/04-machine.png" width="1920" height="1080"
        alt="The Setup step after choosing the Makera Z1: a side view and an end view of the part on the rotary axis, and the machine's values listed in the Inspector.">
   <figcaption><b>Figure 1.</b> The Setup step with the Makera Z1 chosen. Note "6 machine values unconfirmed" at the bottom right.</figcaption>
 </figure>

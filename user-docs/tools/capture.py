@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Takes the screenshots of the user guide's tutorial from the real application (decision 0400, section G).
 
-It starts a virtual X display (Xvfb; 1366 x 768 for the tutorial, 1920 x 1080 for the heroes), runs the release build of
+It starts a virtual X display (Xvfb, 1920 x 1080), runs the release build of
 `openchuck-ui` on it with Mesa's lavapipe software Vulkan driver (the same way
 decision 0131 took the reference screens), and drives the program with
 `xdotool` clicks and key presses at fixed positions, as a user would. Each
@@ -41,14 +41,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 ENV = {}
 # The window size and renderer of every capture (decision 0131 took the reference screens the same way).
-# The hero images (and the worked examples, capture_example.py) are taken at 1920 x 1080, the
-# owner's choice of 7 Nov 2026 for the guide's screenshots. The tutorial's click positions were
-# recorded at 1366 x 768 and stay at that size until they are recorded again at 1920 x 1080 at the
-# release recapture; until then the tutorial's pages are all 1366 x 768. (The product's own
-# layout tests at 1366 x 768, UI-16, are a different thing.)
+# The tutorial, the hero images and the worked examples (capture_example.py) are all taken at
+# 1920 x 1080, the owner's choice of 7 Nov 2026 for the guide's screenshots; the tutorial's click
+# positions were recorded again at that size for the 0.55 release recapture (lane SHOTS). (The
+# product's own layout tests at 1366 x 768, UI-16, are a different thing.)
 SCREEN = (1920, 1080)
-TUTORIAL_SCREEN = (1366, 768)
-WINDOW = "1366x768"
+WINDOW = "1920x1080"
 RENDERER = "Mesa lavapipe (software Vulkan) on Xvfb"
 
 
@@ -101,7 +99,7 @@ def grab(path):
     run("import", "-window", "root", str(path))
 
 
-def shot(name, quiet=(700, 745)):
+def shot(name, quiet=(1000, 1058)):
     """The mouse goes to a quiet spot of the status bar so no hover is drawn."""
     pause(1.0)
     move(*quiet)
@@ -111,23 +109,40 @@ def shot(name, quiet=(700, 745)):
     print("captured", path.name, flush=True)
 
 
-def pixel(x, y):
-    from PIL import Image  # only the capture needs Pillow, not the record or its tests
-
-    path = WORK / "probe.png"
-    grab(path)
-    with Image.open(path) as im:
-        return im.convert("RGB").getpixel((x, y))
+def status():
+    """The left end of the status bar ("Ready", or the progress of a job), as raw pixels."""
+    out = subprocess.run(["import", "-window", "root", "-crop", "120x24+0+1046", "rgb:-"],
+                         env=ENV, capture_output=True, check=False)
+    return out.stdout
 
 
-def wait_green(points, timeout, what):
-    """Waits for the 'up to date' dots of the operations in the project tree."""
-    end = time.time() + timeout
-    while time.time() < end:
-        if all((lambda p: p[1] > 150 and p[0] < 110)(pixel(*pt)) for pt in points):
-            return
-        pause(3)
-    sys.exit(f"timed out waiting for {what}")
+def generate(timeout=900, at=(1854, 1058)):
+    """Click Generate stale at `at` and wait, bounded, until the status bar reads as it did before
+    (Ready). Shared by the tutorial, the heroes and every worked example (issue 629).
+
+    Unlike a wait for green dots, this also ends when a run finishes with warnings. It is a
+    heuristic on the status bar's pixels, sampled every 5 s: it cannot tell a run that never started
+    (for example an operation in error) from one that ended between two samples, so after 30 s with
+    no change it prints "nothing ran" and goes on. Check the screens before committing them. A run
+    still going after `timeout` seconds raises TimeoutError.
+    """
+    ref = status()
+    click(*at, 3)
+    waited, busy = 0, False
+    while waited < timeout:
+        pause(5)
+        waited += 5
+        now = status()
+        busy = busy or now != ref
+        if busy and now == ref:
+            break
+        if not busy and waited >= 30:
+            print("nothing ran: the operation may be in error", flush=True)
+            break
+    else:
+        raise TimeoutError(f"generation did not end within {timeout} s")
+    pause(2)
+    print("generated in about", waited, "s", flush=True)
 
 
 def record(images, commit, date):
@@ -185,7 +200,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     HERO.mkdir(parents=True, exist_ok=True)
     shutil.copy(REPO / "testdata/examples/baluster/baluster.stl", WORK / "baluster.stl")
-    width, height = SCREEN if args.heroes else TUTORIAL_SCREEN
+    width, height = SCREEN
     project = []
     if args.heroes:
         shutil.copytree(REPO / "testdata/examples/baluster/baluster-project", WORK / "project")
@@ -227,16 +242,13 @@ def main():
 
     for path in thumbnails.make(HERO):
         print("wrote", path)
-    global WINDOW
-    WINDOW = f"{width}x{height}"
     print("wrote", record(HERO if args.heroes else OUT, commit, time.strftime("%Y-%m-%d")))
 
 
 def heroes():
     """The README's and the front page's two images, from the tutorial's finished project, at 1920 x 1080."""
     click(300, 54, 2)                                # 3 Operations
-    click(1855, 1058, 5)                             # Generate stale (2)
-    wait_green([(113, 551), (113, 579)], 900, "the toolpaths")
+    generate(900)                                    # Generate stale (2)
     # Hero 1: the finishing path in a large 3D view.
     click(90, 551, 1)                                # hide the Rough path
     click(1558, 789, 1.5)                            # fold the dock
@@ -264,119 +276,118 @@ def heroes():
 
 def tutorial(args):
     # 1. A new project.
-    click(497, 185, 2)                               # New project...
-    click(645, 363, 0.5)                             # Parent folder
+    click(773, 340, 2)                               # New project...
+    click(922, 519, 0.5)                             # Parent folder
     type_text(str(WORK))
-    click(645, 405, 0.5)                             # Project name
+    click(922, 570, 0.5)                             # Project name
     key("ctrl+a")
     type_text("Baluster")
     shot("01-new-project")
-    click(521, 458, 3)                               # OK
+    click(798, 603, 3)                               # OK
     shot("02-project-created")
 
     # 2. Import the model.
-    click(501, 185, 2)                               # Import model...
-    click(562, 194, 0.5)                             # path field
+    click(774, 341, 2)                               # Import model...
+    click(839, 350, 0.5)                             # path field
     type_text(str(WORK / "baluster.stl"))
     key("Return")
-    click(796, 194, 5)                               # Check and preview
+    click(1073, 350, 5)                              # Check and preview
     shot("03-import-model")
-    scroll(680, 400, 3)                              # down to the mesh check and the copy option
+    scroll(957, 556, 3)                              # down to the mesh check and the copy option
     shot("03b-import-check")
-    click(849, 626, 4)                               # Add to project
+    click(1126, 781, 4)                              # Add to project
 
     # 3. Setup: machine, stock, holding.
-    click(1290, 746, 3)                              # Continue to setup
-    click(1181, 54, 2.5)                             # Add setup
-    click(1100, 495, 2.5)                            # Use this machine (Makera Z1)
+    click(1844, 1058, 3)                             # Continue to setup
+    click(1735, 54, 2.5)                             # Add setup
+    click(1640, 482, 2.5)                            # Use this machine (Makera Z1)
     shot("04-machine")
     click(96, 343, 2)                                # Stock in the tree
-    click(1260, 223, 1.5)                            # Shape list
-    click(1255, 256, 2.5)                            # Cylinder
+    click(1814, 210, 1.5)                            # Shape list
+    click(1810, 244, 2.5)                            # Cylinder
     shot("05-stock")
-    click(1270, 299, 1.5)                            # Material
-    click(1262, 460, 1.5)                            # Hardwood
+    click(1820, 297, 1.5)                            # Material
+    click(1815, 459, 1.5)                            # Hardwood
     click(96, 427, 2)                                # Workholding in the tree
-    click(1234, 451, 2)                              # Held at the start
-    fill(1282, 483, "8")                             # Grip length
-    scroll(1190, 500, 12)
-    click(1323, 705, 2.5)                            # Apply
+    click(1787, 674, 2)                              # Held at the start
+    fill(1830, 706, "8")                             # Grip length
+    scroll(1744, 700, 12)
+    click(1877, 1016, 2.5)                           # Apply
     shot("06-workholding")
 
     # 4. Tools.
-    click(1288, 746, 3)                              # Continue to operations
-    click(1181, 54, 2.5)                             # Tool library...
-    click(226, 90, 0.5)
+    click(1842, 1058, 3)                             # Continue to operations
+    click(1735, 54, 2.5)                             # Tool library...
+    click(502, 225, 0.5)                             # Search tools
     type_text("3.175")
-    click(177, 464, 1.5)                             # Z1 O-flute 3.175x25
+    click(452, 598, 1.5)                             # Z1 O-flute 3.175x25
     shot("07-tool-library")
-    click(1219, 708, 2)                              # Add to project
-    click(165, 374, 1.5)                             # Z1 ball 3.175x22
-    click(1219, 708, 2)
+    click(1496, 882, 2)                              # Add to project
+    click(442, 508, 1.5)                             # Z1 ball 3.175x22
+    click(1496, 882, 2)
     shot("08-tools-in-project")
-    click(1141, 708, 2)                              # Close
+    click(1419, 882, 2)                              # Close
 
     # 5. Operations.
-    click(1066, 54, 2)                               # New operation
-    fill(590, 172, "Rough")
+    click(1608, 54, 2)                               # New operation
+    fill(867, 327, "Rough")
     shot("09-add-roughing")
-    click(430, 630, 3)                               # Add
-    fill(1275, 449, "1")                             # Stepdown
-    click(722, 99, 1.5)                              # Fit
+    click(706, 785, 3)                               # Add
+    fill(1827, 728, "1")                             # Stepdown
+    click(720, 98, 1.5)                              # Fit
     shot("10-roughing-settings")
-    click(1081, 54, 2)                               # New operation
-    click(680, 224, 1.5)                             # Strategy list
+    click(1642, 54, 2)                               # New operation (Duplicate now stands left of it)
+    click(958, 378, 1.5)                             # Strategy list
     shot("11-strategy-list")
-    click(467, 369, 1.5)                             # Helical finishing
-    click(517, 360, 1.5)                             # Tool
-    click(500, 457, 1)                               # Z1 ball 3.175x22
-    fill(590, 172, "Finish")
-    click(430, 630, 3)                               # Add
+    click(744, 525, 1.5)                             # Helical finishing
+    click(793, 514, 1.5)                             # Tool
+    click(780, 612, 1)                               # Z1 ball 3.175x22
+    fill(867, 327, "Finish")
+    click(706, 785, 3)                               # Add
     shot("12-finishing-settings")
     # Adaptive spacing is on by default. On this piece it cannot confirm the spacing between
     # some passes and leaves a partial path that has to be accepted before export, so the
     # tutorial turns it off. Scrolled to the end of the Inspector it is at a fixed place.
-    scroll(1190, 400, 40)
-    click(1222, 513, 1.5)                            # Adaptive spacing off
+    scroll(1744, 600, 40)
+    click(1775, 792, 1.5)                            # Adaptive spacing off
     shot("12b-adaptive-spacing-off")
 
     # 6. Generate.
-    click(1301, 746, 5)                              # Generate stale (2)
-    wait_green([(113, 551), (113, 579)], 600, "the toolpaths")
-    click(577, 99)                                   # Front view
-    click(722, 99, 1.5)                              # Fit
-    click(90, 579, 1.5)                              # hide the Finish path
+    generate(900)                                    # Generate stale (2)
+    click(577, 98)                                   # Front view
+    click(720, 98, 1.5)                              # Fit
+    click(90, 578, 1.5)                              # hide the Finish path
     shot("13-generated")
-    click(90, 579, 1)                                # show it again
+    click(90, 578, 1)                                # show it again
 
     # 7. Simulate.
-    click(1297, 746, 5)                              # Continue to simulate
-    pause(60)                                        # the cut part of the whole program
-    click(299, 99, 1)                                # Shaded
-    click(722, 99, 1.5)                              # Fit
-    scroll(640, 290, 6, down=False)                  # zoom in
-    click(429, 520, 10)                              # next operation: after roughing
+    click(1846, 1058, 5)                             # Continue to simulate
+    pause(90)                                        # the cut part of the whole program
+    click(299, 98, 1)                                # Shaded
+    click(720, 98, 1.5)                              # Fit
+    scroll(920, 440, 6, down=False)                  # zoom in
+    click(428, 830, 15)                              # next operation: after roughing
     shot("15-after-roughing")
-    click(540, 634, 1)                               # speed 10 000x
-    click(355, 520, 1)                               # play
-    pause(30)
+    click(540, 945, 1)                               # speed 10 000x
+    click(355, 830, 1)                               # play
+    pause(60)                                        # until "Updating cut part" has gone
     shot("14-simulate-final")
 
     # 8. Post and export.
-    click(1303, 746, 3)                              # Post and export...
-    click(420, 465, 0.5)                             # Output folder
+    click(1854, 1058, 3)                             # Post and export...
+    click(697, 620, 0.5)                             # Output folder
     type_text(str(WORK / "output"))
     key("Return")
     shot("16-export-dialog")
-    scroll(400, 560, 8)
+    scroll(677, 716, 8)
     shot("17-export-checks")
-    click(220, 616, 1.5)                             # I will verify this G-code...
-    click(1113, 702, 5)                              # Write G-code
+    click(498, 771, 1.5)                             # I will verify this G-code...
+    click(1389, 858, 5)                              # Write G-code
     shot("18-export-result")
-    click(1025, 589, 1)                              # Dismiss
-    click(1036, 702, 1)                              # Cancel
+    click(1301, 744, 1)                              # Dismiss
+    click(1310, 858, 1)                              # Cancel
     click(19, 17, 1)                                 # File
-    click(28, 146, 3)                                # Save
+    click(28, 178, 3)                                # Save
     if args.keep_project:
         # copytree refuses an existing folder, so nothing of the user's is replaced.
         shutil.copytree(WORK / "Baluster", Path(args.keep_project), ignore=shutil.ignore_patterns(".openchuck-recovery"))

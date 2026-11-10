@@ -6,7 +6,7 @@
 The status bar shows the progress. On this part it takes a few minutes on a computer with no graphics card, and less with one.
 
 <figure>
-  <img src="images/13-generated.png" width="1366" height="768"
+  <img src="images/13-generated.png" width="1920" height="1080"
        alt="The toolpath of the Rough operation drawn over the part in the front view, with the Finish path hidden by its eye icon.">
   <figcaption><b>Figure 1.</b> The roughing toolpath in orange in the front view, with the held region hatched on the left. The Finish path is hidden.</figcaption>
 </figure>

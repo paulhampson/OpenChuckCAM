@@ -5,7 +5,7 @@
 3. Press **Check and preview**.
 
 <figure>
-  <img src="images/03-import-model.png" width="1366" height="768"
+  <img src="images/03-import-model.png" width="1920" height="1080"
        alt="The Import model dialog after checking: the units set to mm, the largest side 61 mm, and the placement Centre on the rotary axis, with the part drawn behind the dialog.">
   <figcaption><b>Figure 1.</b> The Import model dialog after the check: the units and the placement. The part's size is in the panel behind the dialog.</figcaption>
 </figure>
@@ -21,7 +21,7 @@ Placement
 Scroll down in the dialog for the mesh check and the copy option.
 
 <figure>
-  <img src="images/03b-import-check.png" width="1366" height="768"
+  <img src="images/03b-import-check.png" width="1920" height="1080"
        alt="The lower part of the Import model dialog: the mesh check, with zero holes, flipped triangles, degenerate triangles and non-manifold edges, and the ticked box Copy the file into the project folder.">
   <figcaption><b>Figure 2.</b> The mesh check, and <b>Copy the file into the project folder</b>, ticked.</figcaption>
 </figure>

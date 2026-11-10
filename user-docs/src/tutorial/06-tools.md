@@ -5,7 +5,7 @@
 3. Select **Z1 O-flute 3.175x25**.
 
 <figure>
-  <img src="images/07-tool-library.png" width="1366" height="768"
+  <img src="images/07-tool-library.png" width="1920" height="1080"
        alt="The Tool library window with the Z1 O-flute 3.175x25 flat end mill selected, showing its dimensions and its cutting data for Hardwood, Plastic and Softwood.">
   <figcaption><b>Figure 1.</b> The tool library with the Z1 O-flute 3.175x25 selected. Its cutting data by material is on the right.</figcaption>
 </figure>
@@ -22,7 +22,7 @@ Then add both tools to the project:
 3. Press **Add to project** again.
 
 <figure>
-  <img src="images/08-tools-in-project.png" width="1366" height="768"
+  <img src="images/08-tools-in-project.png" width="1920" height="1080"
        alt="The Tool library window with both tools listed under This project as T104 and T204.">
   <figcaption><b>Figure 2.</b> Both tools under <b>This project</b>, numbered T104 and T204.</figcaption>
 </figure>
