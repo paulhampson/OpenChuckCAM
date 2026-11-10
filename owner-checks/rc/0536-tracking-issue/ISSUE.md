@@ -96,6 +96,25 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 - [ ] Step 6 passes
 
+## Follow-up (#765, fixed in #769): no false shoulder warning beside the held bar
+
+**What changed** ([decision 0551](https://github.com/paulhampson/OpenChuckCAM/blob/main/docs/decisions/0551-the-held-regions-own-end-is-not-a-shoulder.md)). The tutorial's Finish warned "the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589": X 8.589 is one tool radius past the held bar's own end (X 7), not a shoulder of the part. Only faces of the part are named now. The programs are byte-identical; only the warning goes. The "nothing within one tool radius of the held region ... is cut" warning and the setup's grip warning stay, so the badge still reads **Needs attention**, by design.
+
+- Folder: https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/765-held-end-not-a-shoulder
+- Zip: https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/765-held-end-not-a-shoulder/765-held-end-not-a-shoulder.zip
+- CHECK.md: https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/765-held-end-not-a-shoulder/CHECK.md
+
+**Steps** (about 3 minutes; the tutorial project unchanged; a build from `55e6348d` or later): open the project, **Operations**, **Generate**, read **Messages** for **Finish** and the badge.
+
+**Expect:**
+- Finish: "Free ends (operation 'Finish'): the end face at X 61.000 is faced from 12.000 mm, ..." and "Held region (operation 'Finish'): nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock."
+- No "... does not turn at a step across the rotary axis ... at X 8.589 ...".
+- The badge reads **Needs attention**.
+
+**Before** (`a3e1ad22`): the X 8.589 warning as well. The same fix removes the warnings #633 names (X -15.001, -16.001, -3.411 on earlier owner-check projects), with their programs unchanged.
+
+- [ ] #765 passes
+
 ## Known, not part of these checks
 
 - The Facing line and the setup listing of the command line, noted here under steps 3 to 5, take the one form with step 6. The doubled full stop in the acknowledgement refusal ("... before running.. Read them, ...") is fixed in #670 (merged on `main` at `576ef9c9`); builds before that commit still show it.
