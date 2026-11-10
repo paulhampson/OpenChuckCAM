@@ -41,6 +41,8 @@ From `main` at `ccc9a878`. Tests written before the fix and watched to fail, run
 - `crates/openchuck-app/src/facing.rs`: `facing::tests::req_op_24_req_gc_08_facing_file_with_a_combined_rotation_posts_through_both_posts`. A Facing group and a 72-pose ring at X 9.088 in one file, through the LinuxCNC and Makera Z1 posts: the ring is one block and the Facing written-motion check passes. Before the fix it failed with "the G-code ends before the IR does: group 1 needs a move to tip (9.088, 7.765, 28.978) A 15.000".
 - **The check project.** `openchuck-cli regenerate project --post <post> --tool-numbers keep --grouping <grouping> --out OUT` on the project in `owner-checks/641-end-facing-from-air/project` (branch `owner-checks/2026.1-alpha`), release build, Linux x86_64. On `ccc9a878`, `makera-z1` with grouping setup, project and tool failed with the owner's message (line 2842), and `linuxcnc` with the same groupings failed with "the G-code ends before the IR does"; operation grouping posted. With the fix all eight combinations post, in about 22 s each.
 
-- **Suites.** Being run; recorded before the pull request opens.
+- **Suites.** `cargo nextest run -p openchuck-gcode -p openchuck-app` with the change: 907 tests, all passed (1 skipped), 1,250 s on 4 cores; the two new tests take under 0.1 s each, so neither is long-running. `cargo fmt --all`, `cargo clippy --workspace --all-targets` (no warnings), and `cargo xtask deps`, `licences`, `records`, `trace` and `messages` all pass.
+- **Coverage.** `cargo llvm-cov nextest --profile coverage -p openchuck-gcode`: `compare.rs` 94.92 % of lines on the crate's own tests; every changed line runs. The `openchuck-app` change is test code only.
+- **API.** No public signature changes; only the comparison's behaviour in a binary32 replay. No version bump is needed (decision 0048).
 
 Not done: nothing was run on a machine. Generated G-code must be verified by the user before it is run on a machine (NFR-12).
