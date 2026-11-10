@@ -109,40 +109,48 @@ def shot(name, quiet=(1000, 1058)):
     print("captured", path.name, flush=True)
 
 
-def status():
-    """The left end of the status bar ("Ready", or the progress of a job), as raw pixels."""
-    out = subprocess.run(["import", "-window", "root", "-crop", "120x24+0+1046", "rgb:-"],
+def crop(box):
+    """The pixels of `box` = (x, y, width, height) on the screen, raw."""
+    x, y, w, h = box
+    out = subprocess.run(["import", "-window", "root", "-crop", f"{w}x{h}+{x}+{y}", "rgb:-"],
                          env=ENV, capture_output=True, check=False)
     return out.stdout
 
 
-def generate(timeout=900, at=(1854, 1058)):
-    """Click Generate stale at `at` and wait, bounded, until the status bar reads as it did before
-    (Ready). Shared by the tutorial, the heroes and every worked example (issue 629).
+STATUS = (0, 1046, 120, 24)           # the left end of the status bar: "Ready", or a job's progress
+CUT_PART = (1450, 870, 90, 24)        # where the Playback tab says "Updating cut part" (1920 x 1080)
 
-    Unlike a wait for green dots, this also ends when a run finishes with warnings. It is a
-    heuristic on the status bar's pixels, sampled every 5 s: it cannot tell a run that never started
-    (for example an operation in error) from one that ended between two samples, so after 30 s with
-    no change it prints "nothing ran" and goes on. Check the screens before committing them. A run
-    still going after `timeout` seconds raises TimeoutError.
-    """
-    ref = status()
-    click(*at, 3)
+
+def wait_done(at, box, timeout, what, wait=3):
+    """Click `at`, then wait, bounded, until the pixels of `box` have changed and come back to how
+    they were before the click (issue 629). A heuristic sampled every 5 s: it cannot tell work that
+    never started from work that ended between two samples, so after 30 s with no change it prints
+    a note and goes on. Check the screens before committing them. Work still going after `timeout`
+    seconds raises TimeoutError."""
+    ref = crop(box)
+    click(*at, wait)
     waited, busy = 0, False
     while waited < timeout:
         pause(5)
         waited += 5
-        now = status()
+        now = crop(box)
         busy = busy or now != ref
         if busy and now == ref:
             break
         if not busy and waited >= 30:
-            print("nothing ran: the operation may be in error", flush=True)
+            print(f"{what}: no change seen; it may have ended at once or not started", flush=True)
             break
     else:
-        raise TimeoutError(f"generation did not end within {timeout} s")
+        raise TimeoutError(f"{what} did not end within {timeout} s")
     pause(2)
-    print("generated in about", waited, "s", flush=True)
+    print(what, "took about", waited, "s", flush=True)
+
+
+def generate(timeout=900, at=(1854, 1058)):
+    """Click Generate stale at `at` and wait until the status bar reads as it did before (Ready).
+    Shared by the tutorial, the heroes and the blisk examples (issue 629); unlike a wait for green
+    dots it also ends when a run finishes with warnings."""
+    wait_done(at, STATUS, timeout, "generation")
 
 
 def record(images, commit, date):
@@ -260,13 +268,11 @@ def heroes():
     click(1558, 1020, 1.5)                           # unfold the dock
     click(90, 551, 1)                                # show the Rough path again
     # Hero 2: the cut part at the end of the program, coloured by deviation from the model.
-    click(1847, 1058, 5)                             # Continue to simulate
-    pause(70)                                        # the cut part of the whole program
+    wait_done((1846, 1058), STATUS, 900, "simulation", 5)   # Continue to simulate
     click(300, 98, 1)                                # Shaded
     click(1596, 134, 4)                              # Deviation colours
     click(541, 946, 1.5)                             # speed 10 000x
-    click(355, 832, 3)                               # play to the end
-    pause(35)
+    wait_done((355, 832), CUT_PART, 600, "cut part at the end", 30)   # play to the end
     click(1558, 789, 2)                              # fold the dock
     click(668, 98, 1)                                # Iso view
     click(722, 98, 2)                                # Fit
@@ -361,16 +367,15 @@ def tutorial(args):
     click(90, 578, 1)                                # show it again
 
     # 7. Simulate.
-    click(1846, 1058, 5)                             # Continue to simulate
-    pause(90)                                        # the cut part of the whole program
+    wait_done((1846, 1058), STATUS, 900, "simulation", 5)   # Continue to simulate
     click(299, 98, 1)                                # Shaded
     click(720, 98, 1.5)                              # Fit
     scroll(920, 440, 6, down=False)                  # zoom in
-    click(428, 830, 15)                              # next operation: after roughing
+    wait_done((428, 830), CUT_PART, 600, "cut part after roughing")   # next operation
     shot("15-after-roughing")
     click(540, 945, 1)                               # speed 10 000x
-    click(355, 830, 1)                               # play
-    pause(60)                                        # until "Updating cut part" has gone
+    pause(1)
+    wait_done((355, 830), CUT_PART, 600, "cut part at the end", 30)   # play to the end
     shot("14-simulate-final")
 
     # 8. Post and export.
