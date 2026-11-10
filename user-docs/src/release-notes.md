@@ -83,6 +83,7 @@ Icon
 - A workholding **Apply** is stored when its check finishes, even if you have moved on to another item first.
 - A ramp is no longer refused as a cut into the finished surface on a pass whose tool edge touches a face of the part, such as a roughing ring beside an end face.
 - Helical finishing and rest machining in **Rings**, with no held region over an end, no longer leave out a ring past the part's end.
+- A finishing operation no longer warns of a step across the rotary axis near the chuck when that step is only the end of the held bar. The paths and the G-code are unchanged. The warning that nothing within one tool radius of the held region is cut still appears.
 - An operation limited to selected faces no longer runs past them at a convex edge.
 - End facing on stock that is exactly a whole number of slices longer than needed now writes its G-code.
 - The refusal to write files with possible collisions not yet acknowledged no longer shows a doubled full stop.
