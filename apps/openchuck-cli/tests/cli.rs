@@ -629,7 +629,7 @@ fn req_gc_17_req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_se
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert!(
         out.stderr
-            .contains("warning: setup 'Setup 1': the safe cylinder"),
+            .contains("warning: Clearance (setup 'Setup 1'): the safe cylinder"),
         "{}",
         out.stderr
     );
@@ -1336,7 +1336,11 @@ fn req_gc_10_cli_checks_a_chunk_against_the_original_source_range() {
         "6:8".as_ref(),
     ]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
-    assert!(out.stdout.contains("reached all 1 moves"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("reached all 1 move ("),
+        "{}",
+        out.stdout
+    );
     std::fs::write(&report, text.replace("\"feed\":60", "\"feed\":61")).unwrap();
     let out = run(&[
         "gcode-sim".as_ref(),
@@ -1511,4 +1515,131 @@ fn req_prj_02_cli_a_file_linked_through_a_renamed_link_is_reported_as_linked() {
     );
     assert!(!out.stdout.contains("copied into"), "{}", out.stdout);
     std::fs::remove_dir_all(root).unwrap();
+}
+
+/// Every line the command line says at a level, or lists as a check, in the
+/// one form of decision record 0536 section 3: a topic, the items in
+/// brackets, a colon, then the text ending in one full stop (decision record
+/// 0644). Fails on a doubled stop, a stop before a semicolon, a missing topic,
+/// a missing full stop, or a requirement, decision or open-item number.
+fn assert_one_form(output: &str) -> usize {
+    let mut checked = 0;
+    for line in output.lines() {
+        let Some(text) = ["warning: ", "note: ", "error: ", "  - "]
+            .iter()
+            .find_map(|prefix| line.strip_prefix(prefix))
+        else {
+            continue;
+        };
+        let text = text.trim_start();
+        let (lead, rest) = text
+            .split_once("): ")
+            .unwrap_or_else(|| panic!("no topic and items: {line}"));
+        let (topic, items) = lead
+            .split_once(" (")
+            .unwrap_or_else(|| panic!("no items: {line}"));
+        assert!(
+            topic.chars().next().is_some_and(char::is_uppercase) && !topic.contains(". "),
+            "not a topic: {line}"
+        );
+        assert!(items.contains(" '"), "no item named: {line}");
+        assert!(!rest.is_empty(), "nothing said: {line}");
+        assert!(text.ends_with('.'), "no full stop: {line}");
+        assert!(
+            !text.contains("..") && !text.contains(".;") && !text.contains(".:"),
+            "a doubled stop: {line}"
+        );
+        assert!(!names_an_id(text), "an internal reference: {line}");
+        checked += 1;
+    }
+    checked
+}
+
+/// Whether `text` names a requirement ("(OP-14)"), an open item ("OI-360")
+/// or a decision record ("decision 0495"), which a message may not (decision
+/// record 0644).
+fn names_an_id(text: &str) -> bool {
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let prefixed = [
+        "COL", "GC", "IMP", "INT", "NFR", "OP", "PRJ", "SET", "SIM", "SUG", "TL", "UI", "VC", "OI",
+    ]
+    .iter()
+    .any(|prefix| {
+        let pattern = format!("{prefix}-");
+        text.match_indices(&pattern).any(|(at, _)| {
+            !text[..at].chars().next_back().is_some_and(is_word)
+                && text[at + pattern.len()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+        })
+    });
+    let lower = text.to_lowercase();
+    prefixed
+        || lower.match_indices("decision ").any(|(at, word)| {
+            let rest = &lower[at + word.len()..];
+            let rest = rest.strip_prefix("record ").unwrap_or(rest);
+            rest.chars().take(4).filter(char::is_ascii_digit).count() == 4
+        })
+}
+
+#[test]
+fn req_ui_12_the_guard_knows_an_internal_reference() {
+    assert!(names_an_id("so links could cross it (OP-14); enlarge"));
+    assert!(names_an_id("see decision 0495"));
+    assert!(names_an_id("OI-360 is closed"));
+    assert!(!names_an_id("a STOP-1 tool on T1-2 in 3 decisions"));
+}
+
+#[test]
+fn req_ui_12_the_command_line_says_every_check_in_the_one_form() {
+    let project = empty_project("one-form");
+    let p = project.to_str().unwrap();
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    let cube =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    let model = project.join("models/cube.stl");
+    std::fs::copy(cube, &model).unwrap();
+    assert_eq!(
+        run(&args(&["import", p, model.to_str().unwrap()])).code,
+        Some(0)
+    );
+    assert_eq!(
+        run(&args(&["transform", p, "models/cube.stl", "centre"])).code,
+        Some(0)
+    );
+    let out = run(&args(&[
+        "setup",
+        p,
+        "--new",
+        "Setup 1",
+        "--part",
+        "models/cube.stl",
+        "--stock",
+        "cylinder=20,14,-2",
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    // With no machine, the setup's note says why it is not checked.
+    let out = run(&args(&["report", p]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let mut checked = assert_one_form(&out.stdout) + assert_one_form(&out.stderr);
+    assert!(
+        out.stdout
+            .contains("Machine profile (setup 'Setup 1'): the project has no machine profile"),
+        "{}",
+        out.stdout
+    );
+    // A clearance inside the stock and the part: each check on its line.
+    assert_eq!(run(&args(&["machine", p, "makera-z1"])).code, Some(0));
+    for command in [
+        args(&["setup", p, "Setup 1", "--clearance", "6,30"]),
+        args(&["validate", p]),
+        args(&["report", p]),
+    ] {
+        let out = run(&command);
+        assert_eq!(out.code, Some(0), "{}", out.stderr);
+        checked += assert_one_form(&out.stdout) + assert_one_form(&out.stderr);
+    }
+    assert!(checked >= 4, "{checked}");
+    std::fs::remove_dir_all(&project).ok();
 }

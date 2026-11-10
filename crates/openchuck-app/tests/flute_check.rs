@@ -315,12 +315,11 @@ fn req_nfr_07_a_refusal_from_generation_names_its_operation() {
         )],
     );
     let e = app.simulate().map(|_| ()).unwrap_err().to_string();
-    assert!(
-        e.starts_with("operation 'Op 1' cannot be generated: "),
-        "{e}"
-    );
+    // The refusal names the operation and the setting by its label, in the
+    // one form (decision record 0644).
+    assert!(e.starts_with("Stepdown (operation 'Op 1'): "), "{e}");
     assert!(e.contains("3.000 mm of flute"), "{e}");
-    assert!(e.contains("parameter stepdown"), "{e}");
+    assert!(!e.contains("parameter stepdown"), "{e}");
 }
 
 #[test]

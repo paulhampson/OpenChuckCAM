@@ -668,6 +668,15 @@ fn req_op_08_a_region_a_lead_entry_and_an_empty_part_are_refused_with_messages()
     })
     .unwrap_err();
     assert!(e.to_string().contains("no edge to follow"), "{e}");
+    // Decision record 0644 (UI-12): under its topic, naming the crease angle.
+    assert_eq!(
+        e,
+        PathError::Refused {
+            topic: openchuck_path::topic::EDGE_FOLLOWING.into(),
+            text: e.to_string()["Edge following: ".len()..].to_owned(),
+            setting: Some(p::CREASE_ANGLE.into()),
+        }
+    );
     // Bad values.
     for (name, bad) in [
         (p::DEPTH, num(0.0)),

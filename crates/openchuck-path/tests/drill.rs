@@ -273,6 +273,8 @@ fn req_op_10_a_convex_cylinder_and_a_mesh_have_no_holes() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("no hole to drill"), "{error}");
+    // Decision record 0644 (UI-12): under the topic "Radial drilling".
+    assert!(error.starts_with("Radial drilling: "), "{error}");
 }
 
 #[test]

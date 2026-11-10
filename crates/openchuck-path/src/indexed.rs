@@ -518,7 +518,10 @@ fn adaptive_passes(
         .map(Counting::new)
         .collect();
     let Some((head, rest)) = counters.split_first() else {
-        return Err(PathError::Strategy("no surface to finish".to_owned()));
+        return Err(PathError::refused(
+            crate::topic::SURFACE,
+            "no surface to finish".to_owned(),
+        ));
     };
     let counted = StrategyInput {
         surface: head,

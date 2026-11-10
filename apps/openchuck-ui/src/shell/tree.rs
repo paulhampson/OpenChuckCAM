@@ -279,8 +279,7 @@ fn all_eyes(ui: &mut egui::Ui, hidden: usize, count: usize) -> Option<bool> {
 fn placement_chip(steps: usize) -> String {
     match steps {
         0 => "as in file".to_owned(),
-        1 => "1 step".to_owned(),
-        n => format!("{n} steps"),
+        n => openchuck_app::path::counted(n, "step", "steps"),
     }
 }
 

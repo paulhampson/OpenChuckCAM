@@ -357,11 +357,14 @@ fn find(
     let held: Vec<f64> = turns.iter().map(|t| t.x).filter(|&x| held_at(x)).collect();
     turns.retain(|t| !held_at(t.x));
     if turns.len() > MAX_TURNS {
-        return Err(PathError::Strategy(format!(
-            "the part has {} faces across the rotary axis; the most this strategy turns at is \
+        return Err(PathError::refused(
+            crate::topic::FACES_ACROSS_THE_AXIS,
+            format!(
+                "the part has {} faces across the rotary axis; the most this strategy turns at is \
              {MAX_TURNS}",
-            turns.len()
-        )));
+                turns.len()
+            ),
+        ));
     }
     // The free ends, for a finishing search only: where on every line of A
     // the drop finds the target on one side of an X and nothing on the

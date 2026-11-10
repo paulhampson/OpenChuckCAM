@@ -219,7 +219,11 @@ fn req_op_02_a_selection_the_tool_cannot_reach_is_an_error_for_roughing() {
         ..Default::default()
     };
     let error = rough(&f, "continuous", &region).unwrap_err();
-    assert!(matches!(error, PathError::Strategy(_)), "{error}");
+    // Decision record 0644: the refusal names rotary roughing as its topic.
+    assert!(
+        matches!(&error, PathError::Refused { topic, .. } if topic == openchuck_path::topic::ROTARY_ROUGHING),
+        "{error}"
+    );
 }
 
 #[test]

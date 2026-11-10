@@ -378,7 +378,10 @@ impl Labels {
 
 /// The note at the pane's corner that says how many labels were left out.
 fn hidden_note(count: usize) -> String {
-    format!("+{count} labels hidden; see the inspector")
+    format!(
+        "+{} hidden; see the inspector",
+        openchuck_app::path::counted(count, "label", "labels")
+    )
 }
 
 /// Places `requests` inside `bounds`. When some are hidden, the note about them takes the
@@ -1474,7 +1477,9 @@ mod tests {
                 assert!(texts.iter().any(|(t, _)| t == needle), "{needle}");
             }
             let shown = texts.iter().filter(|(t, _)| t.starts_with("Tab ")).count();
-            let note = texts.iter().any(|(t, _)| t.contains("labels hidden"));
+            let note = texts
+                .iter()
+                .any(|(t, _)| t.contains(" hidden; see the inspector"));
             assert_eq!(note, shown < 21, "{window:?} at {scale}: {shown}");
         }
     }
@@ -1863,5 +1868,12 @@ mod tests {
         );
         run("a", Vec::new());
         assert!(pane_view(&ctx, egui::Id::unique("a"), Pane::Front).is_fitted());
+    }
+
+    /// Decision record 0644: a count of one takes the singular.
+    #[test]
+    fn req_ui_12_one_hidden_label_is_said_in_the_singular() {
+        assert_eq!(hidden_note(1), "+1 label hidden; see the inspector");
+        assert_eq!(hidden_note(3), "+3 labels hidden; see the inspector");
     }
 }

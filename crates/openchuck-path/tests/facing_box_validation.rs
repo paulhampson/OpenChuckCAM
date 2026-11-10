@@ -549,3 +549,29 @@ fn req_op_24_req_op_11_deeper_cutter_overlap_cannot_enter_unremoved_outside_exte
         },
     );
 }
+
+/// Decision record 0644: Facing's check of the path it made refuses under
+/// the topic "Facing check".
+#[test]
+fn req_ui_12_facing_check_refusals_carry_their_topic() {
+    let v = values(1, false, "[]");
+    with_path(&v, ASense::Positive, |input, p, path, ctx| {
+        let unknown = FacingSetup {
+            projection_error: None,
+            ..*input.facing.unwrap()
+        };
+        let unknown_input = StrategyInput {
+            facing: Some(&unknown),
+            ..*input
+        };
+        let error = Facing
+            .validate_path(&unknown_input, p, &path, ctx)
+            .unwrap_err();
+        assert!(error.to_string().starts_with("Facing check: "), "{error}");
+        assert!(matches!(
+            error,
+            openchuck_path::PathError::Refused { topic, setting: None, .. }
+                if topic == openchuck_path::topic::FACING_CHECK
+        ));
+    });
+}

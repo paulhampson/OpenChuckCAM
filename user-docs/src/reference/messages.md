@@ -32,6 +32,8 @@ Model file (model 'part.stl'): the file has changed since it was added. The tool
 Rapid cut (operation 'Rough'): move 9 is a rapid that removes 0.123 mm³ of material.
 ```
 
+An operation that cannot be generated reads the same way, by the check that refused it: "End facing (operation 'Face'): …", "Stepover (operation 'Rough'): must be above 0 mm." (a setting is named as the operation shows it), "Tool (operation 'Finish'): it has no tool."
+
 ## The Messages tab
 
 The **Messages** tab of the dock lists every current message; its name shows how many errors and warnings there are, for example "Messages (3)". The chips **Errors**, **Warnings** and **Information** show or hide each level.

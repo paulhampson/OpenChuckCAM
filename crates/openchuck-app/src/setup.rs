@@ -47,8 +47,22 @@ pub struct SetupReport {
     pub expected_work_offset: Option<Point3>,
     /// The part's extent in the model frame, when it could be read.
     pub part: Option<PartExtent>,
-    /// Other things the user should know: no machine, an unreadable part.
+    /// Other things the user should know: no machine, an unreadable part,
+    /// a tab narrower than a tool; each in the one form (decision record
+    /// 0644).
     pub notes: Vec<String>,
+}
+
+impl SetupReport {
+    /// Its problems in the one form, "<Topic> (setup '<name>'): <text>.",
+    /// as Messages and the export checks say them (decision records 0536
+    /// section 3 and 0644).
+    pub fn warning_lines(&self) -> Vec<String> {
+        self.warnings
+            .iter()
+            .map(|w| crate::overview::setup_warning_in_form(&self.name, w))
+            .collect()
+    }
 }
 
 /// The direction of positive A in words, from the shared kinematics: where

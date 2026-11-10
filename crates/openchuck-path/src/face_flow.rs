@@ -293,7 +293,8 @@ impl Strategy for FaceFlow {
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
         let Some(selection) = &self.selection else {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::FACE_FLOW,
                 "face-flow finishing needs the exact faces of a STEP model and the faces to \
                  cut: add the part as a STEP file and select the faces"
                     .to_owned(),
@@ -491,10 +492,13 @@ fn loops(model: &BrepModel, face: &BrepFace) -> Result<Vec<Vec<Entry>>> {
     let mut pieces = Vec::new();
     for id in ids {
         let (points, a, b) = edge_points(model, id).ok_or_else(|| {
-            PathError::Strategy(format!(
-                "edge {} of face {} has no points to follow",
-                id.0, face.id.0
-            ))
+            PathError::refused(
+                crate::topic::FACE_FLOW,
+                format!(
+                    "edge {} of face {} has no points to follow",
+                    id.0, face.id.0
+                ),
+            )
         })?;
         pieces.push((id, points, a, b));
     }
@@ -523,11 +527,14 @@ fn loops(model: &BrepModel, face: &BrepFace) -> Result<Vec<Vec<Entry>>> {
                 }
             });
             let Some((j, reversed)) = next else {
-                return Err(PathError::Strategy(format!(
-                    "the boundary of face {} does not close: its edges are not joined end to \
+                return Err(PathError::refused(
+                    crate::topic::FACE_FLOW,
+                    format!(
+                        "the boundary of face {} does not close: its edges are not joined end to \
                      end",
-                    face.id.0
-                )));
+                        face.id.0
+                    ),
+                ));
             };
             if let Some(u) = used.get_mut(j) {
                 *u = true;
@@ -662,10 +669,10 @@ fn oriented(guide: &Curve, opposite: Curve) -> Curve {
 fn boundaries(model: &BrepModel, face: &BrepFace, chosen: &BTreeSet<EdgeId>) -> Result<Boundaries> {
     let mut all = loops(model, face)?;
     if all.is_empty() {
-        return Err(PathError::Strategy(format!(
-            "face {} has no boundary edges to follow",
-            face.id.0
-        )));
+        return Err(PathError::refused(
+            crate::topic::FACE_FLOW,
+            format!("face {} has no boundary edges to follow", face.id.0),
+        ));
     }
     // The outer loop is the longest; the others are holes, cut round by
     // the face's trim test.
@@ -727,19 +734,25 @@ fn boundaries(model: &BrepModel, face: &BrepFace, chosen: &BTreeSet<EdgeId>) -> 
         ((start + at) % n, count)
     } else {
         contiguous(&mine, n).ok_or_else(|| {
-            PathError::Strategy(format!(
-                "the guide edges {} of face {} are not joined end to end into one chain",
-                list(mine.iter().filter_map(|i| outer.get(*i)).map(|e| e.edge.0)),
-                face.id.0
-            ))
+            PathError::refused(
+                crate::topic::FACE_FLOW,
+                format!(
+                    "the guide edges {} of face {} are not joined end to end into one chain",
+                    list(mine.iter().filter_map(|i| outer.get(*i)).map(|e| e.edge.0)),
+                    face.id.0
+                ),
+            )
         })?
     };
     if len >= n {
-        return Err(PathError::Strategy(format!(
-            "the guide of face {} is its whole boundary: choose fewer edges, so there is an \
+        return Err(PathError::refused(
+            crate::topic::FACE_FLOW,
+            format!(
+                "the guide of face {} is its whole boundary: choose fewer edges, so there is an \
              opposite side to step towards",
-            face.id.0
-        )));
+                face.id.0
+            ),
+        ));
     }
     let guide_entries: Vec<Entry> = (0..len)
         .filter_map(|k| outer.get((g0 + k) % n).cloned())
@@ -758,7 +771,10 @@ fn boundaries(model: &BrepModel, face: &BrepFace, chosen: &BTreeSet<EdgeId>) -> 
                 .and_then(|e| e.points.last())
                 .copied()
                 .ok_or_else(|| {
-                    PathError::Strategy(format!("face {} has an empty side", face.id.0))
+                    PathError::refused(
+                        crate::topic::FACE_FLOW,
+                        format!("face {} has an empty side", face.id.0),
+                    )
                 })?;
             Opposite::Point(apex)
         }
@@ -935,10 +951,12 @@ fn field<'a>(
     face: &'a ExactFace,
     boundaries: Boundaries,
 ) -> Result<Field<'a>> {
-    let brep = model
-        .faces
-        .get(face_id.0 as usize)
-        .ok_or_else(|| PathError::Strategy(format!("the model has no face {}", face_id.0)))?;
+    let brep = model.faces.get(face_id.0 as usize).ok_or_else(|| {
+        PathError::refused(
+            crate::topic::FACE_FLOW,
+            format!("the model has no face {}", face_id.0),
+        )
+    })?;
     let (pu, pv) = periods(&brep.geometry);
     let length = boundaries.guide.length().max(match &boundaries.opposite {
         Opposite::Side(c) => c.length(),
@@ -951,10 +969,13 @@ fn field<'a>(
             None => face.closest(p),
         };
         found.map(|c| c.uv).ok_or_else(|| {
-            PathError::Strategy(format!(
-                "the boundary of face {} could not be put on its surface",
-                face_id.0
-            ))
+            PathError::refused(
+                crate::topic::FACE_FLOW,
+                format!(
+                    "the boundary of face {} could not be put on its surface",
+                    face_id.0
+                ),
+            )
         })
     };
     let mut guide_uv: Vec<Uv> = Vec::with_capacity(m + 1);
@@ -962,10 +983,16 @@ fn field<'a>(
     for j in 0..=m {
         let s = j as f64 / m as f64;
         let g = boundaries.guide.at(s).ok_or_else(|| {
-            PathError::Strategy(format!("the guide of face {} is empty", face_id.0))
+            PathError::refused(
+                crate::topic::FACE_FLOW,
+                format!("the guide of face {} is empty", face_id.0),
+            )
         })?;
         let o = boundaries.opposite.at(s).ok_or_else(|| {
-            PathError::Strategy(format!("the opposite side of face {} is empty", face_id.0))
+            PathError::refused(
+                crate::topic::FACE_FLOW,
+                format!("the opposite side of face {} is empty", face_id.0),
+            )
         })?;
         let mut gu = place(g, guide_uv.last().copied())?;
         let mut ou = match (&boundaries.opposite, opposite_uv.last()) {
@@ -1131,10 +1158,14 @@ fn greedy(across: &Across, settings: &Settings, limit: f64) -> Result<Option<Vec
 /// The weights of the passes, as few as the allowance needs and evened out.
 fn weights(across: &Across, settings: &Settings, face: FaceId) -> Result<Vec<f64>> {
     let too_many = || {
-        PathError::Strategy(format!(
-            "face {} would need more than {MAX_PASSES} passes: raise the stepover",
-            face.0
-        ))
+        PathError::refused(
+            crate::topic::FACE_FLOW,
+            format!(
+                "face {} would need more than {MAX_PASSES} passes: raise the stepover",
+                face.0
+            ),
+        )
+        .with_setting(crate::params::names::STEPOVER)
     };
     // At least the widest place's width over the stepover: refuse at once
     // what cannot be cut in the limit, rather than search for it.
@@ -1660,22 +1691,23 @@ fn face_flow(
     let settings = Settings::read(parameters, input.tool)?;
     let faces: BTreeSet<FaceId> = selection.faces.iter().copied().collect();
     if faces.is_empty() {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::FACE_FLOW,
             "face-flow finishing needs at least one face to cut: select the faces".to_owned(),
         ));
     }
     if let Some(bad) = faces.iter().find(|f| f.0 as usize >= model.faces.len()) {
-        return Err(PathError::Strategy(format!(
-            "the model has no face {}",
-            bad.0
-        )));
+        return Err(PathError::refused(
+            crate::topic::FACE_FLOW,
+            format!("the model has no face {}", bad.0),
+        ));
     }
     let guide: BTreeSet<EdgeId> = selection.guide.iter().copied().collect();
     if let Some(bad) = guide.iter().find(|e| e.0 as usize >= model.edges.len()) {
-        return Err(PathError::Strategy(format!(
-            "the model has no edge {} to use as the guide",
-            bad.0
-        )));
+        return Err(PathError::refused(
+            crate::topic::FACE_FLOW,
+            format!("the model has no edge {} to use as the guide", bad.0),
+        ));
     }
     if let Some(bad) = guide.iter().find(|e| {
         !faces.iter().any(|f| {
@@ -1685,14 +1717,18 @@ fn face_flow(
                 .is_some_and(|face| face.edges.contains(e))
         })
     }) {
-        return Err(PathError::Strategy(format!(
-            "guide edge {} is not on the boundary of the selected faces: choose edges of the \
+        return Err(PathError::refused(
+            crate::topic::FACE_FLOW,
+            format!(
+                "guide edge {} is not on the boundary of the selected faces: choose edges of the \
              faces to cut",
-            bad.0
-        )));
+                bad.0
+            ),
+        ));
     }
     if !input.tool.is_convex() {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::FACE_FLOW,
             "face-flow finishing needs a tool whose profile is convex".to_owned(),
         ));
     }
@@ -1710,20 +1746,24 @@ fn face_flow(
     let exact: Vec<(FaceId, ExactFace)> = faces
         .iter()
         .map(|id| {
-            let face = model
-                .faces
-                .get(id.0 as usize)
-                .ok_or_else(|| PathError::Strategy(format!("the model has no face {}", id.0)))?;
+            let face = model.faces.get(id.0 as usize).ok_or_else(|| {
+                PathError::refused(
+                    crate::topic::FACE_FLOW,
+                    format!("the model has no face {}", id.0),
+                )
+            })?;
             Ok((*id, ExactFace::new(face)?))
         })
         .collect::<Result<_>>()?;
     let mut fields = Vec::with_capacity(exact.len());
     for (id, face) in &exact {
         context.check_cancelled()?;
-        let brep = model
-            .faces
-            .get(id.0 as usize)
-            .ok_or_else(|| PathError::Strategy(format!("the model has no face {}", id.0)))?;
+        let brep = model.faces.get(id.0 as usize).ok_or_else(|| {
+            PathError::refused(
+                crate::topic::FACE_FLOW,
+                format!("the model has no face {}", id.0),
+            )
+        })?;
         let b = boundaries(model, brep, &guide)?;
         fields.push(field(model, *id, face, b)?);
     }
@@ -2002,14 +2042,18 @@ fn assemble(
         };
         let mut note = format!(
             "face {} is cut from its guide, edge{plural} {edges} ({:.1} mm long), towards {towards} \
-             in {geometric} passes up to {:.3} mm apart along the face",
-            cut.id.0, cut.guide_length, cut.spacing
+             in {} up to {:.3} mm apart along the face",
+            cut.id.0,
+            cut.guide_length,
+            crate::counted(geometric, "pass", "passes"),
+            cut.spacing
         );
         if cut.dropped_short > 0 {
             note.push_str(&format!(
-                "; {} passes nearest the point are left out, being shorter than the tool's \
+                "; {} nearest the point {} left out, being shorter than the tool's \
                  diameter",
-                cut.dropped_short
+                crate::counted(cut.dropped_short, "pass", "passes"),
+                if cut.dropped_short == 1 { "is" } else { "are" }
             ));
         }
         face_notes.push(note);
@@ -2032,16 +2076,16 @@ fn assemble(
         } else {
             unreached_list(&unreached, diameter)
         };
-        return Err(PathError::Strategy(format!(
-            "face-flow finishing cannot reach any of the selected faces: {why}"
-        )));
+        return Err(PathError::refused(
+            crate::topic::FACE_FLOW,
+            format!("face-flow finishing cannot reach any of the selected faces: {why}"),
+        ));
     }
     notes.push(
         Notice::information(format!(
-            "cuts {} passes on {} face{}",
-            out_passes.len(),
-            face_notes.len(),
-            if face_notes.len() == 1 { "" } else { "s" }
+            "cuts {} on {}",
+            crate::counted(out_passes.len(), "pass", "passes"),
+            crate::counted(face_notes.len(), "face", "faces")
         ))
         .about(topic::FACE_FLOW),
     );

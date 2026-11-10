@@ -214,7 +214,10 @@ pub fn describe(tool: &Tool) -> String {
         ),
         ToolShape::Drill { point_angle } => format!("drill {} deg point", point_angle.0),
         ToolShape::Custom { profile } => {
-            format!("custom profile, {} segments", profile.segments.len())
+            format!(
+                "custom profile, {}",
+                openchuck_path::counted(profile.segments.len(), "segment", "segments")
+            )
         }
         _ => tool.shape.type_name().to_owned(),
     };

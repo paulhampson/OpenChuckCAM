@@ -220,6 +220,7 @@ impl Entry {
             return Ok(());
         }
         Err(self.refuse(
+            crate::topic::LEAD_ENTRY,
             input,
             pass,
             name,
@@ -321,6 +322,7 @@ impl Entry {
             );
         }
         Err(self.refuse(
+            crate::topic::LEAD_ENTRY,
             input,
             pass,
             name,
@@ -398,11 +400,15 @@ impl Entry {
         head: &CutPoint,
     ) -> Result<()> {
         if !self.single_point_plunge {
-            return Err(PathError::Strategy(format!(
-                "Ramp entry: pass {} is a single point, so there is no path for the ramp to \
-                 follow. Turn on Allow single-point plunge, or set Entry to Plunge or Helix.",
-                pass + 1
-            )));
+            return Err(PathError::refused(
+                crate::topic::RAMP_ENTRY,
+                format!(
+                    "pass {} is a single point, so there is no path for the ramp to follow. Turn \
+                     on Allow single-point plunge, or set Entry to Plunge or Helix.",
+                    pass + 1
+                ),
+            )
+            .with_setting(crate::params::names::ALLOW_SINGLE_POINT_PLUNGE));
         }
         b.single_point_plunges.push(pass);
         b.straight_plunges.push(pass);
@@ -463,21 +469,28 @@ impl Entry {
         let (moves, steep) = super::path_ramp::back_and_forth(&path, top, self.ramp_tan, minimum)
             .map_err(|refusal| {
             let what = if arc { "stretch" } else { "line" };
-            PathError::Strategy(match refusal {
-                super::path_ramp::Refusal::TooShort { length } => format!(
-                    "Ramp entry: pass {} starts with a {what} of {length:.3} mm, shorter than the \
+            let (text, setting) = match refusal {
+                super::path_ramp::Refusal::TooShort { length } => (
+                    format!(
+                        "pass {} starts with a {what} of {length:.3} mm, shorter than the \
                      {minimum:.3} mm (the tool radius) a ramp needs to go back and forth over. \
                      Set Entry to Plunge or Helix.",
-                    pass + 1
+                        pass + 1
+                    ),
+                    crate::params::names::ENTRY,
                 ),
-                super::path_ramp::Refusal::TooManyLegs { legs } => format!(
-                    "Ramp entry: pass {} would need {legs} legs to ramp down its {what} of \
+                super::path_ramp::Refusal::TooManyLegs { legs } => (
+                    format!(
+                        "pass {} would need {legs} legs to ramp down its {what} of \
                      {total:.3} mm, more than the {} allowed. Raise Ramp angle, or set Entry to \
                      Plunge or Helix.",
-                    pass + 1,
-                    super::path_ramp::MAX_LEGS
+                        pass + 1,
+                        super::path_ramp::MAX_LEGS
+                    ),
+                    crate::params::names::RAMP_ANGLE,
                 ),
-            })
+            };
+            PathError::refused(crate::topic::RAMP_ENTRY, text).with_setting(setting)
         })?;
         self.emit(b, input, common, pass, &moves, MoveKind::LeadIn)?;
         if steep {
@@ -519,14 +532,18 @@ impl Entry {
             .iter()
             .find_map(|(pos, a)| self.gouge(b, input, *a, std::slice::from_ref(pos)));
         if let Some(g) = found {
-            return Err(PathError::Strategy(format!(
-                "Ramp entry: pass {} ramps over its own path, yet the tool would cut {:.3} mm \
+            return Err(PathError::refused(
+                crate::topic::RAMP_ENTRY,
+                format!(
+                    "pass {} ramps over its own path, yet the tool would cut {:.3} mm \
                  into the finished surface at X {:.3} mm. This should not happen: please report \
                  it as a defect, and set Entry to Plunge or Helix meanwhile.",
-                pass + 1,
-                g.depth,
-                g.x
-            )));
+                    pass + 1,
+                    g.depth,
+                    g.x
+                ),
+            )
+            .with_setting(crate::params::names::ENTRY));
         }
         if start.height > b.at().height + EPS {
             b.retract(start.height)?;
@@ -572,11 +589,12 @@ impl Entry {
         let step = self.angle_step(rho);
         let count = (total / step).ceil().max(1.0);
         if count > MAX_SEGMENTS as f64 {
-            return Err(PathError::Strategy(format!(
+            return Err(PathError::refused(crate::topic::HELIX_ENTRY, format!(
                 "pass {}: the helix entry needs {count:.0} segments for {turns:.0} turns; use a \
                  larger ramp angle or a larger helix diameter",
                 pass + 1
-            )));
+            ))
+            .with_setting(crate::params::names::RAMP_ANGLE));
         }
         let count = count as usize;
         let centre = (goal.along + rho * n.0, goal.across + rho * n.1);
@@ -592,6 +610,7 @@ impl Entry {
         let positions: Vec<AxisPosition> = (1..count).map(at).collect();
         if let Some(g) = self.gouge(b, input, head.a, &positions) {
             return Err(self.refuse(
+                crate::topic::HELIX_ENTRY,
                 input,
                 pass,
                 name,
@@ -657,9 +676,10 @@ impl Entry {
                 return match planned {
                     Ok(plan) => self.in_a_range(input, pass, plan).map(Some),
                     Err(ring_ramp::Refusal::NothingToDescend) => Ok(None),
-                    Err(ring_ramp::Refusal::TooManyTurns { turns, .. }) => {
-                        Err(PathError::Strategy(format!(
-                            "Ramp entry: pass {} starts on the rotary axis, where the tool \
+                    Err(ring_ramp::Refusal::TooManyTurns { turns, .. }) => Err(PathError::refused(
+                        crate::topic::RAMP_ENTRY,
+                        format!(
+                            "pass {} starts on the rotary axis, where the tool \
                              descends while the part turns; {}, measured at the tool's radius \
                              of {radius:.3} mm, that takes {turns:.1} turns, more than the {:.0} \
                              allowed. {}",
@@ -667,8 +687,9 @@ impl Entry {
                             angle_words(tan, at_max),
                             ring_ramp::MAX_TURNS,
                             fix_words(at_max)
-                        )))
-                    }
+                        ),
+                    )
+                    .with_setting(fix_setting(at_max))),
                 };
             }
         }
@@ -712,15 +733,19 @@ impl Entry {
             Ok(plan) => plan,
             Err(ring_ramp::Refusal::NothingToDescend) => return Ok(None),
             Err(ring_ramp::Refusal::TooManyTurns { radius, turns }) => {
-                return Err(PathError::Strategy(format!(
-                    "Ramp entry: pass {} turns round the part with its tip {radius:.3} mm from \
+                return Err(PathError::refused(
+                    crate::topic::RAMP_ENTRY,
+                    format!(
+                        "pass {} turns round the part with its tip {radius:.3} mm from \
                      the rotary axis, so {} a ramp round it would take {turns:.1} turns, more \
                      than the {:.0} allowed. {}",
-                    pass + 1,
-                    angle_words(tan, at_max),
-                    ring_ramp::MAX_TURNS,
-                    fix_words(at_max)
-                )));
+                        pass + 1,
+                        angle_words(tan, at_max),
+                        ring_ramp::MAX_TURNS,
+                        fix_words(at_max)
+                    ),
+                )
+                .with_setting(fix_setting(at_max)));
             }
         };
         self.in_a_range(input, pass, plan).map(Some)
@@ -844,13 +869,17 @@ impl Entry {
             if let openchuck_types::machine::ARange::Limited { min, max } = input.rotary.range
                 && (a.0 + sign * 360.0 < min.0 - EPS || a.0 + sign * 360.0 > max.0 + EPS)
             {
-                return Err(PathError::Strategy(format!(
-                    "Face nubs: the nub at X {along:.3} mm needs a whole turn of A from {:.3} \
+                return Err(PathError::refused(
+                    crate::topic::FACE_NUBS,
+                    format!(
+                        "the nub at X {along:.3} mm needs a whole turn of A from {:.3} \
                      degrees, outside the machine's A range of {:.3} to {:.3} degrees. Widen A \
                      range in the setup's Machine settings, or turn off Plunge to remove face \
                      nubs.",
-                    a.0, min.0, max.0
-                )));
+                        a.0, min.0, max.0
+                    ),
+                )
+                .with_setting(crate::params::names::PLUNGE_FACE_NUBS));
             }
             for k in 1..=8 {
                 let turned = Degrees(a.0 + sign * 45.0 * f64::from(k));
@@ -913,15 +942,19 @@ impl Entry {
             (input.rotary.range, plan.start())
             && (a.0 < min.0 - EPS || a.0 > max.0 + EPS)
         {
-            return Err(PathError::Strategy(format!(
-                "Ramp entry: pass {} needs A from {:.3} degrees to ramp round the part, outside \
+            return Err(PathError::refused(
+                crate::topic::RAMP_ENTRY,
+                format!(
+                    "pass {} needs A from {:.3} degrees to ramp round the part, outside \
                  the machine's A range of {:.3} to {:.3} degrees. Widen A range in the setup's \
                  Machine settings, or set Entry to Plunge or Helix.",
-                pass + 1,
-                a.0,
-                min.0,
-                max.0
-            )));
+                    pass + 1,
+                    a.0,
+                    min.0,
+                    max.0
+                ),
+            )
+            .with_setting(crate::params::names::ENTRY));
         }
         Ok(plan)
     }
@@ -1076,6 +1109,7 @@ impl Entry {
     /// beside the part fails (SET-09; decision records 0114, 0161).
     fn refuse(
         &self,
+        topic: &str,
         input: &StrategyInput<'_>,
         pass: usize,
         name: &str,
@@ -1085,15 +1119,19 @@ impl Entry {
         let mid = crate::strategy::part_middle(input);
         if let Some(end) = crate::strategy::held_end(input.keep_out, mid, found.x, found.x) {
             let held = crate::strategy::held_names(&std::collections::BTreeSet::from([end]));
-            return PathError::Strategy(format!(
-                "pass {}: the {name} needs {size}, and it would run over {held} at X \
+            return PathError::refused(
+                topic,
+                format!(
+                    "pass {}: the {name} needs {size}, and it would run over {held} at X \
                  {:.3} mm, where the workholding grips the stock; use a plunge entry, or a size \
                  or angle that keeps it clear of the held region",
-                pass + 1,
-                found.x
-            ));
+                    pass + 1,
+                    found.x
+                ),
+            )
+            .with_setting(crate::params::names::ENTRY);
         }
-        PathError::Strategy(format!(
+        PathError::refused(topic, format!(
             "pass {}: the {name} needs {size}, and the tool would cut {:.3} mm into the finished \
              surface at position {} of its path (the tolerance is {:.3} mm); try another entry \
              style, a smaller size or a steeper angle",
@@ -1102,6 +1140,7 @@ impl Entry {
             found.position + 1,
             self.tolerance
         ))
+        .with_setting(crate::params::names::ENTRY)
     }
 }
 
@@ -1271,6 +1310,15 @@ fn angle_words(tan: f64, at_max: bool) -> String {
 }
 
 /// What to change after a refusal of too many turns.
+/// The setting [`fix_words`] names first.
+fn fix_setting(at_max: bool) -> &'static str {
+    if at_max {
+        crate::params::names::RAMP_ANGLE_MAX
+    } else {
+        crate::params::names::RAMP_ANGLE
+    }
+}
+
 fn fix_words(at_max: bool) -> &'static str {
     if at_max {
         "Raise Maximum ramp angle, or set Entry to Plunge or Helix."

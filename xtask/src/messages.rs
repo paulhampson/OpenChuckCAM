@@ -16,6 +16,22 @@
 //!   same way: the texts that use them today are listed (OI-2097) and
 //!   reworded in step 5, and no new one is let in.
 //!
+//! - **No internal references.** No user-visible text may name a
+//!   requirement ("(OP-14)", "SET-02"), a decision record ("decision
+//!   0495") or an open item ("OI-360"): a user reads what to change, not
+//!   where the rule came from (decision record 0536 step 4; decision record
+//!   0644). The string literals are scanned and counted per file in the same
+//!   way, against the `[ids]` baseline.
+//!
+//! - **A count agrees with its noun.** A count that can be one is written
+//!   with `openchuck_path::counted`, which gives "1 layer" and "3 layers";
+//!   a text that prints `{layers} layers` reads "1 layers" when there is
+//!   one (decision record 0644, after OWNERCHECKS2). The string literals
+//!   are scanned for a format placeholder followed by a plural noun of
+//!   [`PLURAL_NOUNS`] (`{} rings`, `{n} moves`) and counted per file in
+//!   the same way, against the `[plural_counts]` baseline: what is left is
+//!   a count that is never one ("... is too many", a mesh's own size).
+//!
 //! Test code is not scanned: files under `tests/`, files named `tests.rs`
 //! or ending in `_tests.rs`, and everything after a file's `#[cfg(test)]`
 //! module.
@@ -51,23 +67,157 @@ pub const CLAIMS: &[&str] = &[
     "good to go",
 ];
 
+/// The prefixes of the requirement IDs (docs/requirements.md) and of the
+/// open items.
+pub const ID_PREFIXES: &[&str] = &[
+    "COL", "GC", "IMP", "INT", "NFR", "OP", "PRJ", "SET", "SIM", "SUG", "TL", "UI", "VC", "OI",
+];
+
+/// The plural nouns a count is checked before: a placeholder followed by
+/// one of them is a count that reads wrongly when it is one.
+pub const PLURAL_NOUNS: &[&str] = &[
+    "layers",
+    "rings",
+    "moves",
+    "turns",
+    "passes",
+    "points",
+    "faces",
+    "edges",
+    "holes",
+    "tabs",
+    "chains",
+    "sets",
+    "positions",
+    "lines",
+    "legs",
+    "operations",
+    "reversals",
+    "entries",
+    "segments",
+    "links",
+    "plunges",
+    "steps",
+    "bands",
+    "slices",
+    "areas",
+    "nubs",
+    "tools",
+    "files",
+    "models",
+    "setups",
+    "creases",
+];
+
+/// How many counts before a plural noun the string literals of `code` hold
+/// (decision record 0644).
+pub fn plural_count(code: &str) -> usize {
+    string_literals(code).iter().map(|l| plurals_in(l)).sum()
+}
+
+/// The counts in one text written as it is in the source: a format
+/// placeholder (`{}`, `{n}`, `{:.0}`), one space and a noun of
+/// [`PLURAL_NOUNS`] as a whole word. A line continuation (a backslash, the
+/// line break and the indent after it) is read as nothing, as the compiler
+/// reads it.
+pub fn plurals_in(text: &str) -> usize {
+    let mut joined = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' && chars.peek() == Some(&'\n') {
+            while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                chars.next();
+            }
+        } else {
+            joined.push(c);
+        }
+    }
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let mut n = 0;
+    for (at, _) in joined.match_indices("} ") {
+        let head = &joined[..at];
+        let Some(open) = head.rfind('{') else {
+            continue;
+        };
+        // An escaped brace (`{{`) is no placeholder.
+        if head[..open].ends_with('{') || head[open..].contains('}') {
+            continue;
+        }
+        let rest = &joined[at + 2..];
+        if PLURAL_NOUNS
+            .iter()
+            .any(|noun| rest.starts_with(noun) && !rest[noun.len()..].starts_with(is_word))
+        {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// How many references to a requirement, an open item or a decision record
+/// the string literals of `code` hold (decision record 0644).
+pub fn id_count(code: &str) -> usize {
+    string_literals(code).iter().map(|l| ids_in(l)).sum()
+}
+
+/// The references in one text: "<PREFIX>-<digits>" as a whole word, and
+/// "decision <4 digits>" or "decision record <4 digits>", ignoring case.
+pub fn ids_in(text: &str) -> usize {
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let digits = |rest: &str| rest.chars().take_while(char::is_ascii_digit).count();
+    let mut n = 0;
+    for prefix in ID_PREFIXES {
+        let pattern = format!("{prefix}-");
+        for (at, _) in text.match_indices(&pattern) {
+            let before = text[..at].chars().next_back();
+            let rest = &text[at + pattern.len()..];
+            let d = digits(rest);
+            if !before.is_some_and(is_word) && d > 0 && !rest[d..].starts_with(is_word) {
+                n += 1;
+            }
+        }
+    }
+    let lower = text.to_lowercase();
+    for (at, word) in lower.match_indices("decision ") {
+        let rest = &lower[at + word.len()..];
+        let rest = rest.strip_prefix("record ").unwrap_or(rest);
+        if digits(rest) == 4 {
+            n += 1;
+        }
+    }
+    n
+}
+
 /// The part of a source file that is not test code: everything before its
 /// first `#[cfg(test)]` that opens a module.
 pub fn product_code(text: &str) -> &str {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
     let mut offset = 0;
-    let mut lines = text.split_inclusive('\n').peekable();
-    while let Some(line) = lines.next() {
+    for (i, line) in lines.iter().enumerate() {
         // A test module written in the file, not one declared from another
         // file (`mod x_tests;`), which leaves the rest of the file product
-        // code.
-        if line.trim() == "#[cfg(test)]"
-            && lines.peek().is_some_and(|next| {
-                // The declaration, without a trailing comment.
-                let next = next.split("//").next().unwrap_or_default().trim();
-                next.starts_with("mod ") && !next.ends_with(';')
-            })
-        {
-            return &text[..offset];
+        // code. Other attributes may stand between the two, over one line
+        // or several (`#[allow(\n    clippy::unwrap_used,\n)]`).
+        if line.trim() == "#[cfg(test)]" {
+            let mut rest = lines.iter().skip(i + 1).map(|l| {
+                // Without a trailing comment.
+                l.split("//").next().unwrap_or_default().trim()
+            });
+            let mut in_attribute = false;
+            let declaration = rest.find(|next| {
+                if in_attribute {
+                    in_attribute = !next.ends_with(")]");
+                    return false;
+                }
+                if next.starts_with("#[") {
+                    in_attribute = !next.ends_with(']');
+                    return false;
+                }
+                true
+            });
+            if declaration.is_some_and(|next| next.starts_with("mod ") && !next.ends_with(';')) {
+                return &text[..offset];
+            }
         }
         offset += line.len();
     }
@@ -83,12 +233,50 @@ pub fn message_new_count(code: &str) -> usize {
 }
 
 /// The string literals of `code`, outside comments, with their escapes as
-/// written.
+/// written. A raw string (`r"..."`, `r#"..."#`, `br"..."`) ends only at its
+/// own closing quote and hashes, so a backslash in it escapes nothing.
 pub fn string_literals(code: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut chars = code.chars().peekable();
     let mut current: Option<String> = None;
+    let mut previous: Option<char> = None;
+    let mut before_previous: Option<char> = None;
+    let is_ident = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
     while let Some(c) = chars.next() {
+        let (p1, p2) = (previous, before_previous);
+        before_previous = previous;
+        previous = Some(c);
+        // The start of a raw string: an `r` (or `br`) that is not the end
+        // of a name, then hashes and a quote.
+        if current.is_none()
+            && c == 'r'
+            && (!is_ident(p1) || (p1 == Some('b') && !is_ident(p2)))
+            && matches!(chars.peek(), Some('#' | '"'))
+        {
+            let mut hashes = 0;
+            while chars.peek() == Some(&'#') {
+                chars.next();
+                hashes += 1;
+            }
+            if chars.peek() != Some(&'"') {
+                continue;
+            }
+            chars.next();
+            let close: String = std::iter::once('"')
+                .chain(std::iter::repeat_n('#', hashes))
+                .collect();
+            let mut text = String::new();
+            for r in chars.by_ref() {
+                text.push(r);
+                if text.ends_with(&close) {
+                    text.truncate(text.len() - close.len());
+                    break;
+                }
+            }
+            out.push(text);
+            previous = Some('"');
+            continue;
+        }
         match &mut current {
             Some(text) => match c {
                 '\\' => {
@@ -165,7 +353,7 @@ fn whole_word_matches(text: &str, word: &str) -> usize {
 
 /// Whether `path` holds test code only. Only its part below `root` is
 /// looked at, so a folder named `tests` above the workspace does not count.
-fn is_test_file(root: &Path, path: &Path) -> bool {
+pub fn is_test_file(root: &Path, path: &Path) -> bool {
     let below = path.strip_prefix(root).unwrap_or(path);
     let name = below
         .file_name()
@@ -192,8 +380,17 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
 
 /// The counts of every product source file under the scanned folders, by
 /// path from `root` with forward slashes: messages built with
-/// `Message::new`, and claim words.
-pub fn counts(root: &Path) -> Result<(BTreeMap<String, usize>, BTreeMap<String, usize>)> {
+/// `Message::new`, claim words, and references to a requirement, decision
+/// record or open item, and counts before a plural noun.
+#[allow(clippy::type_complexity)]
+pub fn all_counts(
+    root: &Path,
+) -> Result<(
+    BTreeMap<String, usize>,
+    BTreeMap<String, usize>,
+    BTreeMap<String, usize>,
+    BTreeMap<String, usize>,
+)> {
     let mut files = Vec::new();
     for folder in SCANNED {
         for krate in std::fs::read_dir(root.join(folder))? {
@@ -206,6 +403,8 @@ pub fn counts(root: &Path) -> Result<(BTreeMap<String, usize>, BTreeMap<String, 
     files.sort();
     let mut built = BTreeMap::new();
     let mut claims = BTreeMap::new();
+    let mut ids = BTreeMap::new();
+    let mut plurals = BTreeMap::new();
     for path in files {
         let text = std::fs::read_to_string(&path)
             .with_context(|| format!("cannot read {}", path.display()))?;
@@ -221,10 +420,18 @@ pub fn counts(root: &Path) -> Result<(BTreeMap<String, usize>, BTreeMap<String, 
         }
         let n = claim_count(code);
         if n > 0 {
-            claims.insert(name, n);
+            claims.insert(name.clone(), n);
+        }
+        let n = id_count(code);
+        if n > 0 {
+            ids.insert(name.clone(), n);
+        }
+        let n = plural_count(code);
+        if n > 0 {
+            plurals.insert(name, n);
         }
     }
-    Ok((built, claims))
+    Ok((built, claims, ids, plurals))
 }
 
 /// The findings of `found` against `allowed`: a file over its baseline, and
@@ -256,7 +463,7 @@ pub fn compare(
     findings
 }
 
-fn table(baseline: &toml::Table, key: &str) -> Result<BTreeMap<String, usize>> {
+pub fn table(baseline: &toml::Table, key: &str) -> Result<BTreeMap<String, usize>> {
     let mut out = BTreeMap::new();
     if let Some(t) = baseline.get(key).and_then(toml::Value::as_table) {
         for (file, value) in t {
@@ -270,12 +477,12 @@ fn table(baseline: &toml::Table, key: &str) -> Result<BTreeMap<String, usize>> {
     Ok(out)
 }
 
-/// Runs both message rules on the workspace at `root`.
+/// Runs the message rules on the workspace at `root`.
 pub fn check(root: &Path) -> Result<Findings> {
     let text = std::fs::read_to_string(root.join(BASELINE))
         .with_context(|| format!("cannot read {BASELINE}"))?;
     let baseline: toml::Table = toml::from_str(&text).context(BASELINE)?;
-    let (built, claims) = counts(root)?;
+    let (built, claims, ids, plurals) = all_counts(root)?;
     let mut findings = compare(
         "messages built with Message::new",
         "build a message with Message::about, which writes the form `<Topic> (<context>): <text>` (decision 0536)",
@@ -287,6 +494,18 @@ pub fn check(root: &Path) -> Result<Findings> {
         "no text may call a path or a program safe, verified, certified or ready to run (NFR-12; specification section 15)",
         &claims,
         &table(&baseline, "claims")?,
+    ));
+    findings.extend(compare(
+        "references to a requirement, a decision record or an open item",
+        "a user reads what to change, not where the rule came from: no requirement, decision or OI number in a text (decision 0644)",
+        &ids,
+        &table(&baseline, "ids")?,
+    ));
+    findings.extend(compare(
+        "counts before a plural noun",
+        "a count that can be one is written with openchuck_path::counted, so one reads \"1 layer\", not \"1 layers\" (decision 0644)",
+        &plurals,
+        &table(&baseline, "plural_counts")?,
     ));
     Ok(findings)
 }
@@ -325,7 +544,7 @@ mod tests {
     #[test]
     fn req_nfr_12_no_product_text_claims_safety() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let (_, claims) = counts(&root).unwrap();
+        let (_, claims, _, _) = all_counts(&root).unwrap();
         assert!(claims.is_empty(), "{claims:?}");
         let text = std::fs::read_to_string(root.join(BASELINE)).unwrap();
         let baseline: toml::Table = toml::from_str(&text).unwrap();
@@ -357,6 +576,61 @@ mod tests {
         let code = r#"let a = "say \"verified\" here"; let b = "fine";"#;
         assert_eq!(string_literals(code).len(), 2);
         assert_eq!(claim_count(code), 1);
+    }
+
+    #[test]
+    fn req_ui_12_a_raw_string_ends_at_its_own_quote() {
+        // A backslash before the closing quote of a raw string escapes
+        // nothing; read as an escape, the rest of the file read as strings.
+        let code = "let a = text.strip_prefix(r\"\\\\?\\\");\n// decision 0114 in a comment\n\
+                    let b = r#\"say \"hi\"\"#; let c = br\"x\"; let rr = 1;\n";
+        assert_eq!(string_literals(code), ["\\\\?\\", "say \"hi\"", "x"]);
+        assert_eq!(id_count(code), 0);
+    }
+
+    #[test]
+    fn req_ui_12_a_test_module_after_other_attributes_is_test_code() {
+        let one =
+            "fn f() {}\n#[cfg(test)]\n#[allow(clippy::float_cmp)]\nmod tests {\n    \"x\"\n}\n";
+        assert_eq!(product_code(one), "fn f() {}\n");
+        let several = "fn f() {}\n#[cfg(test)]\n#[allow(\n    clippy::unwrap_used,\n    \
+                       clippy::panic\n)]\nmod tests {\n}\n";
+        assert_eq!(product_code(several), "fn f() {}\n");
+        // A test-only item that is not a module leaves the rest product code.
+        let item = "#[cfg(test)]\n#[allow(dead_code)]\nfn helper() {}\nfn g() {}\n";
+        assert_eq!(product_code(item), item);
+    }
+
+    #[test]
+    fn req_ui_12_a_text_naming_a_requirement_or_a_decision_is_counted() {
+        // Decision record 0644: OWNERCHECKS2 found "(OP-14)" in a refusal.
+        assert_eq!(ids_in("so links could cross it (OP-14); enlarge"), 1);
+        assert_eq!(ids_in("held (SET-09), see decision 0495 and OI-360"), 3);
+        assert_eq!(ids_in("see Decision record 0644"), 1);
+        assert_eq!(ids_in("a STOP-1 tool, T1-2, op-14, 3 decisions"), 0);
+        let code = "let s = format!(\"a (OP-14) b\");\n// OP-15 in a comment\n";
+        assert_eq!(id_count(code), 1);
+    }
+
+    #[test]
+    fn req_ui_12_a_count_before_a_plural_noun_is_counted() {
+        // Decision record 0644: OWNERCHECKS2 found "in 1 layers of 1 mm".
+        assert_eq!(
+            plurals_in("beside it in {layers} layers of {stepdown} mm"),
+            1
+        );
+        assert_eq!(plurals_in("cut {} rings, {:.0} moves and {n} passes"), 3);
+        // Over a line continuation, as the compiler reads it.
+        assert_eq!(plurals_in("cut {} \\\n                 rings"), 1);
+        // No placeholder, an escaped brace, another word or a longer word.
+        assert_eq!(
+            plurals_in("3 layers, {{x}} layers, {} layered, {} layer"),
+            0
+        );
+        assert_eq!(plurals_in("{} concave creases, {} linesmen"), 0);
+        let code = "let s = format!(\"{} moves\");\n// {} moves in a comment\n\
+                    let t = counted(n, \"move\", \"moves\");\n";
+        assert_eq!(plural_count(code), 1);
     }
 
     #[test]

@@ -51,20 +51,20 @@ pub(crate) fn setup_parts<'a>(
     ),
     AppError,
 > {
-    let fail = |what: &str| AppError::Operation {
-        name: operation.name.clone(),
-        reason: what.to_owned(),
-    };
+    let fail = |topic: &str, what: &str| AppError::refused(topic, &operation.name, what);
     let setup = project
         .setup(operation.setup)
-        .ok_or_else(|| fail("its setup is missing"))?;
+        .ok_or_else(|| fail(crate::lead_in::topic::SETUP, "its setup is missing"))?;
     let stock = setup
         .stock
         .as_ref()
-        .ok_or_else(|| fail("its setup has no stock"))?;
-    let machine = project
-        .machine()
-        .ok_or_else(|| fail("the project has no machine profile"))?;
+        .ok_or_else(|| fail(crate::lead_in::topic::STOCK, "its setup has no stock"))?;
+    let machine = project.machine().ok_or_else(|| {
+        fail(
+            crate::lead_in::topic::MACHINE_PROFILE,
+            "the project has no machine profile",
+        )
+    })?;
     Ok((setup, stock, machine))
 }
 use crate::cache::PipelineCache;
@@ -271,10 +271,11 @@ pub(crate) fn regenerate(
             .operation(last)
             .ok_or_else(|| AppError::UnknownOperation(last.to_string()))?;
         if !operation.enabled {
-            return Err(AppError::Operation {
-                name: operation.name.clone(),
-                reason: "it is turned off, so it is not generated; turn it on first".to_owned(),
-            });
+            return Err(AppError::refused(
+                crate::lead_in::topic::OPERATION,
+                &operation.name,
+                "it is turned off, so it is not generated; turn it on first",
+            ));
         }
         if let Some(end) = operations.iter().position(|o| o.id == last) {
             operations.truncate(end + 1);

@@ -321,5 +321,5 @@ pub fn verify_machine_motion(
 }
 
 fn refuse(reason: &str) -> PathError {
-    PathError::Strategy(format!("Facing motion: {reason}"))
+    PathError::refused(crate::topic::FACING_MOTION, reason)
 }

@@ -479,20 +479,23 @@ fn rough(
     }
     .and_then(|(passes, turns)| {
         if passes.is_empty() {
-            Err(PathError::Strategy(if job.region.is_some() {
-                format!(
-                    "rotary roughing has no cut to make for this selection: no material stands \
+            Err(PathError::refused(
+                crate::topic::ROTARY_ROUGHING,
+                if job.region.is_some() {
+                    format!(
+                        "rotary roughing has no cut to make for this selection: no material stands \
                      more than {} mm above the part with its stock to leave where the \
                      selection, boundary and avoid surfaces allow a cut",
-                    job.min_cut
-                )
-            } else {
-                format!(
-                    "rotary roughing has no cut to make: no material stands more than {} mm \
+                        job.min_cut
+                    )
+                } else {
+                    format!(
+                        "rotary roughing has no cut to make: no material stands more than {} mm \
                      above the part with its stock to leave",
-                    job.min_cut
-                )
-            }))
+                        job.min_cut
+                    )
+                },
+            ))
         } else {
             let (notes, warnings) = report(job.spacing, tally);
             Ok((
@@ -543,7 +546,10 @@ pub(crate) fn face(
     let label = "facing";
     let mut job = Job::new(input, None, parameters, label)?;
     let ends = input.stock.x_extent().ok_or_else(|| {
-        PathError::Strategy("facing needs the stock's ends, and the stock model gives none".into())
+        PathError::refused(
+            crate::topic::STOCK,
+            "facing needs the stock's ends, and the stock model gives none",
+        )
     })?;
     job.x_range = job.extension.map_or(ends, |e| e.widen(ends));
     if let Some(scope) = scope {
@@ -573,10 +579,13 @@ pub(crate) fn face(
         job.flat(parameters, level, context)?
     };
     if passes.is_empty() {
-        return Err(PathError::Strategy(format!(
-            "facing has no cut to make: no material stands more than {} mm above the face",
-            job.min_cut
-        )));
+        return Err(PathError::refused(
+            crate::topic::FACING,
+            format!(
+                "facing has no cut to make: no material stands more than {} mm above the face",
+                job.min_cut
+            ),
+        ));
     }
     let (notes, warnings) = report(job.spacing, tally);
     Ok(StrategyOutput {
@@ -701,7 +710,8 @@ impl<'a> Job<'a> {
         let leave = p.number(names::STOCK_TO_LEAVE)?;
         let tolerance = p.number(names::TOLERANCE)?;
         let r_top = input.stock.max_radius().ok_or_else(|| {
-            PathError::Strategy(
+            PathError::refused(
+                crate::topic::STOCK,
                 "rotary roughing needs the stock's size, and the stock model gives none".to_owned(),
             )
         })?;
@@ -727,7 +737,8 @@ impl<'a> Job<'a> {
         let range = (bounds.min.x - margin, bounds.max.x + margin);
         let (x0, x1) = extension.map_or(range, |e| e.widen(range));
         if x0.is_nan() || x1.is_nan() || x1 <= x0 {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::ROTARY_ROUGHING,
                 "the part has no length along the rotary axis to rough".to_owned(),
             ));
         }
@@ -882,11 +893,14 @@ impl<'a> Job<'a> {
     fn levels(&self, bottom: f64) -> Result<Vec<f64>> {
         let depth = self.r_top - bottom;
         if depth <= self.min_cut {
-            return Err(PathError::Strategy(format!(
-                "there is no material to rough: the stock reaches {:.3} mm and the part with its \
+            return Err(PathError::refused(
+                crate::topic::ROTARY_ROUGHING,
+                format!(
+                    "there is no material to rough: the stock reaches {:.3} mm and the part with its \
                  stock to leave reaches down to {bottom:.3} mm",
-                self.r_top
-            )));
+                    self.r_top
+                ),
+            ));
         }
         let count = (depth / self.stepdown).ceil().max(1.0);
         if count > MAX_LAYERS as f64 {
@@ -1358,9 +1372,9 @@ impl<'a> Job<'a> {
         };
         let passes = self.layers(&place, coarse, context)?;
         let note = Notice::information(format!(
-            "each layer is cut in {} rings no more than {gap:.4} mm apart, each a whole turn at \
+            "each layer is cut in {} no more than {gap:.4} mm apart, each a whole turn at \
              one place along the part, joined by steps along it{}",
-            xs.len(),
+            crate::counted(xs.len(), "ring", "rings"),
             crate::helical::blend_words(blend, gap, self.r_top)
         ))
         .about(topic::RINGS);
@@ -1805,14 +1819,17 @@ impl<'a> Job<'a> {
             .reduce(f64::min)
             .map(|b| b.max(0.0))
             .ok_or_else(|| {
-                PathError::Strategy(if self.region.is_some() {
-                    "the selection is nowhere under the tool, so there is no floor to rough \
+                PathError::refused(
+                    crate::topic::ROTARY_ROUGHING,
+                    if self.region.is_some() {
+                        "the selection is nowhere under the tool, so there is no floor to rough \
                      down to"
-                        .to_owned()
-                } else {
-                    "the part is nowhere under the tool, so there is no floor to rough down to"
-                        .to_owned()
-                })
+                            .to_owned()
+                    } else {
+                        "the part is nowhere under the tool, so there is no floor to rough down to"
+                            .to_owned()
+                    },
+                )
             })
     }
 }

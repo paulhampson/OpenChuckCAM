@@ -372,7 +372,8 @@ fn passes(
         let (x0, x1) = (bounds.min.x, bounds.max.x);
         let length = x1 - x0;
         if length.is_nan() || length <= 0.0 {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::HELICAL_FINISHING,
                 "the part has no length along the rotary axis to finish".to_owned(),
             ));
         }
@@ -474,14 +475,14 @@ fn passes(
             };
             let text = match blend {
                 None => format!(
-                    "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a \
+                    "helical finishing cut {}, no more than {spacing:.4} mm apart, each a \
                      whole turn at one place along the part, joined by steps along it at A {start}",
-                    xs.len()
+                    crate::counted(xs.len(), "ring", "rings")
                 ),
                 Some(_) => format!(
-                    "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a \
+                    "helical finishing cut {}, no more than {spacing:.4} mm apart, each a \
                      whole turn at one place along the part{}",
-                    xs.len(),
+                    crate::counted(xs.len(), "ring", "rings"),
                     blend_words(blend, spacing, radius)
                 ),
             };
@@ -1063,7 +1064,10 @@ fn adaptive_passes(
         .map(Counting::new)
         .collect();
     let Some((first, rest)) = counters.split_first() else {
-        return Err(PathError::Strategy("no surface to finish".to_owned()));
+        return Err(PathError::refused(
+            crate::topic::SURFACE,
+            "no surface to finish".to_owned(),
+        ));
     };
     let counted = StrategyInput {
         surface: first,

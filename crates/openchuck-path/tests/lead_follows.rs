@@ -646,6 +646,17 @@ fn req_op_11_req_op_14_in_roughing_a_lead_beside_a_partial_ring_through_uncut_st
             x_end: 41.0,
         }),
     };
+    // A refusal of the check Lead entry, opening Entry (decision record
+    // 0644).
+    let mut input = f.input();
+    input.keep_out = &[];
+    match run(|ctx| generate(&s, &input, &lead_values(), ctx)).unwrap_err() {
+        openchuck_path::PathError::Refused { topic, setting, .. } => {
+            assert_eq!(topic, openchuck_path::topic::LEAD_ENTRY);
+            assert_eq!(setting.as_deref(), Some(names::ENTRY));
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
     let err = make(&f, &s, &lead_values(), &[]).unwrap_err();
     assert!(err.starts_with("Lead entry: pass 1"), "{err}");
     assert!(err.contains("stock the pass has not cleared"), "{err}");

@@ -83,23 +83,19 @@ pub enum AppError {
     },
     /// An operation cannot be generated, refused by a check that names its
     /// topic, in the one form of decision record 0536 section 3: "<Topic>
-    /// (operation '<name>'): <text>".
-    #[error("{topic} (operation '{name}'): {text}")]
+    /// (operation '<name>'): <text>." Every refusal to generate takes it
+    /// (decision record 0644).
+    #[error("{}", refusal_display(topic, name, text))]
     Refused {
-        /// The check's topic, as the pathing library gives it.
+        /// The check's topic.
         topic: String,
         /// The operation's name.
         name: String,
         /// What is wrong, why, and what to change.
         text: String,
-    },
-    /// An operation cannot be generated as it stands.
-    #[error("operation '{name}' cannot be generated: {reason}")]
-    Operation {
-        /// The operation's name.
-        name: String,
-        /// Why not.
-        reason: String,
+        /// The key of the operation's setting to change, if one does: Show
+        /// setting opens it (decision record 0536 section 4).
+        setting: Option<String>,
     },
     /// The tool numbers cannot be used as asked (GC-14).
     #[error("tool numbers: {0}")]
@@ -148,6 +144,38 @@ impl AppError {
         )
     }
 
+    /// The refusal of `operation` by the check `topic`, for `text`, with no
+    /// setting to show (decision record 0644).
+    pub fn refused(
+        topic: impl Into<String>,
+        operation: impl Into<String>,
+        text: impl Into<String>,
+    ) -> Self {
+        Self::Refused {
+            topic: topic.into(),
+            name: operation.into(),
+            text: text.into(),
+            setting: None,
+        }
+    }
+
+    /// As it is, with Show setting opening the operation's setting `key`
+    /// when it is a refusal.
+    #[must_use]
+    pub fn with_setting(self, key: impl Into<String>) -> Self {
+        match self {
+            Self::Refused {
+                topic, name, text, ..
+            } => Self::Refused {
+                topic,
+                name,
+                text,
+                setting: Some(key.into()),
+            },
+            other => other,
+        }
+    }
+
     /// The error in plain words for a panel (specification section 15): a
     /// refused parameter value says what is wrong with it, without the
     /// parameter's name in the strategy's schema, which the panel shows
@@ -168,6 +196,17 @@ impl AppError {
             other => other.to_string(),
         }
     }
+}
+
+/// A refusal in the one form, naming the operation when it has a name (an
+/// operation refused for having none is named by nothing).
+fn refusal_display(topic: &str, name: &str, text: &str) -> String {
+    let context = if name.is_empty() {
+        crate::lead_in::Context::default()
+    } else {
+        crate::lead_in::Context::operation(name)
+    };
+    crate::lead_in::in_form(topic, &context, text)
 }
 
 #[cfg(test)]

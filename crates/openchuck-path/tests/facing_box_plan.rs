@@ -444,3 +444,38 @@ fn req_op_24_stored_box_settings_drive_equal_layers_and_explicit_plane_without_d
     assert_eq!(plan.faces[0].coverage.min(), [8., -4.]);
     assert_eq!(plan.faces[0].coverage.max(), [52., 6.]);
 }
+
+/// Decision record 0644: a Box facing refusal names its check and the
+/// setting to change.
+#[test]
+fn req_ui_12_box_facing_refusals_carry_their_topic() {
+    let part = mesh();
+    let stock = stock();
+    let tool = Tool {
+        shape: ToolShape::FlatEnd,
+        ..tool()
+    };
+    let machine = MachineProfile::example_x_rotary();
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [None, None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let mut bad = settings();
+    bad.stepdown = 11.;
+    assert_eq!(
+        plan_box_sides(&setup, &bad, &ctx).unwrap_err(),
+        openchuck_path::PathError::Refused {
+            topic: openchuck_path::topic::BOX_FACING.into(),
+            text: "stepdown must be above zero and no greater than flute length".into(),
+            setting: Some(openchuck_path::roughing::parameter::STEPDOWN.into()),
+        }
+    );
+}
