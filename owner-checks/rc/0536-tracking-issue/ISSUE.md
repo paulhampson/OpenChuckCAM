@@ -82,8 +82,8 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 ## Known, not part of these checks
 
-- The Facing line and the setup listing of the command line, noted here under steps 3 to 5, take the one form with step 6. (The doubled full stop in the command line's acknowledgement refusal, "... before running.. Read them", is fixed by #670.)
-- `openchuck-cli report` prints the machine profile's own provenance notes, with decision and open-item numbers ("(decision 0013)", "OI-471"); they are the profile's data, not messages, and are not part of step 6.
+- The Facing line and the setup listing of the command line, noted here under steps 3 to 5, take the one form with step 6. The doubled full stop in the acknowledgement refusal ("... before running.. Read them, ...") is fixed in #670 (merged on `main` at `576ef9c9`); builds before that commit still show it.
+- `openchuck-cli report` prints the machine profile's own provenance notes, with decision and open-item numbers ("(decision 0013)", "OI-471"); they are the profile's data, not messages, and are not part of step 6; whether they should count as messages is a separate question for you.
 - Several earlier checks quote these texts and pass in either form: #600, #622 and #567 (and #611, whose workholding texts are unchanged).
 
 ---
