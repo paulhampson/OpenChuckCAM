@@ -146,6 +146,28 @@ def wait_done(at, box, timeout, what, wait=3):
     print(what, "took about", waited, "s", flush=True)
 
 
+def bright(box):
+    """How many light pixels (text) are in `box`: the label "Updating cut part" is light grey on a
+    blue or dark bar, so 0 means the label is not shown."""
+    raw = crop(box)
+    return sum(1 for i in range(0, len(raw) - 2, 3) if min(raw[i], raw[i + 1], raw[i + 2]) > 180)
+
+
+def wait_cut_part(at, timeout=600, wait=2):
+    """Click `at` (a playback control), then wait, bounded, until the Playback tab no longer says
+    "Updating cut part" (issue 629). The bar under the label moves with the playhead, so this counts
+    the label's light pixels rather than comparing with the screen before the click."""
+    click(*at, wait)
+    waited = 0
+    while bright(CUT_PART) and waited < timeout:
+        pause(5)
+        waited += 5
+    if waited >= timeout:
+        raise TimeoutError(f"the cut part was still updating after {timeout} s")
+    pause(2)
+    print("cut part updated in about", waited, "s", flush=True)
+
+
 def generate(timeout=900, at=(1854, 1058)):
     """Click Generate stale at `at` and wait until the status bar reads as it did before (Ready).
     Shared by the tutorial, the heroes and the blisk examples (issue 629); unlike a wait for green
@@ -272,7 +294,7 @@ def heroes():
     click(300, 98, 1)                                # Shaded
     click(1596, 134, 4)                              # Deviation colours
     click(541, 946, 1.5)                             # speed 10 000x
-    wait_done((355, 832), CUT_PART, 600, "cut part at the end", 30)   # play to the end
+    wait_cut_part((355, 832), wait=20)               # play to the end
     click(1558, 789, 2)                              # fold the dock
     click(668, 98, 1)                                # Iso view
     click(722, 98, 2)                                # Fit
@@ -371,11 +393,11 @@ def tutorial(args):
     click(299, 98, 1)                                # Shaded
     click(720, 98, 1.5)                              # Fit
     scroll(920, 440, 6, down=False)                  # zoom in
-    wait_done((428, 830), CUT_PART, 600, "cut part after roughing")   # next operation
+    wait_cut_part((428, 830))                        # next operation: after roughing
     shot("15-after-roughing")
     click(540, 945, 1)                               # speed 10 000x
     pause(1)
-    wait_done((355, 830), CUT_PART, 600, "cut part at the end", 30)   # play to the end
+    wait_cut_part((355, 830), wait=20)               # play to the end
     shot("14-simulate-final")
 
     # 8. Post and export.
