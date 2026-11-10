@@ -1,0 +1,25 @@
+schema = 25
+id = "0c0c0547-0000-4000-8000-000000000102"
+order = "Y"
+name = "Short-flute ball 3.175x5 (check 547)"
+
+[tool]
+diameter = 3.175
+flute_length = 5.0
+overall_length = 38.0
+shank_diameter = 3.175
+flute_count = 2
+material = "carbide"
+
+[tool.shape]
+type = "ball_end"
+
+[controller]
+number = 204
+
+[cutting_data.Hardwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.01
+plunge_feed = 200.0
+stepover = 0.5
+stepdown = 1.0

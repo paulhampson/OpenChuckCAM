@@ -1,0 +1,13 @@
+schema = 25
+id = "0c0c0547-0000-4000-8000-000000000302"
+order = "Z"
+name = "Finish vase"
+setup = "0c0c0633-0000-4000-8000-000000000013"
+strategy = "helical_finishing"
+tool = "0c0c0547-0000-4000-8000-000000000102"
+selections = ["0c0c0547-0000-4000-8000-000000000201"]
+
+[parameters]
+adaptive_spacing = false
+face_free_ends = false
+stepover = 0.5
