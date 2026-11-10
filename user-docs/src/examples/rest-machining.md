@@ -31,7 +31,7 @@ A tool cannot cut a corner tighter than its own radius, or a groove narrower tha
 2. Under the view, click **Results**. In Figure 2, **Information** is turned off, so the list shows the warnings only.
 
 <figure>
-<a href="images/rest/02-rest-after-finish.png"><img src="images/rest/02-rest-after-finish.png" width="1920" height="1080" alt="The three operations generated; the view shows the paths, numbered black-and-white markers and diagonal hatching on the surfaces, labelled Unreachable (Rest) in the legend, near the held end and along the part; the Results tab, with Information turned off, reads 3 operation(s), 32759 moves, and lists the warnings of each operation, among them operation 'Rest': move 0: rest machining cannot reach 9 areas of the part."></a>
+<a href="images/rest/02-rest-after-finish.png"><img src="images/rest/02-rest-after-finish.png" width="1920" height="1080" alt="The three operations generated; the view shows the paths, numbered black-and-white markers along the part, and diagonal hatching, labelled Unreachable (Rest) in the legend, near the held end; the Results tab, with Information turned off, reads 3 operations, 32759 moves, and lists the warnings of the finish and the rest operations, among them Unreached areas (operation 'Rest'): rest machining cannot reach 9 areas of the part."></a>
 <figcaption><b>Figure 2.</b> The numbered markers show where material is left that the rest tool cannot reach.</figcaption>
 </figure>
 
@@ -73,13 +73,13 @@ To see what happens when the rest operation has nothing to follow, turn the othe
 2. Click **Generate**.
 
 <figure>
-<a href="images/rest/04-no-earlier-operation.png"><img src="images/rest/04-no-earlier-operation.png" width="1920" height="978" alt="Only 3 Rest is ticked; the view shows a dense path over the whole stock; the Results tab, with Information turned off, reads 1 operation(s), 106196 moves, and first operation 'Rest': Rest machining cleans up material that earlier operations left, and no earlier operation of this setup has cut: the setup's own stock is taken, so all of the part counts as having material left."></a>
-<figcaption><b>Figure 4.</b> With no earlier operation, the rest operation starts from the whole stock and cuts all of it with the 2 mm ball.</figcaption>
+<a href="images/rest/04-no-earlier-operation.png"><img src="images/rest/04-no-earlier-operation.png" width="1920" height="978" alt="Only 3 Rest is ticked; the view shows a dense path over the whole stock, numbered markers and diagonal hatching near the held end; the Results tab, with Information turned off, reads 1 operation, 106196 moves, and first Earlier operations (operation 'Rest'): rest machining cleans up material that earlier operations left, and no earlier operation of this setup has cut: the setup's own stock is taken, so all of the part counts as having material left."></a>
+<figcaption><b>Figure 4.</b> With no earlier operation, the rest operation takes the whole stock, so all of the part counts as having material left, and it cuts there with the 2 mm ball.</figcaption>
 </figure>
 
 The first line says what happened:
 
-> Rest machining cleans up material that earlier operations left, and no earlier operation of this setup has cut: the setup's own stock is taken, so all of the part counts as having material left
+> Earlier operations (operation 'Rest'): rest machining cleans up material that earlier operations left, and no earlier operation of this setup has cut: the setup's own stock is taken, so all of the part counts as having material left.
 
 The operation now plans 106,196 moves and removes 14,114 mm³, as much as the roughing and the finish together, with a 2 mm tool and its **Stepdown** at 0. It is a warning, not an error, and a path is made. Read it as "this is not the job you meant": tick the roughing and the finish again, or use a roughing operation for bulk material.
 
