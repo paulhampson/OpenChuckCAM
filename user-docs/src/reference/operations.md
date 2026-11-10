@@ -79,7 +79,7 @@ When a required value is empty and no cutting data fills it, the operation canno
 
 ## Geometry: the surfaces an operation works on
 
-Selection sets are named groups of faces, triangles or edges, made in **Selection sets**. The Geometry section puts them in four roles. With nothing in **Cut on**, the operation cuts the whole part.
+Selection sets are named groups of faces, triangles or edges, made in **Selection sets**. The Geometry section puts them in four roles. With nothing in **Cut on**, the operation cuts the whole part, except Swarf (flank) machining and Face flow finishing: they cut only the faces you choose, so with no face set in **Cut on** they are not generated, and the message says so ("swarf needs a face set: ..." or "Face-flow finishing needs a face set: ..."). The Geometry section's own line, "With nothing in Cut on, the operation cuts the whole part.", is shown for these two strategies as well; it does not apply to them.
 
 Cut on
 : The operation cuts only on these surfaces.
