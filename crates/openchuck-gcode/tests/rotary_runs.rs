@@ -190,3 +190,80 @@ fn req_gc_08_replay_never_splits_an_inverse_time_block() {
     )
     .unwrap();
 }
+
+/// A replay of `text` as a controller that holds each X, Y, Z, A and F word
+/// as a binary32 float reads it (the Facing written-motion check's second
+/// replay, decision 0547 and issue #641).
+fn float_replay(text: &str) -> openchuck_gcode::Replay {
+    let mut program = read(text).unwrap();
+    for word in program.blocks.iter_mut().flat_map(|b| b.words.iter_mut()) {
+        if ['X', 'Y', 'Z', 'A', 'F'].contains(&word.letter) {
+            #[allow(clippy::cast_possible_truncation)]
+            let held = word.value as f32;
+            word.value = f64::from(held);
+        }
+    }
+    replay(&program, Dialect::Linuxcnc).unwrap()
+}
+
+#[test]
+fn req_gc_08_float_replay_accepts_a_combined_rotation_at_a_written_x_with_no_exact_float() {
+    // Issue #641: a ring at X 9.088, which binary32 holds as 9.0880003.
+    // Each pose on the combined block is on its way at the written X, Y
+    // and Z; the float replay must still match all eight poses to the one
+    // block, as the decimal replay does, not one pose to each later block.
+    let x = 9.088;
+    let pose = |z: f64, a: f64| {
+        let mut p = at(z, a);
+        p.tip = tool_tip_in_model(
+            &frame(),
+            &MachinePosition {
+                xyz: Point3::new(x, 0.0, z),
+                a: Degrees(a),
+            },
+        );
+        p
+    };
+    let mut ring = ring();
+    let group = &mut ring.groups[0];
+    group.start = pose(30.0, 0.0);
+    for segment in &mut group.segments {
+        segment.end = pose(30.0, segment.end.a.0);
+    }
+    let text = "G90 G21\nG54\nG0 X9.088 Y0 Z30 A0\nG1 A40 F300\nM2\n";
+    let mut tolerances = Tolerances::for_decimals(3, 3);
+    tolerances.a_deg += 0.01;
+    for replay in [
+        replay(&read(text).unwrap(), Dialect::Linuxcnc).unwrap(),
+        float_replay(text),
+    ] {
+        let mut lines = Vec::new();
+        let report = compare_with_moves(
+            &replay,
+            &ring,
+            &frame(),
+            TimingRule::Linuxcnc,
+            tolerances,
+            &mut |m| {
+                lines.push(m.movement.line);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(report.poses, 9);
+        assert_eq!(lines, [3, 4, 4, 4, 4, 4, 4, 4, 4]);
+    }
+    // A float block that is not at the pose's written X is still not on its
+    // way: the run is then refused, not matched part way.
+    let off = "G90 G21\nG54\nG0 X9.089 Y0 Z30 A0\nG1 A40 F300\nM2\n";
+    assert!(
+        compare(
+            &float_replay(off),
+            &ring,
+            &frame(),
+            TimingRule::Linuxcnc,
+            tolerances
+        )
+        .is_err()
+    );
+}

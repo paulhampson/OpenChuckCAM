@@ -378,7 +378,25 @@ mod tests {
     }
     fn written_case(
         proof: FacingVerification,
+        group: ToolpathGroup,
+        name: &str,
+        context: &JobContext<'_>,
+        f: impl FnOnce(
+            &openchuck_post::PostDefinition,
+            &openchuck_post::PostJob,
+            &openchuck_types::ir::Toolpath,
+            &crate::GroupInfo,
+            &str,
+        ),
+    ) {
+        written_case_with(proof, group, |_| Vec::new(), name, context, f);
+    }
+    /// As [`written_case`], with `after` adding operations that are not
+    /// Facing after the Facing group, in the same file.
+    fn written_case_with(
+        proof: FacingVerification,
         mut group: ToolpathGroup,
+        after: impl FnOnce(&ToolpathGroup) -> Vec<ToolpathGroup>,
         name: &str,
         context: &JobContext<'_>,
         f: impl FnOnce(
@@ -406,9 +424,9 @@ mod tests {
             facing: Some(proof.clone()),
             rapid_cuts: Vec::new(),
         };
-        let path = Toolpath {
-            groups: vec![group],
-        };
+        let mut groups = vec![group];
+        groups.extend(after(&groups[0]));
+        let path = Toolpath { groups };
         let job = PostJob {
             block_time: Default::default(),
             a_range: proof.0.machine.a_range,
@@ -599,6 +617,75 @@ mod tests {
                 );
             },
         );
+    }
+    #[test]
+    fn req_op_24_req_gc_08_facing_file_with_a_combined_rotation_posts_through_both_posts() {
+        // Issue #641: a Facing operation and, in the same file, an operation
+        // that turns A alone through 72 poses at X 9.088 (a ring), which the
+        // post writes as one combined block (decision 0506). The written-motion
+        // check replays the whole file a second time as a binary32 controller
+        // holds the words; the combined block must still stand for every
+        // pose there, so the file posts.
+        use openchuck_types::ir::{Segment, ToolPose};
+        use openchuck_types::kinematics::{
+            MachinePosition, RotaryFrame, tool_axis_in_model, tool_tip_in_model,
+        };
+        use openchuck_types::units::{Degrees, FeedRate};
+        let cancel = CancelToken::new();
+        let ctx = JobContext::new(&cancel, &NoProgress);
+        for name in ["linuxcnc", "makera-z1"] {
+            let (proof, group) = fixture(&ctx);
+            let frame = RotaryFrame::work(&proof.0.machine, &Default::default());
+            let pose = |z: f64, a: f64| {
+                let a = Degrees(a);
+                ToolPose {
+                    tip: tool_tip_in_model(
+                        &frame,
+                        &MachinePosition {
+                            xyz: Point3::new(9.088, 0., z),
+                            a,
+                        },
+                    ),
+                    axis: tool_axis_in_model(&frame, a),
+                    a,
+                }
+            };
+            let fed = |end: ToolPose, seconds: f64| Segment {
+                kind: MoveKind::Cutting,
+                end,
+                duration: Seconds(seconds),
+                contact_length: Millimetres(0.),
+                contact_feed: Some(FeedRate(300.)),
+            };
+            written_case_with(
+                proof,
+                group,
+                |facing| {
+                    let mut tags = facing.tags.clone();
+                    tags.operation = openchuck_project::id::OperationId::new().to_string();
+                    let mut segments = vec![fed(pose(30., 0.), 4.)];
+                    segments.extend((1..=72).map(|k| fed(pose(30., 5. * f64::from(k)), 1.)));
+                    segments.push(fed(pose(50., 360.), 4.));
+                    vec![ToolpathGroup {
+                        rotary_reset_after: Vec::new(),
+                        tags,
+                        start: pose(50., 0.),
+                        segments,
+                    }]
+                },
+                name,
+                &ctx,
+                |_, _, path, _, text| {
+                    assert_eq!(path.groups.len(), 2);
+                    // One block stands for the 72 poses.
+                    assert_eq!(
+                        text.lines().filter(|l| l.contains("A360.000")).count(),
+                        1,
+                        "{name}: the rotation is one combined block"
+                    );
+                },
+            );
+        }
     }
     #[test]
     fn req_op_24_req_gc_09_actual_written_and_float_words_must_complete_the_face() {
