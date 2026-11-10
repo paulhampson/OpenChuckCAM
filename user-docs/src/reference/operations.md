@@ -55,21 +55,21 @@ Choices are shown as the program stores them, for example `clearance` and `safe_
 | Stepover | from the tool's cutting data, else required | The distance between neighbouring passes, measured as the strategy states. |
 | Stock to leave | 0 mm | Material left on the surfaces for a later operation. A new rotary roughing operation starts at a tenth of the tool's diameter, rounded to 0.05 mm and kept between 0.1 and 1 mm. |
 | Cutting feed | from the tool's cutting data, else required | The [feed](../glossary.md#feed) at the cutter's contact point while cutting, in mm/min. |
-| Plunge feed | from the tool's cutting data, else required | The feed of the tool tip moving into the material. |
+| Plunge feed | from the tool's cutting data, else required | The feed of the tool tip moving into the material. Rotary roughing and flat or round facing also go down into the stock inside a pass no faster than this. |
 | Retract | `clearance` | Where moves between passes go: up to the safe cylinder (`clearance`), or to the safe Z (`safe_z`). |
 | Approach distance | 1 mm | A rapid approach stops this far above the stock; the rest is a plunge at the plunge feed. |
 | Entry | `plunge` | How the tool enters the cut: a straight `plunge`, a tangent arc (`lead`), a `ramp` that follows the pass's own path down to its first cut point, or a descending `helix`. With `lead`, a matching arc also leaves the cut at the end of the pass. On a ring or a spiral the arcs turn with the part, in the plane of the cut at the ring's X: the tool comes down onto the cut and rises from it while the part turns, so the arcs never run along the part. A pass that is a single point is entered by a plunge instead, and a note names it. |
 | Allow single-point plunge | off | A pass that is a single point (a roughing layer that only touches the part's tip, for example) has no path for a ramp to follow. With this on, the tool plunges straight down to that point instead of refusing the operation. The tool must be able to plunge (centre cutting). Only for ramp entry. |
 | Steeper ramp near the axis | off | Near the rotary axis a ramp round a ring needs many turns. With this on, a ring or spiral ramp that would need more than 10 turns at the Ramp angle uses a steeper angle, just enough to fit in 10 turns, never steeper than the Maximum ramp angle. Lines are not affected. Only for ramp entry. |
 | Maximum ramp angle | 15° | The steepest angle the steeper ramp near the axis may use, at most 45°. |
-| Plunge to remove face nubs | off | Roughing only. Use this where the part comes to a point near the rotary axis (a pointed or tapering end, or a pin) with stock beyond it. There, roughing in rings narrows the stock round the axis to a nub no wider than the Face nub diameter, with nothing of the part inside it; with this on, the tool plunges at the axis while the part turns, to remove the nub, instead of ramping round ever smaller rings. It has no effect anywhere else. On a flat free end roughing makes no rings near the axis: face that end with a Facing operation in End mode before roughing. Only with Entry Ramp. The tool must be able to plunge (centre cutting), and it cuts with its full width. |
+| Plunge to remove face nubs | off | Roughing only. Use this where the part comes to a point near the rotary axis (a pointed or tapering end, or a pin) with stock beyond it. There, roughing in rings narrows the stock round the axis to a nub no wider than the Face nub diameter, with nothing of the part inside it; with this on, the tool plunges at the axis while the part turns, to remove the nub, instead of ramping round ever smaller rings. It has no effect anywhere else. On a flat free end roughing makes no rings near the axis: face that end with a Facing operation with the **Unheld end** shape before roughing. Only with Entry Ramp. The tool must be able to plunge (centre cutting), and it cuts with its full width. |
 | Face nub diameter | 0 mm | The widest nub that is plunged; 0 uses the tool's cutting diameter, and a larger value is held to it. |
 | Back-and-forth ramp | off | No longer has an effect: shown only where an operation saved by an earlier version has it on. Every ramp now follows the pass's own path. |
 | Ramp angle | 3° | The angle of descent for a ramp or helix entry, above 0 and at most 89°. |
 | Helix diameter | 0.75 | The diameter of the helix entry, as a fraction of the tool's diameter. |
 | Lead radius | 0 mm | The radius of the lead arcs; 0 uses the tool's radius. |
 
-**A flat free end.** Where the part ends in a flat face square to the rotary axis with stock beyond it, a Facing operation in End mode before roughing removes the stock past the end across Y, so roughing leaves no nub round the axis there.
+**A flat free end.** Where the part ends in a flat face square to the rotary axis with stock beyond it, a Facing operation with the **Unheld end** shape before roughing removes the stock past the end across Y, so roughing leaves no nub round the axis there.
 
 The entry defaults are starting values that have not been checked on a machine. A tool that is not centre-cutting cannot plunge: choose ramp or helix entry, or say on the tool that it can plunge.
 
@@ -171,12 +171,12 @@ Prepares the stock: flat faces along it, a round diameter, the end opposite the 
 | Layer distribution | Full stepdown, shorter final pass | Box sides: full layers with a shorter last one, or **Equal stepdowns**. |
 | Face +Z (A 0°), +Y (A 90°), −Z (A 180°), −Y (A 270°) | off | Box sides: the standard sides to face; **All four sides** ticks them all. For each, **part plus allowance** (on) sets the face from the part and its stock to leave; clear it to type a **plane offset**. |
 | Arbitrary A faces | none | Box sides: more faces at any A, each with its offset, in your order. |
-| Stepdown | from the tool's cutting data, else required | The depth of each layer. For the unheld end it is **Axial stepdown**. |
+| Stepdown | from the tool's cutting data, else required | The depth of each layer. For the unheld end it is **Stepdown (band along the tool)**: the spacing of the bands the tool's flank cuts, at most the flute length. |
 | Largest angle step, Start angle | 5°, 0° | As for rotary roughing. |
 | Smallest cut | 0.15 mm | Flat and round: as for rotary roughing. |
 | Passes | Spiral | Round: **Spiral** or **Rings**. |
 
-For the unheld end, **Stepover** is labelled **Flute band spacing**. Facing also has **Extend past the stock** with **Also past the sides**, and flat facing has **Adaptive spacing**.
+For the unheld end, **Stepover** is labelled **Stepover (slice thickness along X)**: the thickness of each slice taken off the end, at most the tool's cutting diameter. Where there is room beside the stock, each band is entered from the air; where there is not, at the plunge feed. Facing also has **Extend past the stock** with **Also past the sides**, and flat facing has **Adaptive spacing**.
 
 ## Helical finishing
 
