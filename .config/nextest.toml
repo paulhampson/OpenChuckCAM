@@ -228,6 +228,11 @@ priority = 79
 # unchanged full case passed alone at 323.661 s. All remain selected by default
 # (apart from the pre-existing independent-oracle nightly-only exclusion).
 [profile.coverage]
+# RAMPENTRY 10 Nov 2026 (issue #687): ramp_follows' public blisk roughed in rings at
+# 3 degrees with 1 mm steps, 182 s uninstrumented alone on one test thread (4 vCPU). It
+# is the only public case found that reaches both the end-face ring and the short
+# steps, and coarser steps reach neither. Default runs it; coverage excludes it and the
+# nightly long run selects it.
 # Lane LARGEPATH, 6 Nov 2026 (coordinator's request), uninstrumented and alone on 4 vCPU:
 # tab_zone_clearance's roughing and rest round a tab 351.9 s (634 s on a busy Windows CI
 # share), the playback panel's final cut part after play to end 77.5 s (182 s on CI).
@@ -418,9 +423,11 @@ default-filter = '''not (
   | (binary_id(=openchuck-app::integration) & test(=tab_zone_clearance::req_op_21_req_set_09_roughing_and_rest_clear_round_a_tab_and_keep_it))
   | test(=playback_panel::tests::req_sim_03_req_sim_04_final_cut_part_is_published_after_play_to_end)
   | (binary_id(=openchuck-app::integration) & test(=stale_setup_edits::req_set_09_req_ui_11_req_nfr_12_holding_the_free_end_regenerates_a_different_path))
+  | (binary_id(=openchuck-path::integration) & test(=ramp_follows::req_op_11_req_op_03_roughing_the_blisk_in_rings_ramps_beside_its_end_face_and_over_short_steps))
 )'''
 
 [profile.long]
+# RAMPENTRY 10 Nov 2026: ramp_follows' blisk in rings, 182 s (see the coverage profile).
 # STALETAB 6 Nov 2026: stale_setup_edits' free end held, 67.6 s (see the coverage profile).
 # LARGEPATH 6 Nov 2026: tab_zone_clearance round a tab 351.9 s and the playback panel's
 # final cut part 77.5 s (see the coverage profile).
@@ -517,4 +524,5 @@ default-filter = '''
   | (binary_id(=openchuck-app::integration) & test(=tab_zone_clearance::req_op_21_req_set_09_roughing_and_rest_clear_round_a_tab_and_keep_it))
   | test(=playback_panel::tests::req_sim_03_req_sim_04_final_cut_part_is_published_after_play_to_end)
   | (binary_id(=openchuck-app::integration) & test(=stale_setup_edits::req_set_09_req_ui_11_req_nfr_12_holding_the_free_end_regenerates_a_different_path))
+  | (binary_id(=openchuck-path::integration) & test(=ramp_follows::req_op_11_req_op_03_roughing_the_blisk_in_rings_ramps_beside_its_end_face_and_over_short_steps))
 '''

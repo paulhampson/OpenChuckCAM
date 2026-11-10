@@ -78,15 +78,20 @@ pub(super) enum Refusal {
 /// the arc length at the step's mean distance from the rotary axis.
 /// Legs run out along the path and back, an even number of them, so the
 /// last ends at the first point; each is as long as the path, or shorter
-/// when two legs are enough. Gives the moves, from above the first point at
-/// `top` to the first point, and whether a steep drop of the pass was
-/// followed (see [`heights`]).
+/// when two legs are enough, but never shorter than `shortest_leg` where the
+/// path is that long (the tool radius, decision 0543 point 4 as accepted:
+/// the ramp is then shallower than the angle, never steeper). Gives the
+/// moves, from above the first point at `top` to the first point; the floor
+/// of each, the pass's own height on the tool line through it (issue #687);
+/// the length of its legs; and whether a steep drop of the pass was followed
+/// (see [`heights`]).
 pub(super) fn back_and_forth(
     path: &[(AxisPosition, Degrees)],
     top: f64,
     tan: f64,
     minimum: f64,
-) -> Result<(Vec<(AxisPosition, Degrees)>, bool), Refusal> {
+    shortest_leg: f64,
+) -> Result<Ramp, Refusal> {
     // Distance along the path at each point.
     let mut along = Vec::with_capacity(path.len());
     let mut total = 0.0;
@@ -114,7 +119,7 @@ pub(super) fn back_and_forth(
     // more until it starts at `top`.
     let need = rise / tan;
     let (mut leg, mut legs) = if need <= 2.0 * total {
-        (0.5 * need, 2.0)
+        ((0.5 * need).max(shortest_leg.min(total)), 2.0)
     } else {
         (total, 2.0 * (need / (2.0 * total)).ceil())
     };
@@ -128,7 +133,7 @@ pub(super) fn back_and_forth(
                 },
             });
         }
-        let (moves, steep) = legs_over(
+        let ramp = legs_over(
             path,
             &along,
             head,
@@ -138,8 +143,12 @@ pub(super) fn back_and_forth(
             top,
             tan,
         );
-        if moves.first().is_some_and(|(p, _)| p.height >= top - 1e-9) {
-            return Ok((moves, steep));
+        if ramp
+            .moves
+            .first()
+            .is_some_and(|(p, _)| p.height >= top - 1e-9)
+        {
+            return Ok(ramp);
         }
         if leg < total {
             leg = total;
@@ -160,7 +169,7 @@ fn legs_over(
     legs: usize,
     top: f64,
     tan: f64,
-) -> (Vec<(AxisPosition, Degrees)>, bool) {
+) -> Ramp {
     // The path's points up to `leg`, and the point at `leg`.
     let mut out_points: Vec<(f64, AxisPosition, Degrees)> = path
         .iter()
@@ -204,7 +213,24 @@ fn legs_over(
     if let Some(last) = moves.last_mut() {
         *last = (head, a0);
     }
-    (moves, steep)
+    Ramp {
+        moves,
+        floors: base,
+        leg,
+        steep,
+    }
+}
+
+/// A back-and-forth ramp: its moves, from where the descent starts to the
+/// pass's first point; the floor of each move, the height on the tool line
+/// through it that the ramp stands on (the pass's own); the length of its
+/// legs; and whether it follows a steep drop of the pass (see [`heights`]).
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct Ramp {
+    pub moves: Vec<(AxisPosition, Degrees)>,
+    pub floors: Vec<f64>,
+    pub leg: f64,
+    pub steep: bool,
 }
 
 /// The travel of a step from `(q, b)` to `(p, a)`.
@@ -304,7 +330,7 @@ mod tests {
     #[test]
     fn req_op_11_two_legs_when_the_line_is_long_enough() {
         let path = line(100, 0.5, |_| 10.0);
-        let (moves, steep) = back_and_forth(&path, 12.0, TAN, 3.0).unwrap();
+        let Ramp { moves, steep, .. } = back_and_forth(&path, 12.0, TAN, 3.0, 0.0).unwrap();
         assert!(!steep);
         check(&moves, &path, 12.0);
         // 2 mm of rise at 0.1 is 20 mm of travel: two legs of 10 mm.
@@ -317,7 +343,7 @@ mod tests {
     #[test]
     fn req_op_11_more_legs_over_a_short_line() {
         let path = line(4, 0.5, |_| 10.0);
-        let (moves, _) = back_and_forth(&path, 12.0, TAN, 1.0).unwrap();
+        let Ramp { moves, .. } = back_and_forth(&path, 12.0, TAN, 1.0, 0.0).unwrap();
         check(&moves, &path, 12.0);
         assert!(
             moves
@@ -330,7 +356,7 @@ mod tests {
     fn req_op_11_req_nfr_07_a_line_shorter_than_the_minimum_is_refused() {
         let path = line(2, 0.5, |_| 10.0);
         assert_eq!(
-            back_and_forth(&path, 12.0, TAN, 3.0),
+            back_and_forth(&path, 12.0, TAN, 3.0, 0.0),
             Err(Refusal::TooShort { length: 1.0 })
         );
     }
@@ -339,7 +365,7 @@ mod tests {
     fn req_op_11_req_nfr_07_too_many_legs_are_refused() {
         let path = line(1, 0.01, |_| 10.0);
         assert!(matches!(
-            back_and_forth(&path, 1000.0, TAN, 0.001),
+            back_and_forth(&path, 1000.0, TAN, 0.001, 0.0),
             Err(Refusal::TooManyLegs { .. })
         ));
     }
@@ -347,7 +373,7 @@ mod tests {
     #[test]
     fn req_op_11_the_ramp_stays_above_a_pass_that_rises_and_falls() {
         let path = line(100, 0.5, |x| 10.0 + (x * 0.5).sin());
-        let (moves, _) = back_and_forth(&path, 13.0, TAN, 3.0).unwrap();
+        let Ramp { moves, .. } = back_and_forth(&path, 13.0, TAN, 3.0, 0.0).unwrap();
         for (p, _) in &moves {
             let base = 10.0 + (p.along * 0.5).sin();
             assert!(p.height >= base - 1e-6, "{p:?} under {base}");
@@ -369,7 +395,7 @@ mod tests {
         // On a line whose first point is 1 mm below the rest, the last leg
         // comes back over the higher pass and follows it down.
         let path = line(100, 0.5, |x| if x < 0.25 { 10.0 } else { 11.0 });
-        let (moves, steep) = back_and_forth(&path, 12.0, TAN, 3.0).unwrap();
+        let Ramp { moves, steep, .. } = back_and_forth(&path, 12.0, TAN, 3.0, 0.0).unwrap();
         assert!(steep);
         assert_eq!(moves.last().unwrap().0, path[0].0);
     }
@@ -388,7 +414,7 @@ mod tests {
                 )
             })
             .collect();
-        let (moves, _) = back_and_forth(&path, 14.0, TAN, 3.0).unwrap();
+        let Ramp { moves, .. } = back_and_forth(&path, 14.0, TAN, 3.0, 0.0).unwrap();
         assert!(
             moves
                 .iter()
@@ -396,5 +422,53 @@ mod tests {
         );
         assert!(moves.iter().all(|(p, _)| p.along == 5.0));
         assert_eq!(moves.last().unwrap().1, Degrees(0.0));
+    }
+
+    /// Issue #687: each move of a back-and-forth ramp stands on its floor,
+    /// the pass's own height on the tool line through it, and never below
+    /// it; the floor of the last move is the first point's.
+    #[test]
+    fn req_op_11_each_move_stands_on_the_pass_s_own_height_beneath_it() {
+        // A pass that rises and falls under the ramp.
+        let path = line(40, 0.5, |x| 10.0 + 0.3 * (x * 0.7).sin());
+        let ramp = back_and_forth(&path, 13.0, TAN, 3.0, 0.0).unwrap();
+        assert_eq!(ramp.moves.len(), ramp.floors.len());
+        for ((p, _), floor) in ramp.moves.iter().zip(&ramp.floors) {
+            assert!(p.height >= floor - 1e-9, "{} below {floor}", p.height);
+            // The floor is the pass's height at that point of its line.
+            let x = p.along;
+            assert!(
+                (floor - (10.0 + 0.3 * (x * 0.7).sin())).abs() < 0.01,
+                "{floor} at {x}"
+            );
+        }
+        assert_eq!(ramp.floors.last(), Some(&path[0].0.height));
+    }
+
+    /// Decision 0543 point 4 as accepted (the owner's option (b), 10 Nov
+    /// 2026, relayed; CodeRabbit on #761): where little descent is needed
+    /// the two legs are still at least the tool radius when the path is that
+    /// long, so the tool's centre never goes down within less than a radius;
+    /// the ramp is shallower than the angle, never steeper, and stands on
+    /// the pass where it reaches it.
+    #[test]
+    fn req_op_11_legs_are_at_least_the_tool_radius_where_the_path_allows() {
+        let path = line(100, 0.5, |_| 10.0);
+        // 0.2 mm of rise at 0.1 needs 2 mm of travel: 1 mm legs without the
+        // radius, 3 mm with it.
+        let short = back_and_forth(&path, 10.2, TAN, 0.1, 0.0).unwrap();
+        assert!((short.leg - 1.0).abs() < 1e-9, "{}", short.leg);
+        let ramp = back_and_forth(&path, 10.2, TAN, 0.1, 3.0).unwrap();
+        assert!((ramp.leg - 3.0).abs() < 1e-9, "{}", ramp.leg);
+        check(&ramp.moves, &path, 10.2);
+        let far = ramp.moves.iter().map(|(p, _)| p.along).fold(0.0, f64::max);
+        assert!((far - 3.0).abs() < 1e-9, "{far}");
+        for ((p, _), floor) in ramp.moves.iter().zip(&ramp.floors) {
+            assert!(p.height >= floor - 1e-9);
+        }
+        // A path shorter than the radius: legs over the whole of it.
+        let path = line(4, 0.5, |_| 10.0);
+        let ramp = back_and_forth(&path, 10.05, TAN, 0.1, 3.0).unwrap();
+        assert!((ramp.leg - 2.0).abs() < 1e-9, "{}", ramp.leg);
     }
 }
