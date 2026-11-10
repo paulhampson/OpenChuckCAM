@@ -314,7 +314,7 @@ pub fn compare_with_moves(
         let counter = wanted[3] - coordinate_shift;
         // The block's X, Y and Z read at the written decimals: a replay of
         // the words as a binary32 controller holds them (9.0880003 for
-        // X9.088) is still at the written X (decision 0645, issue #641).
+        // X9.088) is still at the written X (decision 0646, issue #641).
         let at_written = |v: f64| written(v, tolerances.pos_decimals);
         #[allow(clippy::float_cmp)]
         // Never an inverse-time block: its F word is the whole block's time,
