@@ -63,7 +63,8 @@ impl HeightStock {
         let (x0, x1) = x_range;
         let length = x1 - x0;
         if !(length > 0.0 && r_top > 0.0 && cell > 0.0) || !length.is_finite() {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::ROTARY_ROUGHING,
                 "the roughing field needs a positive length, radius and cell size".to_owned(),
             ));
         }

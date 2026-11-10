@@ -1093,7 +1093,7 @@ fn req_op_11_req_nfr_07_a_ring_ramp_outside_a_limited_a_range_is_refused_by_name
 
 #[test]
 fn req_op_11_req_nfr_07_a_pass_shorter_than_ten_tolerances_is_refused_by_name() {
-    // Decision 0543 D3, as amended for issue #687 (proposed): the
+    // Decision 0543 D3, as amended for issue #687 (accepted): the
     // back-and-forth needs at least ten path tolerances of the pass's own
     // path to go over, never more than the tool radius. A shorter line is
     // continued over the rest of the pass (point 1); where the whole pass is
@@ -1226,7 +1226,7 @@ fn req_op_11_req_op_03_roughing_the_blisk_in_rings_ramps_beside_its_end_face_and
     // the finished surface"). A ramp over the pass's own path is no deeper
     // than the pass beneath it (decision 0543 section 3), and is checked
     // against that floor.
-    // Decision 0543 D3 as amended (proposed): later passes start with steps
+    // Decision 0543 D3 as amended (accepted): later passes start with steps
     // along the length between the blades shorter than the 1.5 mm tool
     // radius (pass 467 was refused, "shorter than the 1.500 mm (the tool
     // radius)"). The minimum is ten path tolerances: those passes ramp, and
@@ -1244,4 +1244,30 @@ fn req_op_11_req_op_03_roughing_the_blisk_in_rings_ramps_beside_its_end_face_and
         "{:?}",
         path.straight_plunges
     );
+}
+
+/// Decision record 0644: a ramp entry refusal names its check and the
+/// setting its first remedy changes, so the application shows it in the one
+/// form and links to the setting.
+#[test]
+fn req_ui_12_ramp_entry_refusals_carry_their_topic_and_setting() {
+    let f = cylinder();
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    // Shorter than ten path tolerances (decision 0543 point 4).
+    let short = Through(vec![(20.0, 0.0), (20.05, 0.0)]);
+    let mut input = f.input();
+    input.keep_out = &[];
+    match run(|ctx| generate(&short, &input, &v, ctx)).unwrap_err() {
+        openchuck_path::PathError::Refused {
+            topic,
+            text,
+            setting,
+        } => {
+            assert_eq!(topic, openchuck_path::topic::RAMP_ENTRY);
+            assert!(text.starts_with("pass 1 starts with a stretch"), "{text}");
+            assert_eq!(setting.as_deref(), Some(names::ENTRY));
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
 }

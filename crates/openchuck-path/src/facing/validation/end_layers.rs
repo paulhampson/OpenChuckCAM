@@ -132,7 +132,8 @@ pub(super) fn verify(
                     return Err(refuse(
                         "an actual End cut is deeper along X than the Stepover (slice thickness \
                          along X)",
-                    ));
+                    )
+                    .with_setting(crate::params::names::STEPOVER));
                 }
                 // Across-going flute sweeps clear translated copies of their
                 // full projected bands, including cutter caps outside extent.
@@ -179,7 +180,8 @@ pub(super) fn verify(
                                  flutes would be overloaded. Lower the Stepdown, or face the \
                                  stock above the requested area first",
                                 from.a.0, p.flute_step
-                            )));
+                            ))
+                            .with_setting(crate::roughing::parameter::STEPDOWN));
                         }
                         bottoms.insert(key, bottoms.get(&key).map_or(tip, |b| b.min(tip)));
                         if level > 0 {

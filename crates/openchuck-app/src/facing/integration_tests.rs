@@ -248,10 +248,22 @@ fn req_op_24_req_sim_05_intentionally_unfaced_stock_remains_in_global_deviation_
     settings.cell = Millimetres(0.5);
     p.app.execute(Command::SetSimulation(settings)).unwrap();
     let run = std::sync::Arc::new(p.app.start_simulate().wait().unwrap());
+    // In the one form, with the owner's words after the lead-in (decision
+    // record 0644 item 3).
+    assert!(
+        run.notes.iter().any(
+            |n| n.starts_with("Facing (operation '") && n.contains("): intentionally unfaced:")
+        ),
+        "{:?}",
+        run.notes
+    );
     assert!(
         run.notes
             .iter()
-            .any(|n| n.contains("Intentionally unfaced:"))
+            .any(|n| n.starts_with("Facing (operation '")
+                && n.ends_with("): facing covered the end faces it was asked to.")),
+        "{:?}",
+        run.notes
     );
     let report = run.simulation.as_ref().unwrap();
     let global = report.setups[0].deviation.as_ref().unwrap();
@@ -393,7 +405,7 @@ fn req_op_24_req_gc_07_req_ui_03_req_sim_05_all_modes_complete_through_real_appl
             assert!(
                 run.notes
                     .iter()
-                    .any(|n| n.contains("Intentionally unfaced:"))
+                    .any(|n| n.contains("): intentionally unfaced:"))
             );
             assert!(run.groups[0].facing.is_some());
             let scene = p

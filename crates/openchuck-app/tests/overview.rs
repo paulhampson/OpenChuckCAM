@@ -84,6 +84,38 @@ impl Strategy for OneRing {
     }
 }
 
+/// A strategy whose check refuses every part, naming the setting to change.
+#[derive(Debug)]
+struct Refuses;
+
+impl Strategy for Refuses {
+    fn name(&self) -> &str {
+        "refuses"
+    }
+    fn label(&self) -> &str {
+        "Refuses"
+    }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> ParameterSchema {
+        ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        _: &StrategyInput<'_>,
+        _: &Parameters,
+        _: &JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<Pass>> {
+        Err(openchuck_path::PathError::refused(
+            openchuck_path::topic::REGION,
+            "The region needs 900 points at a spacing of 0.001 mm. Raise the Tolerance",
+        )
+        .with_setting("tolerance"))
+    }
+}
+
 /// A strategy that works until it is cancelled, to see an operation running.
 #[derive(Debug)]
 struct UntilCancelled;
@@ -138,6 +170,7 @@ fn empty(name: &str) -> (PathBuf, Application) {
     let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
     app.register_strategy(Arc::new(OneRing)).unwrap();
     app.register_strategy(Arc::new(UntilCancelled)).unwrap();
+    app.register_strategy(Arc::new(Refuses)).unwrap();
     (dir, app)
 }
 
@@ -1290,6 +1323,38 @@ fn req_ui_11_req_ui_12_jobs_show_on_items_and_failures_are_messages() {
         .unwrap();
     assert_eq!(failed.severity, Severity::Error);
     assert!(failed.text.contains("could not be placed"));
+}
+
+#[test]
+fn req_ui_12_a_refusal_reads_by_its_own_topic_and_shows_its_setting() {
+    // Decision record 0644: a check's refusal is in Messages under the
+    // check's topic, naming the operation once, and Show setting opens the
+    // setting it names (decision record 0536 section 4).
+    let mut f = fixture("refusal", "cube_ascii.stl");
+    let op = f.add_operation("Wrap", "refuses");
+    let e = f.app.regenerate().unwrap_err().to_string();
+    let said = "Region (operation 'Wrap'): the region needs 900 points at a spacing of 0.001 \
+                mm. Raise the Tolerance.";
+    assert_eq!(e, said);
+    let o = f.overview();
+    let refused: Vec<_> = o
+        .messages
+        .iter()
+        .filter(|m| m.source == Some(ItemRef::Operation(op)))
+        .collect();
+    assert_eq!(refused.len(), 1, "{refused:?}");
+    assert_eq!(refused[0].severity, Severity::Error);
+    assert_eq!(refused[0].text, said);
+    assert_eq!(
+        refused[0].action,
+        Some(MessageAction::ShowSetting(
+            openchuck_app::overview::SettingRef::operation(op, "tolerance")
+        ))
+    );
+    assert_eq!(
+        o.status(ItemRef::Operation(op)).unwrap().state,
+        ItemState::Error
+    );
 }
 
 #[test]

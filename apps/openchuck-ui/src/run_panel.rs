@@ -163,8 +163,11 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
             Ok(c) => out.push(line(
                 Severity::Info,
                 format!(
-                    "{}: {} moves; replay agrees with the toolpath to {:.4} mm and {:.4}°",
-                    report.file, report.moves, c.max_position_error, c.max_a_error
+                    "{}: {}; replay agrees with the toolpath to {:.4} mm and {:.4}°",
+                    report.file,
+                    openchuck_app::path::counted(report.moves, "move", "moves"),
+                    c.max_position_error,
+                    c.max_a_error
                 ),
             )),
             Err(e) => out.push(line(
@@ -195,8 +198,10 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
                 out.push(line(
                     Severity::Info,
                     format!(
-                        "  {}: {:.0} mm³ removed in {} moves",
-                        op.operation, op.removed_volume, op.moves
+                        "  {}: {:.0} mm³ removed in {}",
+                        op.operation,
+                        op.removed_volume,
+                        openchuck_app::path::counted(op.moves, "move", "moves")
                     ),
                 ));
                 for cut in &op.rapid_cuts {
@@ -223,8 +228,13 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
                     Some(p) if d.overcut_count > 0 => out.push(line(
                         Severity::Problem,
                         format!(
-                            "  Overcut: {:.3} mm deepest, at X {:.2}, Y {:.2}, Z {:.2}; {} samples beyond {:.2} mm",
-                            -p.value, p.point.x, p.point.y, p.point.z, d.overcut_count, d.overcut_limit
+                            "  Overcut: {:.3} mm deepest, at X {:.2}, Y {:.2}, Z {:.2}; {} beyond {:.2} mm",
+                            -p.value,
+                            p.point.x,
+                            p.point.y,
+                            p.point.z,
+                            openchuck_app::path::counted(d.overcut_count, "sample", "samples"),
+                            d.overcut_limit
                         ),
                     )),
                     Some(p) => out.push(line(
@@ -418,13 +428,17 @@ impl ResultsView {
         counts.errors += usize::from(panel.failed);
         let summary = run.as_ref().map(|run| {
             format!(
-                "{} operation(s), {} moves, {:.1} s to generate",
-                run.toolpath.groups.len(),
-                run.toolpath
-                    .groups
-                    .iter()
-                    .map(|g| g.segments.len())
-                    .sum::<usize>(),
+                "{}, {}, {:.1} s to generate",
+                openchuck_app::path::counted(run.toolpath.groups.len(), "operation", "operations"),
+                openchuck_app::path::counted(
+                    run.toolpath
+                        .groups
+                        .iter()
+                        .map(|g| g.segments.len())
+                        .sum::<usize>(),
+                    "move",
+                    "moves"
+                ),
                 panel.last_seconds
             )
         });
@@ -1470,10 +1484,10 @@ mod tests {
         let lines = result_lines(&run, &project);
         let text = results_text(
             &lines,
-            "1 operation(s), 5 moves, 0.1 s to generate",
+            "1 operation, 5 moves, 0.1 s to generate",
             "Build\nv1\n",
         );
-        assert!(text.starts_with("1 operation(s), 5 moves, 0.1 s to generate\n"));
+        assert!(text.starts_with("1 operation, 5 moves, 0.1 s to generate\n"));
         assert!(text.contains(&lines[0].text));
         assert!(text.contains("Warning: operation 'X': a warning\n"));
         assert!(text.contains("\noperation 'X': a note\n"));
@@ -1658,7 +1672,7 @@ mod tests {
         assert_eq!(frames.copied.len(), 1, "one click, one copy");
         let text = &frames.copied[0];
         assert!(text.contains("4 moves were limited"), "{text}");
-        assert!(text.contains("operation(s)"), "{text}");
+        assert!(text.contains("s to generate"), "{text}");
         assert!(
             text.contains(openchuck_buildinfo::current_text().trim_end()),
             "{text}"
@@ -1673,7 +1687,7 @@ mod tests {
         assert!(!frames.shows("Build"), "the plain text starts closed");
         let at = frames.centre_of("Results as plain text");
         frames.click(at);
-        assert!(frames.shows("operation(s)") && frames.shows("4 moves were limited"));
+        assert!(frames.shows("s to generate") && frames.shows("4 moves were limited"));
         let id = egui::Id::unique(PLAIN_TEXT_BOX);
         let mut reached = false;
         for _ in 0..12 {
@@ -1970,7 +1984,7 @@ mod tests {
         with_run.click(at);
         let text = with_run.copied.last().expect("copied");
         assert!(
-            text.contains("operation(s)") && text.contains("then it failed"),
+            text.contains("s to generate") && text.contains("then it failed"),
             "{text}"
         );
     }

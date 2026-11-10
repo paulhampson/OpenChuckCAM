@@ -136,7 +136,7 @@ pub struct GeneratedPath {
     /// (decision 0543 D7 and section 4, points 2 and 3; decision 0544 item
     /// 7), a back-and-forth ramp over a stretch shorter than the tool
     /// radius, where the tool's centre may go down into stock its edge has
-    /// not cut (decision 0543 D3 as amended for issue #687, proposed), and a
+    /// not cut (decision 0543 D3 as amended for issue #687, accepted), and a
     /// lead whose descent to its arc's start goes down through stock
     /// standing above it (decision 0544, 9 Nov 2026). A host that
     /// knows the tool cannot cut straight down refuses such a path. The
@@ -238,10 +238,13 @@ impl Builder<'_> {
             return Ok(());
         }
         if !self.collision.allows(&self.pose, &end, kind) {
-            return Err(PathError::Strategy(format!(
-                "move {} ({kind:?}) collides, and no way round it is known",
-                self.segments.len()
-            )));
+            return Err(PathError::refused(
+                crate::topic::LINKS,
+                format!(
+                    "move {} ({kind:?}) collides, and no way round it is known",
+                    self.segments.len()
+                ),
+            ));
         }
         let limits = &self.max_feeds;
         let (linear, z, rotary) = if kind.is_fed() {
@@ -407,11 +410,14 @@ fn check_point(p: &CutPoint, pass: usize, point: usize) -> Result<()> {
     if ok {
         Ok(())
     } else {
-        Err(PathError::Strategy(format!(
-            "pass {} point {} is not a finite position",
-            pass + 1,
-            point + 1
-        )))
+        Err(PathError::refused(
+            crate::topic::TOOLPATH,
+            format!(
+                "pass {} point {} is not a finite position",
+                pass + 1,
+                point + 1
+            ),
+        ))
     }
 }
 
@@ -458,10 +464,13 @@ pub(crate) fn assemble_limited(
     if let Some(r) = input.stock.max_radius()
         && r > link_height + EPS
     {
-        return Err(PathError::Strategy(format!(
-            "the stock reaches {r:.3} mm from the rotary axis, beyond the retract height of \
-             {link_height:.3} mm, so links could cross it (OP-14); enlarge the setup's clearance"
-        )));
+        return Err(PathError::refused(
+            crate::topic::LINKS,
+            format!(
+                "the stock reaches {r:.3} mm from the rotary axis, beyond the retract height of \
+             {link_height:.3} mm, so links could cross it. Enlarge the setup's clearance"
+            ),
+        ));
     }
 
     let tolerance = common.tolerance.get().0;
@@ -521,7 +530,8 @@ pub(crate) fn assemble_limited(
         low_links.push(pass.low_link);
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::TOOLPATH,
             "the strategy produced no cut for this selection".to_owned(),
         ));
     };
@@ -860,18 +870,7 @@ pub(crate) fn assemble_limited(
     if b.raised_entries > 0 {
         b.notes.insert(
             0,
-            Notice::information(if b.raised_entries == 1 {
-                "1 entry starts higher than the link before it ends, so the move to the \
-                 entry's start stays clear of the stock beside the first cut point"
-                    .to_owned()
-            } else {
-                format!(
-                    "{} entries start higher than the links before them end, so the move to \
-                     each entry's start stays clear of the stock beside the first cut point",
-                    b.raised_entries
-                )
-            })
-            .about(topic::ENTRY),
+            Notice::information(raised_entries_note(b.raised_entries)).about(topic::ENTRY),
         );
     }
     if kept_high > 0 {
@@ -880,9 +879,10 @@ pub(crate) fn assemble_limited(
         b.notes.insert(
             0,
             Notice::information(format!(
-                "{kept_high} of {asked_low} links between passes could not be lowered \
+                "{kept_high} of {} between passes could not be lowered \
                  (stock, a held region or the retract height leaves no room) and retract \
-                 as usual"
+                 as usual",
+                crate::counted(asked_low, "link", "links")
             ))
             .about(topic::LINKS),
         );
@@ -1216,15 +1216,35 @@ fn clear_traverse(
         return Ok(());
     }
     if top >= probe - EPS {
-        return Err(PathError::Strategy(format!(
-            "Entry: the move to an entry's start would pass through stock that reaches \
+        return Err(PathError::refused(
+            crate::topic::ENTRY,
+            format!(
+                "the move to an entry's start would pass through stock that reaches \
              {top:.3} mm from the rotary axis, at or above the retract height of {probe:.3} mm. \
              Raise the setup's clearance, or set Entry to Plunge."
-        )));
+            ),
+        )
+        .with_setting(crate::params::names::ENTRY));
     }
     b.retract(needed.min(probe))?;
     b.raised_entries += 1;
     Ok(())
+}
+
+/// The note on the `count` entries a lead raised before moving across to its
+/// start, so that the move clears the stock beside the first cut point
+/// (issue #642, decision 0544 item 6).
+fn raised_entries_note(count: usize) -> String {
+    if count == 1 {
+        "1 entry starts higher than the link before it ends, so the move to the entry's start \
+         stays clear of the stock beside the first cut point"
+            .to_owned()
+    } else {
+        format!(
+            "{count} entries start higher than the links before them end, so the move to each \
+             entry's start stays clear of the stock beside the first cut point"
+        )
+    }
 }
 
 /// The most samples one local link is checked at.
@@ -1406,8 +1426,11 @@ fn split_nubs(
 
 /// Passes named for a note (decision 0536; the grouping of #600): "pass 3",
 /// "passes 3, 5 and 7", or for many "52 passes, from pass 3 to pass 98 (3,
-/// 5, 7 ... 94, 96, 98)", so one note per operation stays short.
-fn passes_named(passes: &[usize]) -> String {
+/// 5, 7 ... 94, 96, 98)", so one note per operation stays short. `passes`
+/// are indices from 0; the names count from 1. Every message that lists
+/// passes names them so, in the pathing library and the application alike
+/// (decision record 0644).
+pub fn passes_named(passes: &[usize]) -> String {
     let names: Vec<String> = passes.iter().map(|p| (p + 1).to_string()).collect();
     match names.as_slice() {
         [] => String::new(),
@@ -1742,5 +1765,21 @@ mod tests {
             .unwrap();
         let f = 60.0 * (written_z.hypot(0.001)) / b.segments[0].duration.0;
         assert!(f <= fast_z.linear.0, "F{f:.3}");
+    }
+
+    /// Issue #642, decision 0544 item 6: the note counts the raised entries,
+    /// singular for one.
+    #[test]
+    fn req_op_14_req_op_11_the_raised_entries_note_counts_them() {
+        assert_eq!(
+            raised_entries_note(1),
+            "1 entry starts higher than the link before it ends, so the move to the entry's \
+             start stays clear of the stock beside the first cut point"
+        );
+        assert_eq!(
+            raised_entries_note(3),
+            "3 entries start higher than the links before them end, so the move to each \
+             entry's start stays clear of the stock beside the first cut point"
+        );
     }
 }

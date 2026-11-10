@@ -704,3 +704,27 @@ fn req_op_02_axial_indexed_and_simultaneous_finishing_take_sets_that_only_warn()
         assert!(warned_length(message) > 0.0, "{name}: {message}");
     }
 }
+
+/// Decision record 0644: a strategy that cannot take the options on its
+/// boundary set refuses under the topic "Region".
+#[test]
+fn req_ui_12_region_refusals_carry_their_topic() {
+    let mesh = cylinder();
+    let f = fixture(&mesh);
+    let region = RegionConstraint {
+        boundary: Some(Window {
+            x_min: 0.0,
+            x_max: 20.0,
+            arc: None,
+        }),
+        boundary_limits: BoundaryLimits {
+            pass: true,
+            tip: false,
+        },
+        ..Default::default()
+    };
+    assert!(matches!(
+        run_with(&f, &region).unwrap_err(),
+        PathError::Refused { topic, setting: None, .. } if topic == openchuck_path::topic::REGION
+    ));
+}

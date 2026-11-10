@@ -314,7 +314,10 @@ impl Facing {
             if parameters.text(crate::extend::parameter::EXTEND)? != crate::extend::parameter::NO
                 || parameters.flag(crate::extend::parameter::EXTEND_SIDES)?
             {
-                return Err(crate::error::PathError::Strategy("Stock-edge extension for this new Facing construction is not yet supported; no distance was reinterpreted. Disable extension or use legacy Flat/Round.".into()));
+                return Err(crate::error::PathError::refused(
+                    crate::topic::FACING_EXTENT,
+                    "Stock-edge extension for this new Facing construction is not yet supported; no distance was reinterpreted. Disable extension or use legacy Flat/Round.",
+                ));
             }
             let mut notices = Vec::new();
             let mut passes = if parameters.text(parameter::SHAPE)? == parameter::END {
@@ -349,13 +352,15 @@ impl Facing {
         let level = if round { 0.5 * size } else { size };
         let scope = if restricted(parameters)? {
             let setup = input.facing.ok_or_else(|| {
-                crate::error::PathError::Strategy(
-                    "Facing requires whole-setup geometry for this mode".into(),
+                crate::error::PathError::refused(
+                    crate::topic::FACING,
+                    "Facing requires whole-setup geometry for this mode",
                 )
             })?;
             if setup.projection_error.is_none() {
-                return Err(crate::error::PathError::Strategy(
-                    "Facing extent requires an established whole-source projection bound".into(),
+                return Err(crate::error::PathError::refused(
+                    crate::topic::FACING_EXTENT,
+                    "Facing extent requires an established whole-source projection bound",
                 ));
             }
             let description = description::describe(setup, parameters)?;
@@ -367,8 +372,9 @@ impl Facing {
                     crate::roughing::FacingScope::Round(x_extent)
                 }
                 _ => {
-                    return Err(crate::error::PathError::Strategy(
-                        "Legacy Facing coverage does not match the selected mode".into(),
+                    return Err(crate::error::PathError::refused(
+                        crate::topic::FACING,
+                        "Legacy Facing coverage does not match the selected mode",
                     ));
                 }
             })

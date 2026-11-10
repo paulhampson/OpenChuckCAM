@@ -364,10 +364,13 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         _parameters: &Parameters,
         _context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        Err(PathError::Strategy(format!(
-            "the strategy '{}' cannot be limited to a region",
-            self.name()
-        )))
+        Err(PathError::refused(
+            crate::topic::REGION,
+            format!(
+                "the strategy '{}' cannot be limited to a region",
+                self.name()
+            ),
+        ))
     }
 
     /// The passes, limited to `region` when given, with notes for the user.
@@ -411,10 +414,13 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         _parameters: &Parameters,
         _context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        Err(PathError::Strategy(format!(
-            "the strategy '{}' cannot leave different stock on different selections",
-            self.name()
-        )))
+        Err(PathError::refused(
+            crate::topic::SELECTION_SET,
+            format!(
+                "the strategy '{}' cannot leave different stock on different selections",
+                self.name()
+            ),
+        ))
     }
 
     /// The passes for `input` and the resolved `parameters`. Long work
@@ -501,10 +507,10 @@ fn generate_with(
     let mut common = CommonParameters::read(&parameters)?;
     let entry = EntryParameters::read(&parameters)?;
     if let Some(bad) = zones.iter().find(|z| !z.leave.is_finite() || z.leave < 0.0) {
-        return Err(PathError::Strategy(format!(
-            "a stock to leave of {} mm is not zero or more",
-            bad.leave
-        )));
+        return Err(PathError::refused(
+            crate::topic::SELECTION_SET,
+            format!("a stock to leave of {} mm is not zero or more", bad.leave),
+        ));
     }
     // A strategy that does not take restriction options still takes watched
     // surfaces if it honours a region: the shared services measure them
@@ -513,11 +519,14 @@ fn generate_with(
     if !strategy.honours_restriction_options()
         && region.is_some_and(|r| r.boundary_limits != BoundaryLimits::default())
     {
-        return Err(PathError::Strategy(format!(
-            "{} takes no options on its boundary set: a boundary limit turned off is built for \
+        return Err(PathError::refused(
+            crate::topic::REGION,
+            format!(
+                "{} takes no options on its boundary set: a boundary limit turned off is built for \
              swarf only",
-            strategy.label()
-        )));
+                strategy.label()
+            ),
+        ));
     }
     let watched = region
         .filter(|_| !strategy.honours_restriction_options())
@@ -777,11 +786,14 @@ fn keep_clear(
     }
     let names = held_names(&reached);
     if kept.is_empty() {
-        return Err(PathError::Strategy(format!(
-            "every cut of this operation would reach over {names}, where the workholding grips \
+        return Err(PathError::refused(
+            crate::topic::HELD_REGION,
+            format!(
+                "every cut of this operation would reach over {names}, where the workholding grips \
              the stock, so nothing is left to cut; make the held region shorter or choose a \
              selection away from it"
-        )));
+            ),
+        ));
     }
     if cut_short {
         // What is left uncut beside the grip is a warning (decision record
@@ -820,11 +832,14 @@ fn check_clear(path: &GeneratedPath, keep_out: &[(f64, f64)], mid: f64) -> Resul
             && let Some(end) = held_end(keep_out, mid, from.x.min(to.x), from.x.max(to.x))
         {
             let names = held_names(&BTreeSet::from([end]));
-            return Err(PathError::Strategy(format!(
-                "a move at X {:.3} mm would reach over {names}, where the workholding grips the \
+            return Err(PathError::refused(
+                crate::topic::HELD_REGION,
+                format!(
+                    "a move at X {:.3} mm would reach over {names}, where the workholding grips the \
                  stock; change the entry or the link settings",
-                to.x
-            )));
+                    to.x
+                ),
+            ));
         }
         from = to;
     }
@@ -1176,8 +1191,8 @@ mod tests {
         let error = keep_clear(vec![pass(&[-12.0, -9.0])], Vec::new(), &KEEP_OUT, MID).unwrap_err();
         assert_eq!(
             error.to_string(),
-            "every cut of this operation would reach over the held region at the start of the \
-             stock, where the workholding grips the stock, so nothing is left to cut; make the \
+            "Held region: every cut of this operation would reach over the held region at the \
+             start of the stock, where the workholding grips the stock, so nothing is left to cut; make the \
              held region shorter or choose a selection away from it"
         );
     }
@@ -1215,8 +1230,8 @@ mod tests {
         let error = check_clear(&path(&[(MoveKind::LeadIn, 38.0)]), &both, MID).unwrap_err();
         assert_eq!(
             error.to_string(),
-            "a move at X 38.000 mm would reach over the held region at the end of the stock, \
-             where the workholding grips the stock; change the entry or the link settings"
+            "Held region: a move at X 38.000 mm would reach over the held region at the end of \
+             the stock, where the workholding grips the stock; change the entry or the link settings"
         );
         assert_eq!(
             held_names(&BTreeSet::from([HeldEnd::Unknown])),

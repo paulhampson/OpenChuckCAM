@@ -36,10 +36,12 @@ impl FacingEnd {
         match (start, far) {
             (true, false) => Ok(Self::Far),
             (false, true) => Ok(Self::Start),
-            (false, false) => Err(PathError::Strategy(
+            (false, false) => Err(PathError::refused(
+                crate::topic::END_FACING,
                 "Define which end is held before facing the opposite end.".to_owned(),
             )),
-            (true, true) => Err(PathError::Strategy(
+            (true, true) => Err(PathError::refused(
+                crate::topic::END_FACING,
                 "Cannot face an unheld end: both ends are held.".to_owned(),
             )),
         }

@@ -482,7 +482,13 @@ fn req_op_14_stock_beyond_the_retract_height_is_refused() {
     })
     .unwrap_err()
     .to_string();
-    assert!(e.contains("clearance") && e.contains("OP-14"), "{e}");
+    // Under its check's topic, with what to change and no requirement
+    // number (decision record 0644).
+    assert!(
+        e.starts_with("Links: ") && e.contains("Enlarge the setup's clearance"),
+        "{e}"
+    );
+    assert!(!e.contains("OP-14"), "{e}");
 }
 
 #[test]

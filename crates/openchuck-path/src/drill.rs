@@ -264,7 +264,8 @@ impl Strategy for RadialDrilling {
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
         if region.is_some() {
-            return Err(PathError::Strategy(
+            return Err(PathError::refused(
+                crate::topic::REGION,
                 "radial drilling takes its holes from the selected faces, not from a region"
                     .to_owned(),
             ));
@@ -313,7 +314,8 @@ fn drill(
 ) -> Result<StrategyOutput> {
     let holes = input.surface.holes();
     if holes.is_empty() {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::RADIAL_DRILLING,
             "there is no hole to drill: radial drilling finds round holes in the cylindrical \
              faces of a STEP model, and the selection has none (a mesh has no holes to find)"
                 .to_owned(),
@@ -365,14 +367,17 @@ fn drill(
         sites.push(site);
     }
     if sites.is_empty() {
-        return Err(PathError::Strategy(format!(
-            "no hole can be drilled with this tool: {}",
-            warnings
-                .iter()
-                .map(|w| w.text.as_str())
-                .collect::<Vec<_>>()
-                .join("; ")
-        )));
+        return Err(PathError::refused(
+            crate::topic::RADIAL_DRILLING,
+            format!(
+                "no hole can be drilled with this tool: {}",
+                warnings
+                    .iter()
+                    .map(|w| w.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        ));
     }
     context.check_cancelled()?;
 
@@ -501,10 +506,10 @@ fn hole_pass(
     let top = stock_top(input, hole.entry, out).max(0.0);
     let total = top + tip_depth;
     if !(total.is_finite() && total > 0.0) {
-        return Err(PathError::Strategy(format!(
-            "{} has no depth to drill",
-            describe(site)
-        )));
+        return Err(PathError::refused(
+            crate::topic::RADIAL_DRILLING,
+            format!("{} has no depth to drill", describe(site)),
+        ));
     }
     let at = |depth: f64| -> CutPoint {
         let tip = hole.entry + out.get() * (top - depth);

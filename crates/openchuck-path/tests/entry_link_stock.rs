@@ -306,3 +306,111 @@ fn req_op_14_a_plunge_entry_on_the_same_stock_stays_clear() {
         assert_eq!(outcome, Ok(None), "{stock:?}");
     }
 }
+
+/// Generates `lines` with `extra` on `stock`: the path, or the refusal.
+fn generated(
+    lines: Vec<(f64, f64)>,
+    stock: &Bumpy,
+    extra: &[(&str, ParameterValue)],
+) -> std::result::Result<openchuck_path::GeneratedPath, String> {
+    let f = fixture();
+    let mut input = f.input();
+    input.stock = stock;
+    let v = values(extra);
+    run(|ctx| generate(&Lines(lines), &input, &v, ctx)).map_err(|e| e.to_string())
+}
+
+/// The note on raised entries (decision 0544 item 6), if the path has one.
+fn raised_note(path: &openchuck_path::GeneratedPath) -> Option<&str> {
+    path.notices
+        .iter()
+        .find(|n| {
+            let t = n.text.to_lowercase();
+            t.contains("start higher than the link") || t.contains("starts higher than the link")
+        })
+        .map(|n| n.text.as_str())
+}
+
+#[test]
+fn req_op_14_req_op_11_a_lead_in_raised_to_clear_the_stock_is_counted_in_a_note() {
+    // Issue #642, decision 0544 item 6: the lead-in of pass 2 starts beside
+    // the block, where the low link did not look, so the tool rises first
+    // and a note counts the entry. Without the rise the rapid enters the
+    // block; without the note the owner's check has nothing to read.
+    let stock = Bumpy {
+        along: (15.5, 18.5),
+        across: (3.5, 6.5),
+        top: 19.5,
+    };
+    let path = generated(
+        vec![(30.0, 40.0), (20.0, 28.0)],
+        &stock,
+        &[(names::ENTRY, text("lead"))],
+    )
+    .unwrap();
+    // Stable fragments, so the test holds whatever case or full stop the
+    // message form gives the text (decision 0536).
+    let text = raised_note(&path)
+        .unwrap_or_else(|| panic!("{:?}", path.notices))
+        .to_lowercase();
+    assert!(
+        text.starts_with("1 entry starts higher than the link before it ends")
+            && text.contains("stays clear of the stock beside the first cut point"),
+        "{text}"
+    );
+    let note = path
+        .notices
+        .iter()
+        .find(|n| n.text.to_lowercase().starts_with("1 entry starts higher"))
+        .unwrap();
+    assert_eq!(note.topic.as_deref(), Some(openchuck_path::topic::ENTRY));
+    assert!(!note.is_warning());
+    assert_eq!(rapid_into_stock(&fixture(), &stock, &path), None);
+}
+
+#[test]
+fn req_op_14_req_op_11_a_ramp_needs_no_rise_as_its_link_ends_at_its_start() {
+    // A ramp follows the pass (decision 0543): the link goes straight to the
+    // ramp's start and is checked against the stock as a link, so there is
+    // no move across at the link's height to raise, and no note.
+    let stock = Bumpy {
+        along: (21.0, 27.0),
+        across: (-2.0, 2.0),
+        top: 19.5,
+    };
+    let path = generated(
+        vec![(40.0, 30.0), (20.0, 28.0)],
+        &stock,
+        &[
+            (names::ENTRY, text("ramp")),
+            (names::RAMP_ANGLE, ParameterValue::Number(10.0)),
+        ],
+    )
+    .unwrap();
+    assert_eq!(raised_note(&path), None, "{:?}", path.notices);
+    assert_eq!(rapid_into_stock(&fixture(), &stock, &path), None);
+}
+
+#[test]
+fn req_op_14_req_nfr_07_stock_at_the_retract_height_is_refused() {
+    // Decision 0544 item 6 refuses only where even the retract height is not
+    // clear. Stock that reaches it is refused before any entry is made, by
+    // the clearance check of the links (OP-14), naming the clearance.
+    let stock = Bumpy {
+        along: (15.5, 18.5),
+        across: (3.5, 6.5),
+        top: 40.0,
+    };
+    let err = generated(
+        vec![(30.0, 40.0), (20.0, 28.0)],
+        &stock,
+        &[(names::ENTRY, text("lead"))],
+    )
+    .unwrap_err();
+    let lower = err.to_lowercase();
+    assert!(
+        lower.contains("beyond the retract height")
+            && lower.contains("enlarge the setup's clearance"),
+        "{err}"
+    );
+}

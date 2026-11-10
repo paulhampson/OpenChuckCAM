@@ -697,7 +697,7 @@ fn req_op_02_a_strategy_that_ignores_regions_is_refused_not_trusted() {
     // 0209 item 10.3).
     assert!(
         e.contains(
-            "Careless works on the whole part and cannot be limited to chosen triangles. Take \
+            "careless works on the whole part and cannot be limited to chosen triangles. Take \
              the selection sets out of the operation."
         ) && !e.contains("OP-02"),
         "{e}"

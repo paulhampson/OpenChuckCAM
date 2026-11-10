@@ -1283,6 +1283,22 @@ fn req_op_04_req_op_09_a_free_end_is_faced_in_layers_down_to_the_axis() {
 }
 
 #[test]
+fn req_ui_12_a_free_end_in_one_layer_says_one_layer() {
+    // Decision record 0644: OWNERCHECKS2 read "goes down beside it in 1
+    // layers of 1 mm". A Stepdown deeper than the stock's top (10.3) faces
+    // the end in one layer, on the axis, and the note says so in the
+    // singular; six layers stay plural.
+    let job = free_end(true, 12.0);
+    let one = messages(&job.path(&HelicalFinishing, &[("stepdown", 11.0)]));
+    assert!(
+        one.contains("goes down beside it in 1 layer of 11 mm to the rotary axis"),
+        "{one}"
+    );
+    let six = messages(&job.path(&HelicalFinishing, &[("stepdown", 2.0)]));
+    assert!(six.contains("in 6 layers of 2 mm"), "{six}");
+}
+
+#[test]
 fn req_nfr_12_req_tl_05_a_free_end_with_no_stepdown_is_left_and_said() {
     // No Stepdown on the operation and none from the tool's cutting data: the
     // free end is not faced, the rest is made, and the operation says why in

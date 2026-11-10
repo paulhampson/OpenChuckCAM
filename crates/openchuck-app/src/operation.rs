@@ -34,11 +34,10 @@ use openchuck_types::job::JobContext;
 
 use crate::AppError;
 
-fn missing(operation: &Operation, what: &str) -> AppError {
-    AppError::Operation {
-        name: operation.name.clone(),
-        reason: what.to_owned(),
-    }
+/// The refusal of `operation` by the check `topic`, for `what` (decision
+/// record 0644).
+fn missing(operation: &Operation, topic: &str, what: &str) -> AppError {
+    AppError::refused(topic, &operation.name, what)
 }
 
 /// An operation's parameter values in the library's form, and what the
@@ -69,31 +68,78 @@ pub(crate) fn stored_values(operation: &Operation) -> BTreeMap<String, Parameter
         .collect()
 }
 
-/// A run's refusal in the user's words (OI-360; decision record 0536 step
-/// 4): a parameter the strategy refuses is named by the label its field has
-/// in the inspector, not by its name in the schema ("Stepover: must be above
-/// 0 mm", not "parameter stepover_mm: ..."). Other refusals read as they are.
+/// A refusal to generate an operation, in its parts: the check's topic, the
+/// operation, what is wrong and the setting to change, if one does
+/// (decision record 0644).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Refusal {
+    /// The check's topic.
+    pub topic: String,
+    /// The operation's name.
+    pub name: String,
+    /// What is wrong, why, and what to change.
+    pub text: String,
+    /// The key of the operation's setting to change.
+    pub setting: Option<String>,
+}
+
+/// `error` from a run that was working on `operation` as a refusal of it,
+/// when it is one: a refusal of the application's own, or any error of the
+/// pathing library but a cancel, named by the operation (decision record
+/// 0644).
+pub(crate) fn refusal_of(
+    project: &Project,
+    registry: &openchuck_path::Registry,
+    operation: Option<OperationId>,
+    error: &AppError,
+) -> Option<Refusal> {
+    let error = match (error, operation.and_then(|id| project.operation(id))) {
+        (AppError::Path(path), Some(operation)) => {
+            named(operation, registry, AppError::Path(path.clone()))
+        }
+        (AppError::Refused { .. }, _) => return refusal_parts(error),
+        _ => return None,
+    };
+    refusal_parts(&error)
+}
+
+fn refusal_parts(error: &AppError) -> Option<Refusal> {
+    match error {
+        AppError::Refused {
+            topic,
+            name,
+            text,
+            setting,
+        } => Some(Refusal {
+            topic: topic.clone(),
+            name: name.clone(),
+            text: text.clone(),
+            setting: setting.clone(),
+        }),
+        _ => None,
+    }
+}
+
+/// A run's refusal in the user's words (OI-360; decision records 0536 step 4
+/// and 0644): in the one form, with a parameter the strategy refuses named
+/// by the label its field has in the inspector, not by its name in the
+/// schema ("Stepover (operation 'X'): must be above 0 mm.", not "parameter
+/// stepover_mm: ..."). With no operation to name, a refused parameter reads
+/// as its reason; other errors read as they are.
 pub(crate) fn refusal_text(
     project: &Project,
     registry: &openchuck_path::Registry,
     operation: Option<OperationId>,
     error: &AppError,
 ) -> String {
-    if let AppError::Path(openchuck_path::PathError::Parameter { name, reason }) = error {
-        let label = operation
-            .and_then(|id| project.operation(id))
-            .and_then(|op| {
-                let strategy = registry.get(&op.strategy).ok()?;
-                effective_schema(op, strategy)
-                    .get(name)
-                    .map(|spec| spec.label.clone())
-            });
-        return match label {
-            Some(label) => format!("{label}: {reason}"),
-            None => error.user_message(),
-        };
+    match refusal_of(project, registry, operation, error) {
+        Some(refusal) => crate::lead_in::in_form(
+            &refusal.topic,
+            &crate::lead_in::Context::operation(refusal.name),
+            &refusal.text,
+        ),
+        None => error.user_message(),
     }
-    error.to_string()
 }
 
 pub(crate) fn effective_schema(
@@ -208,14 +254,20 @@ pub fn parameter_values(
             ),
             (Some(_), None) => "it has no tool, so no cutting data applies".to_owned(),
         };
-        return Err(AppError::Operation {
-            name: operation.name.clone(),
-            reason: format!(
+        let first = missing.first().cloned();
+        let refused = AppError::refused(
+            crate::lead_in::topic::CUTTING_DATA,
+            &operation.name,
+            format!(
                 "{} {} required: set {} on the operation, or fix the cause: {why}",
                 missing.join(", "),
                 if missing.len() == 1 { "is" } else { "are" },
                 if missing.len() == 1 { "it" } else { "them" },
             ),
+        );
+        return Err(match first {
+            Some(key) => refused.with_setting(key),
+            None => refused,
         });
     }
     Ok(ResolvedValues { values, notes })
@@ -373,49 +425,87 @@ pub(crate) fn generate_with_part(
 ) -> Result<OperationPath, AppError> {
     generate_unnamed(root, project, id, registry, stock, placed, edges, context).map_err(|e| {
         match project.operation(id) {
-            Some(operation) => named(operation, e),
+            Some(operation) => named(operation, registry, e),
             None => e,
         }
     })
 }
 
-/// The topics the pathing library leads its entry refusals with
-/// (decisions 0543 and 0544): such a refusal is shown in the one form.
-const REFUSAL_TOPICS: [&str; 4] = [
-    openchuck_path::topic::RAMP_ENTRY,
-    "Lead entry",
-    openchuck_path::topic::ENTRY,
-    openchuck_path::topic::FACE_NUBS,
-];
+/// Why a tool that cannot cut straight down is refused for `passes` (indices
+/// from 0) that a ramp or a lead enters by a straight plunge into the stock
+/// (decision 0543 D7, decision 0544 item 7). The passes are named as every
+/// message that lists passes names them (`openchuck_path::passes_named`;
+/// decision record 0644): "pass 149 is", "passes 1, 2 and 3 are", "88
+/// passes, from pass 1 to pass 88 (1, 2, 3 ... 86, 87, 88), are".
+fn plunge_refusal(passes: &[usize], tool: &str) -> String {
+    let named = openchuck_path::passes_named(passes);
+    let (named, verb) = match passes.len() {
+        1 => (named, "is"),
+        2..=6 => (named, "are"),
+        _ => (format!("{named},"), "are"),
+    };
+    format!(
+        "{named} {verb} entered by a straight plunge into the stock (a single point, a ring on \
+         the rotary axis, where the tool descends while the part turns, a face nub, a ramp over \
+         a stretch shorter than the tool radius, or a lead whose descent to its arc goes down \
+         through the stock), and the tool '{tool}' cannot cut straight down (it is not centre \
+         cutting). Set Entry to Helix, or choose a tool that can plunge"
+    )
+}
 
-/// `error` from generating `operation`, naming it (issue #547): an error
-/// from the pathing library does not know which operation it is about, so
-/// the user could not tell which one to change. Its own words are kept,
-/// with the parameter it names. A cancel stays a cancel (UI-09), and an
-/// error of the application's own is kept as it is.
-fn named(operation: &Operation, error: AppError) -> AppError {
-    match error {
-        AppError::Path(openchuck_path::PathError::Cancelled) => error,
-        AppError::Path(other) => {
-            let reason = other.to_string();
-            // A refusal that leads with its topic is shown in the one form
-            // of decision record 0536 section 3.
-            match REFUSAL_TOPICS
-                .iter()
-                .find_map(|topic| Some((*topic, reason.strip_prefix(&format!("{topic}: "))?)))
-            {
-                Some((topic, text)) => AppError::Refused {
-                    topic: topic.to_owned(),
-                    name: operation.name.clone(),
-                    text: text.to_owned(),
-                },
-                None => AppError::Operation {
-                    name: operation.name.clone(),
-                    reason,
-                },
-            }
+/// `error` from generating `operation`, naming it (issue #547; decision
+/// record 0644): an error from the pathing library does not know which
+/// operation it is about, so the user could not tell which one to change.
+/// A refusal keeps its topic, words and setting; a refused parameter takes
+/// its field's label as its topic and opens that field; a surface, region or
+/// rotary axis refusal takes that topic; anything else is a refusal to
+/// generate. A cancel stays a cancel (UI-09), and an error of the
+/// application's own is kept as it is.
+fn named(operation: &Operation, registry: &Registry, error: AppError) -> AppError {
+    named_in(operation, Some(registry), error)
+}
+
+/// As [`named`], for an error of the pathing library where no registry is
+/// at hand: a refused parameter takes the topic Setting.
+pub(crate) fn named_path(operation: &Operation, error: openchuck_path::PathError) -> AppError {
+    named_in(operation, None, AppError::Path(error))
+}
+
+fn named_in(operation: &Operation, registry: Option<&Registry>, error: AppError) -> AppError {
+    use openchuck_path::PathError;
+    let AppError::Path(path) = error else {
+        return error;
+    };
+    let name = &operation.name;
+    match path {
+        PathError::Cancelled => AppError::Path(PathError::Cancelled),
+        PathError::Refused {
+            topic,
+            text,
+            setting,
+        } => AppError::Refused {
+            topic,
+            name: name.clone(),
+            text,
+            setting,
+        },
+        PathError::Parameter { name: key, reason } => {
+            let label = registry
+                .and_then(|registry| registry.get(&operation.strategy).ok())
+                .and_then(|strategy| {
+                    effective_schema(operation, strategy)
+                        .get(&key)
+                        .map(|spec| spec.label.clone())
+                })
+                .unwrap_or_else(|| openchuck_path::topic::SETTING.to_owned());
+            AppError::refused(label, name, reason).with_setting(key)
         }
-        other => other,
+        PathError::Surface(text) => AppError::refused(openchuck_path::topic::SURFACE, name, text),
+        PathError::Region(text) => AppError::refused(openchuck_path::topic::REGION, name, text),
+        PathError::RotaryLimit(text) => {
+            AppError::refused(openchuck_path::topic::ROTARY_AXIS, name, text)
+        }
+        other => AppError::refused(crate::lead_in::topic::GENERATION, name, other.to_string()),
     }
 }
 
@@ -495,7 +585,11 @@ fn generate_unnamed(
     // (decision 0021, OI-96; decision 0174): said before any selection on a
     // mesh is judged.
     if let Some(reason) = brep_only(project, registry, operation) {
-        return Err(missing(operation, &reason));
+        return Err(missing(
+            operation,
+            crate::lead_in::topic::STEP_PART,
+            &reason,
+        ));
     }
     // A set the strategy cannot use on a STEP part: the same check the
     // Geometry section and the overview read before generation (decision
@@ -504,7 +598,11 @@ fn generate_unnamed(
         .into_iter()
         .next()
     {
-        return Err(missing(operation, &refusal.text));
+        return Err(missing(
+            operation,
+            openchuck_path::topic::SELECTION_SET,
+            &refusal.text,
+        ));
     }
     let limited = operation.selection_refs().next().is_some();
     // A STEP part's selections are faces and edges, which choose the holes
@@ -518,6 +616,7 @@ fn generate_unnamed(
     {
         return Err(missing(
             operation,
+            openchuck_path::topic::SELECTION_SET,
             &format!(
                 "{} works on the whole part and cannot be limited to chosen triangles. Take \
                  the selection sets out of the operation.",
@@ -525,32 +624,59 @@ fn generate_unnamed(
             ),
         ));
     }
-    let machine = project
-        .machine()
-        .ok_or_else(|| missing(operation, "the project has no machine profile"))?;
-    let setup = project
-        .setup(operation.setup)
-        .ok_or_else(|| missing(operation, "its setup is missing"))?;
+    let machine = project.machine().ok_or_else(|| {
+        missing(
+            operation,
+            crate::lead_in::topic::MACHINE_PROFILE,
+            "the project has no machine profile",
+        )
+    })?;
+    let setup = project.setup(operation.setup).ok_or_else(|| {
+        missing(
+            operation,
+            crate::lead_in::topic::SETUP,
+            "its setup is missing",
+        )
+    })?;
     let tool_id = operation
         .tool
-        .ok_or_else(|| missing(operation, "it has no tool"))?;
+        .ok_or_else(|| missing(operation, crate::lead_in::topic::TOOL, "it has no tool"))?;
     let snapshot = project
         .tools()
         .iter()
         .find(|t| t.id == tool_id)
-        .ok_or_else(|| missing(operation, "its tool is missing"))?;
-    let part_id = setup
-        .part
-        .ok_or_else(|| missing(operation, "its setup has no part"))?;
+        .ok_or_else(|| {
+            missing(
+                operation,
+                crate::lead_in::topic::TOOL,
+                "its tool is missing",
+            )
+        })?;
+    let part_id = setup.part.ok_or_else(|| {
+        missing(
+            operation,
+            crate::lead_in::topic::PART,
+            "its setup has no part",
+        )
+    })?;
     let model = project
         .models()
         .iter()
         .find(|m| m.id == part_id)
-        .ok_or_else(|| missing(operation, "its setup's part is missing"))?;
-    let stock = setup
-        .stock
-        .as_ref()
-        .ok_or_else(|| missing(operation, "its setup has no stock"))?;
+        .ok_or_else(|| {
+            missing(
+                operation,
+                crate::lead_in::topic::PART,
+                "its setup's part is missing",
+            )
+        })?;
+    let stock = setup.stock.as_ref().ok_or_else(|| {
+        missing(
+            operation,
+            crate::lead_in::topic::STOCK,
+            "its setup has no stock",
+        )
+    })?;
 
     // The part as this setup places it: the offset moves it against the
     // stock, workholding and work zero (SET-05; decision record 0201).
@@ -562,6 +688,7 @@ fn generate_unnamed(
     if edges.keep_tangent && placed.brep.is_none() {
         return Err(missing(
             operation,
+            crate::lead_in::topic::STEP_PART,
             "keeping tangent edges is a choice for the B-rep edges of a STEP part; its part is \
              a mesh, whose edges are chosen by the crease angle",
         ));
@@ -611,9 +738,13 @@ fn generate_unnamed(
     };
     // The whole placed part, not the selected faces: bounding-box stock and
     // playback need the part's extent.
-    let part_bounds = openchuck_geom::summary(mesh)
-        .bounds
-        .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
+    let part_bounds = openchuck_geom::summary(mesh).bounds.ok_or_else(|| {
+        missing(
+            operation,
+            crate::lead_in::topic::PART,
+            "its setup's part has no extent",
+        )
+    })?;
     // The held regions and tabs join the model's surface as the target the
     // strategies see (SET-09, OP-21; decision 0035 item 1). A setup without
     // them uses the model's own surface, so its G-code is unchanged.
@@ -627,8 +758,13 @@ fn generate_unnamed(
     let composite = if setup.workholding.is_empty() {
         None
     } else {
-        let part = openchuck_geom::part_extent(mesh)
-            .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
+        let part = openchuck_geom::part_extent(mesh).ok_or_else(|| {
+            missing(
+                operation,
+                crate::lead_in::topic::PART,
+                "its setup's part has no extent",
+            )
+        })?;
         // An operation with no region checks every tab before it is made; one
         // limited by selections checks, once it is made, only the tabs its
         // path can touch (issue #548; decision 0523, amending 0494 item 2).
@@ -641,7 +777,13 @@ fn generate_unnamed(
             &part,
             &|_| !limited,
         )
-        .map_err(|e| missing(operation, &e.to_string()))?;
+        .map_err(|e| {
+            missing(
+                operation,
+                crate::lead_in::topic::WORKHOLDING,
+                &e.to_string(),
+            )
+        })?;
         tab_warnings = crate::workholding::short_tab_warnings_where(
             &setup.workholding,
             setup.stock.as_ref(),
@@ -651,7 +793,13 @@ fn generate_unnamed(
         );
         let labelled =
             crate::workholding::labelled_solids(&setup.workholding, setup.stock.as_ref(), &part)
-                .map_err(|e| missing(operation, &e.to_string()))?;
+                .map_err(|e| {
+                    missing(
+                        operation,
+                        crate::lead_in::topic::WORKHOLDING,
+                        &e.to_string(),
+                    )
+                })?;
         if placed.brep.is_none() {
             reach_notes =
                 crate::workholding::selection_reach_notes(project, operation, mesh, &labelled);
@@ -705,11 +853,20 @@ fn generate_unnamed(
         (None, None) => None,
     };
     let facing_geometry = if crate::facing::needs_verification(operation) {
-        let part = openchuck_geom::part_extent(mesh)
-            .ok_or_else(|| missing(operation, "the whole facing part has no extent"))?;
-        let bounds = stock
-            .bounds(Some(&part))
-            .ok_or_else(|| missing(operation, "the facing stock has no established bounds"))?;
+        let part = openchuck_geom::part_extent(mesh).ok_or_else(|| {
+            missing(
+                operation,
+                crate::lead_in::topic::PART,
+                "the whole facing part has no extent",
+            )
+        })?;
+        let bounds = stock.bounds(Some(&part)).ok_or_else(|| {
+            missing(
+                operation,
+                crate::lead_in::topic::STOCK,
+                "the facing stock has no established bounds",
+            )
+        })?;
         let (start, end) = setup
             .workholding
             .held_intervals((bounds.min.x, bounds.max.x));
@@ -804,6 +961,7 @@ fn generate_unnamed(
         if operation.strategy != roughing::NAME {
             return Err(missing(
                 operation,
+                crate::lead_in::topic::STOCK_TO_LEAVE,
                 &format!(
                     "the strategy '{}' cannot leave different stock on different selections; \
                      clear the stock to leave of the selection sets",
@@ -938,9 +1096,8 @@ fn generate_unnamed(
     // here. The descent through air that every entry makes is not one.
     if !snapshot.tool.can_plunge()
         && matches!(entry_parameters.style, EntryStyle::Ramp | EntryStyle::Lead)
-        && let Some(&first) = path.straight_plunges.first()
+        && !path.straight_plunges.is_empty()
     {
-        let passes = path.straight_plunges.len();
         return Err(AppError::Refused {
             topic: if entry_parameters.style == EntryStyle::Ramp {
                 openchuck_path::topic::RAMP_ENTRY.to_owned()
@@ -948,20 +1105,8 @@ fn generate_unnamed(
                 openchuck_path::topic::LEAD_ENTRY.to_owned()
             },
             name: operation.name.clone(),
-            text: format!(
-                "{} entered by a straight plunge into the stock (a single point, a ring on the \
-                 rotary axis, where the tool descends while the part turns, a face nub, a ramp \
-                 over a stretch shorter than the tool radius, or a lead whose descent to its arc \
-                 goes down through the stock), and the tool '{}' cannot cut straight down (it is \
-                 not centre cutting). Set Entry to \
-                 Helix, or choose a tool that can plunge",
-                if passes == 1 {
-                    format!("pass {} is", first + 1)
-                } else {
-                    format!("{passes} passes, the first pass {}, are", first + 1)
-                },
-                snapshot.name
-            ),
+            text: plunge_refusal(&path.straight_plunges, &snapshot.name),
+            setting: Some(openchuck_path::params::names::ENTRY.to_owned()),
         });
     }
     // The tabs a limited operation's path can touch, against its tool
@@ -982,7 +1127,13 @@ fn generate_unnamed(
             &part,
             &touched,
         )
-        .map_err(|e| missing(operation, &e.to_string()))?;
+        .map_err(|e| {
+            missing(
+                operation,
+                crate::lead_in::topic::WORKHOLDING,
+                &e.to_string(),
+            )
+        })?;
         tab_warnings = crate::workholding::short_tab_warnings_where(
             &setup.workholding,
             setup.stock.as_ref(),
@@ -1113,12 +1264,15 @@ fn generate_unnamed(
         // Generation knows of no simulation, so the note says what was covered
         // only; the Simulate results add what the simulation shows (the
         // owner's answer of 8 Nov 2026 to (c2), refined; decision 0536).
-        notes.push(openchuck_path::Notice::information(
-            "Facing covered the end faces it was asked to.",
-        ));
+        // In the one form, the owner's words after the lead-in (decision
+        // record 0644 item 3).
+        notes.push(
+            openchuck_path::Notice::information("Facing covered the end faces it was asked to.")
+                .about(crate::lead_in::topic::FACING),
+        );
         if proof.description()?.extent != openchuck_path::facing::extents::FacingExtent::WholeStock
         {
-            notes.push(openchuck_path::Notice::information("Intentionally unfaced: stock outside this operation's selected coverage. Global remaining-stock values and every overcut remain counted."));
+            notes.push(openchuck_path::Notice::information("Intentionally unfaced: stock outside this operation's selected coverage. Global remaining-stock values and every overcut remain counted.").about(crate::lead_in::topic::FACING));
         }
     }
     Ok(OperationPath {
@@ -1388,6 +1542,7 @@ fn swarf_compatibility(
     }
     Err(missing(
         operation,
+        openchuck_path::topic::SWARF,
         &format!(
             "its face set has faces swarf cannot cut; take them out of the set ({})",
             problems.join("; ")
@@ -1434,6 +1589,7 @@ fn check_travel_along(
         if by > 0.0 {
             return Err(missing(
                 operation,
+                crate::lead_in::topic::TRAVEL,
                 &format!(
                     "extended past the stock, its path goes {by:.3} mm beyond the machine's \
                      travel at the {end} of the rotary axis; shorten the distance past the \
@@ -1658,7 +1814,7 @@ fn brep_selection(
     hash: ContentHash,
     brep: &BrepModel,
 ) -> Result<BrepChoice, AppError> {
-    let fail = |reason: String| missing(operation, &reason);
+    let fail = |reason: String| missing(operation, openchuck_path::topic::SELECTION_SET, &reason);
     let options = &operation.restriction_options;
     let limit = |id: SelectionSetId, on_break: OnBreak| -> Result<LimitSet, AppError> {
         Ok(LimitSet {
@@ -1706,7 +1862,7 @@ fn brep_selection(
             .ok_or_else(|| AppError::UnknownSelection(id.to_string()))?;
         let bad = |reason: String| {
             fail(format!(
-                "selection set '{}' cannot be used: {reason}",
+                "the selection set '{}' cannot be used: {reason}",
                 set.name
             ))
         };
@@ -1835,7 +1991,8 @@ fn limit_faces(
         let bad = |reason: String| {
             missing(
                 operation,
-                &format!("selection set '{}' cannot be used: {reason}", set.name),
+                openchuck_path::topic::SELECTION_SET,
+                &format!("the selection set '{}' cannot be used: {reason}", set.name),
             )
         };
         if set.model != part.id {
@@ -3988,12 +4145,10 @@ mod tests {
                 assert!(text.starts_with(&label), "{strategy}: {text}");
             }
             match f.run().unwrap_err() {
-                AppError::Operation { name, reason } => {
-                    assert_eq!(
-                        (name.as_str(), &reason),
-                        ("Op", text),
-                        "{strategy} {role:?}"
-                    );
+                AppError::Refused {
+                    name, text: shown, ..
+                } => {
+                    assert_eq!((name.as_str(), &shown), ("Op", text), "{strategy} {role:?}");
                 }
                 other => panic!("{strategy} {role:?}: {other}"),
             }
@@ -4058,8 +4213,9 @@ mod tests {
 
     #[test]
     fn req_nfr_15_a_refused_parameter_is_named_by_its_label() {
-        // OI-360: a refused parameter reaches Messages by the label the
-        // inspector shows, never by its name in the schema.
+        // OI-360, decision record 0644: a refused parameter reaches Messages
+        // with the label the inspector shows as its topic, never its name in
+        // the schema, and Show setting opens that parameter.
         let f = bar_fixture_with(openchuck_path::helical::NAME, "bar.stl", ToolShape::FlatEnd);
         let registry = Registry::builtin();
         let operation = f.project.operation(f.operation).unwrap();
@@ -4073,9 +4229,15 @@ mod tests {
             "tolerance",
             "must be above 0 mm",
         ));
+        let refusal = refusal_of(&f.project, &registry, Some(f.operation), &refused).unwrap();
+        assert_eq!(refusal.topic, spec.label);
+        assert_eq!(refusal.setting.as_deref(), Some("tolerance"));
         assert_eq!(
             refusal_text(&f.project, &registry, Some(f.operation), &refused),
-            format!("{}: must be above 0 mm", spec.label)
+            format!(
+                "{} (operation '{}'): must be above 0 mm.",
+                spec.label, operation.name
+            )
         );
         assert!(
             !refusal_text(&f.project, &registry, Some(f.operation), &refused).contains("parameter")
@@ -4089,6 +4251,97 @@ mod tests {
         assert_eq!(
             refusal_text(&f.project, &registry, None, &other),
             other.to_string()
+        );
+    }
+
+    #[test]
+    fn req_op_11_req_ui_12_a_plunge_refusal_names_its_passes_as_the_notes_do() {
+        // OWNERCHECKS2 (relayed, 9 Nov 2026): "88 passes, the first pass 1,
+        // are entered" read awkwardly. The passes are named as every message
+        // that lists passes names them (decision record 0644).
+        let one = plunge_refusal(&[148], "T1 Flat 6");
+        assert!(
+            one.starts_with("pass 149 is entered by a straight plunge"),
+            "{one}"
+        );
+        let few = plunge_refusal(&[0, 1, 2], "T1 Flat 6");
+        assert!(few.starts_with("passes 1, 2 and 3 are entered"), "{few}");
+        let many: Vec<usize> = (0..88).collect();
+        let many = plunge_refusal(&many, "T1 Flat 6");
+        assert!(
+            many.starts_with(
+                "88 passes, from pass 1 to pass 88 (1, 2, 3 ... 86, 87, 88), are entered"
+            ),
+            "{many}"
+        );
+        for text in [&one, &few, &many] {
+            assert!(text.contains("the tool 'T1 Flat 6' cannot cut straight down"));
+            assert!(!text.contains("the first pass"), "{text}");
+        }
+    }
+
+    #[test]
+    fn req_ui_12_a_path_refusal_keeps_its_topic_and_setting() {
+        // Decision record 0644 item 2: the application shows a refusal of
+        // the pathing library by its own topic and setting, not by matching
+        // its words, in the one form of decision record 0536 section 3.
+        let f = bar_fixture_with(openchuck_path::helical::NAME, "bar.stl", ToolShape::FlatEnd);
+        let registry = Registry::builtin();
+        let operation = f.project.operation(f.operation).unwrap();
+        let path = openchuck_path::PathError::refused(
+            openchuck_path::topic::END_FACING,
+            "the stepdown must be above zero",
+        )
+        .with_setting("stepdown");
+        match named(operation, &registry, AppError::Path(path)) {
+            AppError::Refused {
+                topic,
+                name,
+                text,
+                setting,
+            } => {
+                assert_eq!(topic, openchuck_path::topic::END_FACING);
+                assert_eq!(name, operation.name);
+                assert_eq!(text, "the stepdown must be above zero");
+                assert_eq!(setting.as_deref(), Some("stepdown"));
+            }
+            other => panic!("{other:?}"),
+        }
+        // The variants that carry no topic of their own take the topic of
+        // what they are about; anything else is a refusal to generate.
+        for (error, topic) in [
+            (
+                openchuck_path::PathError::Surface("the mesh has no triangles".into()),
+                openchuck_path::topic::SURFACE,
+            ),
+            (
+                openchuck_path::PathError::Region("the region has no outer boundary".into()),
+                openchuck_path::topic::REGION,
+            ),
+            (
+                openchuck_path::PathError::RotaryLimit("it turns A too far".into()),
+                openchuck_path::topic::ROTARY_AXIS,
+            ),
+            (
+                openchuck_path::PathError::Strategy("something else".into()),
+                crate::lead_in::topic::GENERATION,
+            ),
+        ] {
+            let shown = named(operation, &registry, AppError::Path(error)).to_string();
+            assert!(
+                shown.starts_with(&format!("{topic} (operation '{}'): ", operation.name)),
+                "{shown}"
+            );
+            assert!(shown.ends_with('.') && !shown.contains(".."), "{shown}");
+        }
+        // A cancel stays a cancel (UI-09).
+        assert!(
+            named(
+                operation,
+                &registry,
+                AppError::Path(openchuck_path::PathError::Cancelled)
+            )
+            .is_cancelled()
         );
     }
 
@@ -4212,7 +4465,7 @@ mod tests {
         let summary = path
             .notes
             .iter()
-            .find(|n| n.text.contains(" chains ("))
+            .find(|n| n.text.contains(" open, ") && n.text.contains(" closed)"))
             .unwrap_or_else(|| panic!("{:?}", path.notes));
         assert_eq!(
             summary.topic.as_deref(),

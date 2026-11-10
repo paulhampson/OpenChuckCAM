@@ -109,10 +109,7 @@ fn req_ui_09_cancellation_is_told_by_kind_not_by_wording() {
     assert!(AppError::Path(openchuck_path::PathError::Cancelled).is_cancelled());
     // An operation the user named "Cancel test" that fails for another reason
     // is a failure, and its message is kept.
-    let failed = AppError::Operation {
-        name: "Cancel test".to_owned(),
-        reason: "its setup has no stock".to_owned(),
-    };
+    let failed = AppError::refused("Stock", "Cancel test", "its setup has no stock");
     assert!(failed.to_string().contains("Cancel"));
     assert!(!failed.is_cancelled());
 }

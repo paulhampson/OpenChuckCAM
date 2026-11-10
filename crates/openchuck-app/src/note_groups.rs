@@ -333,11 +333,7 @@ impl FeedLimit {
             "Last run: the machine's feed limits slowed {} to as low as {:.0} mm/min, \
              below the {:.0} mm/min set here. The feed set here is unchanged; the \
              machine's limits lower it only where it cannot keep up.",
-            if self.moves == 1 {
-                "1 move".to_owned()
-            } else {
-                format!("{} moves", self.moves)
-            },
+            openchuck_path::counted(self.moves, "move", "moves"),
             self.lowest,
             self.programmed
         )
@@ -347,11 +343,8 @@ impl FeedLimit {
     /// called `operation` (issue 432). Only the move that lost the most is
     /// given; the per-move notes stay in the run's notes.
     pub fn describe_for(&self, operation: &str) -> String {
-        let (moves, was) = if self.moves == 1 {
-            ("1 move".to_owned(), "was")
-        } else {
-            (format!("{} moves", self.moves), "were")
-        };
+        let moves = openchuck_path::counted(self.moves, "move", "moves");
+        let was = if self.moves == 1 { "was" } else { "were" };
         let case = if self.moves == 1 {
             "The target was"
         } else {
