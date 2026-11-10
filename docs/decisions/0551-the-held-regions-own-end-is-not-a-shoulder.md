@@ -1,11 +1,11 @@
 # 0551: The held region's own end is not named as a shoulder (SET-09, OP-04, OP-05, OP-09, NFR-12; issue #765; lane BALUSTER-WARN)
 
-- **Status:** proposed by lane BALUSTER-WARN on 10 Nov 2026. The fix itself was decided by the project owner on 10 Nov 2026 (issue #765, an owner-approved exception to the release freeze), relayed by the coordinator (decision 0049); the record awaits the owner's acceptance (OI-2140). The number is provisional: the Merge Manager assigns the final number at release.
+- **Status:** accepted by the project owner on 10 Nov 2026, relayed by the coordinator (decision 0049). Proposed by lane BALUSTER-WARN the same day; the owner had decided the fix itself on 10 Nov 2026 (issue #765, an owner-approved exception to the release freeze), relayed the same way. The number is provisional: the Merge Manager assigns the final number at release.
 - **Date:** 10 Nov 2026.
 - **Found by:** the owner, on the release build, generating the public tutorial project (`testdata/examples/baluster`); investigated by lane BALUSTER-WARN.
 - **What it amends:** none. It carries out [0343](0343-end-faces-beside-a-short-tab.md) item 6 as written ("A held region keeps the tool from a face": a face of the part), which the code applied to every face the search found.
 - **Builds on:** [0035](0035-workholding-and-retaining-tabs.md) items 1 and 2 (the held region is part of the target), [0161](0161-tools-keep-clear-of-the-gripped-length.md) items 3 and 7 (the keep-out and its warning), [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) (turns at faces across the axis), [0344](0344-finishing-stepdown-and-free-ends.md) (free ends leave out the held region's own end), [0536](0536-message-levels-operation-reference-and-setting-links.md) step 2 (material left is a warning).
-- **Open items:** OI-2140 (the owner's acceptance of this record), new.
+- **Open items:** OI-2140 (the owner's acceptance of this record), new, closed on 10 Nov 2026 with the acceptance.
 
 ## Context
 
