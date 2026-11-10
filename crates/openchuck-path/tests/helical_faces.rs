@@ -1147,6 +1147,73 @@ fn req_set_09_req_op_04_a_face_the_held_region_keeps_the_tool_from_is_named() {
     );
 }
 
+/// A plain tenon of radius 7 from X 0 to X 10, then a collar of radius 8 to
+/// X 20: the start of the tutorial's baluster. The setup holds it in a chuck
+/// from X -1 to X 7 on round stock of radius 12, so the target (decision
+/// record 0035) is the model joined to that held cylinder, whose end face at
+/// X 7 stands 5 mm above the tenon.
+fn held_tenon(shape: ToolShape) -> (Job, [(f64, f64); 1]) {
+    let along = openchuck_types::geometry::UnitVec3::new(Vec3::new(1.0, 0.0, 0.0)).unwrap();
+    let held = Solid::cylinder(Point3::new(-1.0, 0.0, 0.0), along, 8.0, 12.0).unwrap();
+    let model: std::sync::Arc<dyn SurfaceSource> = std::sync::Arc::new(
+        MeshSurface::new(&revolve(
+            &[(0.0, 7.0), (10.0, 7.0), (10.0, 8.0), (20.0, 8.0)],
+            720,
+        ))
+        .unwrap(),
+    );
+    let job = Job {
+        surface: Box::new(CompositeSurface::new(model, vec![held])),
+        stock: Box::new(AnalyticStock::Cylinder {
+            radius: 12.0,
+            x_start: -1.0,
+            x_end: 21.0,
+        }),
+        profile: tool(shape, DIAMETER).profile().unwrap(),
+    };
+    // The held region widened by the tool's radius and the 0.5 mm the
+    // application adds (decision record 0161).
+    let reach = 0.5 * DIAMETER + 0.5;
+    (job, [(-1.0 - reach, 7.0 + reach)])
+}
+
+#[test]
+fn req_set_09_req_op_04_the_held_regions_own_end_is_not_named_as_a_shoulder() {
+    // Issue #765: the held cylinder's end face at X 7 is part of the target,
+    // so the face search finds it, inside the keep-out. It is the held
+    // region, never cut by design (SET-09), not a face of the part that the
+    // keep-out stops the tool from reaching (decision record 0343 item 6):
+    // it gets no warning. What the keep-out leaves beside the grip is said by
+    // the held region's own warning (decision record 0161 item 3).
+    for shape in [ToolShape::BallEnd, ToolShape::FlatEnd] {
+        let (job, keep_out) = held_tenon(shape.clone());
+        let tag = tags();
+        let input = StrategyInput {
+            keep_out: &keep_out,
+            ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+        };
+        let values: BTreeMap<String, ParameterValue> = [
+            (names::STEPOVER, 0.45),
+            (names::FEED, 600.0),
+            (names::PLUNGE_FEED, 150.0),
+            (names::TOLERANCE, TOLERANCE),
+        ]
+        .into_iter()
+        .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+        .collect();
+        let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+        let said = warnings(&path);
+        assert!(
+            !said.contains("does not turn at"),
+            "{shape:?}: the held region's own end is named as a shoulder:\n{said}"
+        );
+        assert!(
+            said.contains("gripped length"),
+            "{shape:?}: the held region's warning is missing:\n{said}"
+        );
+    }
+}
+
 // ---- free ends (decision record 0344) -------------------------------------
 
 /// Stock that earlier operations left: a cylinder of radius 10.3 from X -5
