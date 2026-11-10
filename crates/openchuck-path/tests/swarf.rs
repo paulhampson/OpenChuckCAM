@@ -3041,3 +3041,14 @@ fn req_nfr_06_req_op_07_a_pass_stopped_short_of_an_end_wall_is_identical_at_1_2_
     .unwrap();
     assert_eq!(runs.len(), 4);
 }
+
+/// Decision record 0644: swarf refuses a tool with no straight flank under
+/// its topic.
+#[test]
+fn req_ui_12_swarf_refusals_carry_their_topic() {
+    let none = Flank::of(&tool(ToolShape::BallEnd, TOOL_RADIUS)).unwrap_err();
+    assert!(
+        matches!(&none, openchuck_path::PathError::Refused { topic, .. } if topic == openchuck_path::topic::SWARF),
+        "{none:?}"
+    );
+}

@@ -780,3 +780,18 @@ fn req_op_11_req_op_14_req_op_15_a_reset_boundary_is_recorded_once_across_motion
         "marking adds no motion, feed or diagnostic"
     );
 }
+
+/// Decision record 0644: a helix entry that would gouge refuses under the
+/// topic "Helix entry", naming Entry as the setting to change.
+#[test]
+fn req_ui_12_helix_entry_refusals_carry_their_topic_and_setting() {
+    let (_, fixture) = cone();
+    let v = values(30.0, 38.0, &[entry("helix")]);
+    match path(&fixture, &v).unwrap_err() {
+        openchuck_path::PathError::Refused { topic, setting, .. } => {
+            assert_eq!(topic, openchuck_path::topic::HELIX_ENTRY);
+            assert_eq!(setting.as_deref(), Some(names::ENTRY));
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}

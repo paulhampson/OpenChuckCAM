@@ -53,7 +53,7 @@ pub(super) fn end(
     Ok(())
 }
 fn refuse(reason: &str) -> PathError {
-    PathError::Strategy(format!("Facing final validation: {reason}"))
+    PathError::refused(crate::topic::FACING_CHECK, reason)
 }
 
 pub(super) fn input<'a>(

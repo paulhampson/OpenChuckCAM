@@ -235,10 +235,13 @@ impl Builder<'_> {
             return Ok(());
         }
         if !self.collision.allows(&self.pose, &end, kind) {
-            return Err(PathError::Strategy(format!(
-                "move {} ({kind:?}) collides, and no way round it is known",
-                self.segments.len()
-            )));
+            return Err(PathError::refused(
+                crate::topic::LINKS,
+                format!(
+                    "move {} ({kind:?}) collides, and no way round it is known",
+                    self.segments.len()
+                ),
+            ));
         }
         let limits = &self.max_feeds;
         let (linear, z, rotary) = if kind.is_fed() {
@@ -404,11 +407,14 @@ fn check_point(p: &CutPoint, pass: usize, point: usize) -> Result<()> {
     if ok {
         Ok(())
     } else {
-        Err(PathError::Strategy(format!(
-            "pass {} point {} is not a finite position",
-            pass + 1,
-            point + 1
-        )))
+        Err(PathError::refused(
+            crate::topic::TOOLPATH,
+            format!(
+                "pass {} point {} is not a finite position",
+                pass + 1,
+                point + 1
+            ),
+        ))
     }
 }
 
@@ -455,10 +461,13 @@ pub(crate) fn assemble_limited(
     if let Some(r) = input.stock.max_radius()
         && r > link_height + EPS
     {
-        return Err(PathError::Strategy(format!(
-            "the stock reaches {r:.3} mm from the rotary axis, beyond the retract height of \
-             {link_height:.3} mm, so links could cross it (OP-14); enlarge the setup's clearance"
-        )));
+        return Err(PathError::refused(
+            crate::topic::LINKS,
+            format!(
+                "the stock reaches {r:.3} mm from the rotary axis, beyond the retract height of \
+             {link_height:.3} mm, so links could cross it. Enlarge the setup's clearance"
+            ),
+        ));
     }
 
     let tolerance = common.tolerance.get().0;
@@ -518,7 +527,8 @@ pub(crate) fn assemble_limited(
         low_links.push(pass.low_link);
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::TOOLPATH,
             "the strategy produced no cut for this selection".to_owned(),
         ));
     };
@@ -866,9 +876,10 @@ pub(crate) fn assemble_limited(
         b.notes.insert(
             0,
             Notice::information(format!(
-                "{kept_high} of {asked_low} links between passes could not be lowered \
+                "{kept_high} of {} between passes could not be lowered \
                  (stock, a held region or the retract height leaves no room) and retract \
-                 as usual"
+                 as usual",
+                crate::counted(asked_low, "link", "links")
             ))
             .about(topic::LINKS),
         );
@@ -1202,11 +1213,15 @@ fn clear_traverse(
         return Ok(());
     }
     if top >= probe - EPS {
-        return Err(PathError::Strategy(format!(
-            "Entry: the move to an entry's start would pass through stock that reaches \
+        return Err(PathError::refused(
+            crate::topic::ENTRY,
+            format!(
+                "the move to an entry's start would pass through stock that reaches \
              {top:.3} mm from the rotary axis, at or above the retract height of {probe:.3} mm. \
              Raise the setup's clearance, or set Entry to Plunge."
-        )));
+            ),
+        )
+        .with_setting(crate::params::names::ENTRY));
     }
     b.retract(needed.min(probe))?;
     b.raised_entries += 1;
@@ -1408,8 +1423,11 @@ fn split_nubs(
 
 /// Passes named for a note (decision 0536; the grouping of #600): "pass 3",
 /// "passes 3, 5 and 7", or for many "52 passes, from pass 3 to pass 98 (3,
-/// 5, 7 ... 94, 96, 98)", so one note per operation stays short.
-fn passes_named(passes: &[usize]) -> String {
+/// 5, 7 ... 94, 96, 98)", so one note per operation stays short. `passes`
+/// are indices from 0; the names count from 1. Every message that lists
+/// passes names them so, in the pathing library and the application alike
+/// (decision record 0644).
+pub fn passes_named(passes: &[usize]) -> String {
     let names: Vec<String> = passes.iter().map(|p| (p + 1).to_string()).collect();
     match names.as_slice() {
         [] => String::new(),

@@ -112,9 +112,12 @@ pub mod strategy;
 pub mod surface;
 pub mod swarf;
 pub mod unroll;
+mod words;
 mod wrap_fit;
 
-pub use assemble::{GeneratedPath, MAX_UNREACHED_POINTS, ShankBreak, Unreached, UnreachedReason};
+pub use assemble::{
+    GeneratedPath, MAX_UNREACHED_POINTS, ShankBreak, Unreached, UnreachedReason, passes_named,
+};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, DROP_TOLERANCE, ExactDrop, ExactFace, ball_radius, has_exact_drop};
 pub use brep_edges::BrepEdges;
@@ -151,3 +154,4 @@ pub use surface::{
     SurfaceSource, Uv,
 };
 pub use swarf::Swarf;
+pub use words::counted;

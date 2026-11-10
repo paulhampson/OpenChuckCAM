@@ -447,3 +447,18 @@ fn req_op_09_req_nfr_07_brep_an_edge_whose_faces_cannot_be_compared_is_counted_a
     // Edge following keeps it, as an edge it cannot compare (unchanged).
     assert_eq!(BrepEdges::new(&model).unwrap().not_inside_throughout(), 0);
 }
+
+/// Decision record 0644: pencil clean-up with no crease to follow refuses
+/// under its topic and names the crease angle as the setting to change.
+#[test]
+fn req_ui_12_pencil_refusals_carry_their_topic_and_setting() {
+    let model = banded_cylinder(10.0, 30.0, &[10.0, 20.0]);
+    let f = Fixture::new(&model);
+    match pencil(&f, &PencilFinishing::on_brep(&model).unwrap(), &[]).unwrap_err() {
+        openchuck_path::PathError::Refused { topic, setting, .. } => {
+            assert_eq!(topic, openchuck_path::topic::PENCIL);
+            assert_eq!(setting.as_deref(), Some(pencil_parameter::CREASE_ANGLE));
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}

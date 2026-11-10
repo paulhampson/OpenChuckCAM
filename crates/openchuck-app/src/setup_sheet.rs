@@ -344,7 +344,7 @@ impl SetupSheet {
                 ),
                 (
                     "Longest run below the limit".into(),
-                    format!("{} moves", report.longest_run),
+                    openchuck_path::counted(report.longest_run, "move", "moves"),
                 ),
                 (
                     "Affected windows".into(),

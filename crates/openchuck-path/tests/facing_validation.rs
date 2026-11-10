@@ -318,7 +318,7 @@ fn req_op_24_empty_passes_retain_existing_no_cut_refusal() {
     };
     let result = run(|c| generate(&check, &f.input(), &values(), c));
     assert!(
-        matches!(result,Err(PathError::Strategy(message)) if message=="the strategy produced no cut for this selection")
+        matches!(result,Err(PathError::Refused { topic, text, .. }) if topic == openchuck_path::topic::TOOLPATH && text=="the strategy produced no cut for this selection")
     );
     let seen = check.seen.lock().unwrap();
     assert!(

@@ -351,16 +351,20 @@ impl Entry {
                 .iter()
                 .find(|(_, a)| a.0 < min.0 - EPS || a.0 > max.0 + EPS)
         {
-            return Err(PathError::Strategy(format!(
-                "Lead entry: pass {}: the {name} turns A to {:.3} degrees on an arc of radius \
+            return Err(PathError::refused(
+                crate::topic::LEAD_ENTRY,
+                format!(
+                    "pass {}: the {name} turns A to {:.3} degrees on an arc of radius \
                  {r:.3} mm, outside the machine's A range of {:.3} to {:.3} degrees. Widen A \
                  range in the setup's Machine settings, make Lead radius smaller, or set Entry \
                  to Plunge or Helix.",
-                pass + 1,
-                a.0,
-                min.0,
-                max.0
-            )));
+                    pass + 1,
+                    a.0,
+                    min.0,
+                    max.0
+                ),
+            )
+            .with_setting(crate::params::names::LEAD_RADIUS));
         }
         if !closed && stock.wide {
             // A partial ring's stretch beside its end is not cut by the
@@ -375,12 +379,16 @@ impl Entry {
                 if super::super::footprint_entry(b, stock, over, *a, self.probe_height, travel)
                     .is_some_and(|d| d < travel - EPS)
                 {
-                    return Err(PathError::Strategy(format!(
-                        "Lead entry: pass {}: the {name} on an arc of radius {r:.3} mm would \
-                         pass through stock the pass has not cleared, beside a cut that turns A \
-                         only part of a turn. Set Entry to Plunge, Ramp or Helix.",
-                        pass + 1
-                    )));
+                    return Err(PathError::refused(
+                        crate::topic::LEAD_ENTRY,
+                        format!(
+                            "pass {}: the {name} on an arc of radius {r:.3} mm would pass \
+                             through stock the pass has not cleared, beside a cut that turns A \
+                             only part of a turn. Set Entry to Plunge, Ramp or Helix.",
+                            pass + 1
+                        ),
+                    )
+                    .with_setting(crate::params::names::ENTRY));
                 }
             }
         }
@@ -393,15 +401,19 @@ impl Entry {
     /// does, which generation has already refused.
     fn refuse_turning(&self, pass: usize, name: &str, found: Gouge) -> PathError {
         let r = self.lead_radius;
-        PathError::Strategy(format!(
-            "Lead entry: pass {}: the {name} on an arc of radius {r:.3} mm would cut {:.3} mm \
+        PathError::refused(
+            crate::topic::LEAD_ENTRY,
+            format!(
+                "pass {}: the {name} on an arc of radius {r:.3} mm would cut {:.3} mm \
              into the finished surface at position {} of its path, more than the tolerance of \
              {:.3} mm. Make Lead radius smaller, or set Entry to Plunge, Ramp or Helix.",
-            pass + 1,
-            found.depth,
-            found.position + 1,
-            self.tolerance
-        ))
+                pass + 1,
+                found.depth,
+                found.position + 1,
+                self.tolerance
+            ),
+        )
+        .with_setting(crate::params::names::LEAD_RADIUS)
     }
 
     /// Where the lead-in of a pass that starts by turning A starts, for the

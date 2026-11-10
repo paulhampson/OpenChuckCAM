@@ -439,9 +439,12 @@ pub(crate) fn check_parameter(
     let spec = active
         .get(name)
         .or_else(|| schema.get(name))
-        .ok_or_else(|| AppError::Operation {
-            name: op.name.clone(),
-            reason: format!("its strategy has no parameter '{name}'"),
+        .ok_or_else(|| {
+            AppError::refused(
+                openchuck_path::topic::SETTING,
+                &op.name,
+                format!("its strategy has no parameter '{name}'"),
+            )
         })?;
     let Some(value) = value else { return Ok(()) };
     let single = ParameterSchema {

@@ -158,28 +158,32 @@ impl Application {
     ) -> Result<OperationId, AppError> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(AppError::Operation {
-                name: String::new(),
-                reason: "an operation needs a name".to_owned(),
-            });
+            return Err(AppError::refused(
+                crate::lead_in::topic::OPERATION,
+                "",
+                "an operation needs a name",
+            ));
         }
-        let fail = |reason: String| AppError::Operation {
-            name: name.to_owned(),
-            reason,
-        };
+        let fail = |topic: &str, reason: String| AppError::refused(topic, name, reason);
         if self.strategies.get(strategy).is_err() {
             let known: Vec<String> = self
                 .strategy_choices()
                 .into_iter()
                 .map(|c| c.name)
                 .collect();
-            return Err(fail(format!(
-                "there is no strategy '{strategy}' (available: {})",
-                known.join(", ")
-            )));
+            return Err(fail(
+                crate::lead_in::topic::OPERATION,
+                format!(
+                    "there is no strategy '{strategy}' (available: {})",
+                    known.join(", ")
+                ),
+            ));
         }
         if self.document.project.setup(setup).is_none() {
-            return Err(fail("its setup is not in the project".to_owned()));
+            return Err(fail(
+                crate::lead_in::topic::SETUP,
+                "its setup is not in the project".to_owned(),
+            ));
         }
         // A strategy that needs a STEP part is not added to a setup whose
         // part is a mesh (decision record 0174), so no generation is wasted.
@@ -188,12 +192,18 @@ impl Application {
                 crate::operation::unavailable_on_setup(&self.document.project, s, setup)
             })
         {
-            return Err(fail(why.replacen("Needs", "it needs", 1)));
+            return Err(fail(
+                crate::lead_in::topic::STEP_PART,
+                why.replacen("Needs", "it needs", 1),
+            ));
         }
         if let Some(tool) = tool
             && !self.document.project.tools().iter().any(|t| t.id == tool)
         {
-            return Err(fail("its tool is not in the project".to_owned()));
+            return Err(fail(
+                crate::lead_in::topic::TOOL,
+                "its tool is not in the project".to_owned(),
+            ));
         }
         if let Some(set) = cut_on {
             let Some(found) = self
@@ -203,31 +213,38 @@ impl Application {
                 .iter()
                 .find(|s| s.id == set)
             else {
-                return Err(fail("its selection set is not in the project".to_owned()));
+                return Err(fail(
+                    openchuck_path::topic::SELECTION_SET,
+                    "its selection set is not in the project".to_owned(),
+                ));
             };
             // A set made on another model can never be resolved against the
             // setup's part (as `set_operation_selection` refuses it).
             if let Some(part) = self.document.project.setup(setup).and_then(|s| s.part)
                 && found.model != part
             {
-                return Err(fail(format!(
-                    "its selection set '{}' was made on a different model from the setup's part",
-                    found.name
-                )));
+                return Err(fail(
+                    openchuck_path::topic::SELECTION_SET,
+                    format!(
+                        "its selection set '{}' was made on a different model from the setup's part",
+                        found.name
+                    ),
+                ));
             }
             if !self
                 .strategies
                 .get(strategy)
                 .is_ok_and(|s| s.honours_region())
             {
-                return Err(fail(format!(
-                    "the strategy '{strategy}' ignores selections, so it cannot take one"
-                )));
+                return Err(fail(
+                    openchuck_path::topic::SELECTION_SET,
+                    format!("the strategy '{strategy}' ignores selections, so it cannot take one"),
+                ));
             }
         }
         let material =
             crate::preset::chosen_material(&self.document.project, setup, tool, material)
-                .map_err(fail)?;
+                .map_err(|reason| fail(crate::lead_in::topic::MATERIAL, reason))?;
         // Rotary roughing starts with a stock to leave for the finishing that
         // follows, a tenth of the tool's diameter, written into the operation
         // so the inspector shows it as set (decision record 0205).

@@ -58,10 +58,13 @@ fn req_set_01_req_set_06_setups_are_checked_against_the_machine() {
     // No machine yet: the setup is not checked, and the report says so.
     let report = &app.check_setups().unwrap()[0];
     assert!(report.warnings.is_empty());
-    assert!(
-        report.notes[0].contains("no machine profile"),
-        "{:?}",
-        report.notes
+    // In the one form, as Messages says it (decision record 0644).
+    assert_eq!(
+        report.notes,
+        [
+            "Machine profile (setup 'Setup 1'): the project has no machine profile, so the setup \
+          is not checked."
+        ]
     );
     let radius = report.part.unwrap().radius.0;
     assert!((radius - 50f64.sqrt()).abs() < 1e-9, "{radius}");
@@ -82,11 +85,16 @@ fn req_set_01_req_set_06_setups_are_checked_against_the_machine() {
         safe_z: Millimetres(30.0),
     });
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
-    let kinds: Vec<_> = app.check_setups().unwrap()[0]
-        .warnings
-        .iter()
-        .map(|w| w.kind.clone())
-        .collect();
+    let report = &app.check_setups().unwrap()[0];
+    let kinds: Vec<_> = report.warnings.iter().map(|w| w.kind.clone()).collect();
+    // Each in the one form, with its topic and the setup, as Messages and
+    // the command line say it (decision record 0644).
+    let lines = report.warning_lines();
+    assert_eq!(lines.len(), 2);
+    for line in &lines {
+        assert!(line.starts_with("Clearance (setup 'Setup 1'): "), "{line}");
+        assert!(line.ends_with('.') && !line.contains(".."), "{line}");
+    }
     assert!(
         matches!(
             kinds[..],

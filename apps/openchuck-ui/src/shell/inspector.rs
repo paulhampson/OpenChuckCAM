@@ -656,7 +656,7 @@ impl Shell {
                             label: "Tool number",
                             compact: true,
                             description: "The project's number for this tool, used by every \
-                                          operation that uses it (TL-06). The post writes it \
+                                          operation that uses it. The post writes it \
                                           as T, with the H and D offsets.",
                             range: Some("1 or more, not another project tool's number"),
                             applied: tool.controller.number.to_string(),

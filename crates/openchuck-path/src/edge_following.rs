@@ -353,9 +353,12 @@ impl Strategy for EdgeFollowing {
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
         if region.is_some() {
-            return Err(PathError::Strategy(format!(
-                "the strategy '{NAME}' cannot be limited to a region; select the edges to follow"
-            )));
+            return Err(PathError::refused(
+                crate::topic::REGION,
+                format!(
+                    "the strategy '{NAME}' cannot be limited to a region; select the edges to follow"
+                ),
+            ));
         }
         let mesh_edges;
         let source: &dyn CurveSource = match &self.source {
@@ -371,19 +374,24 @@ impl Strategy for EdgeFollowing {
         let chains = source.chains(input.surface)?;
         if chains.is_empty() {
             if self.source.is_some() {
-                return Err(PathError::Strategy(
+                return Err(PathError::refused(
+                    crate::topic::EDGE_FOLLOWING,
                     "edge following has no edge to follow: the operation's own edges gave no chain"
                         .to_owned(),
                 ));
             }
-            return Err(PathError::Strategy(format!(
-                "edge following has no edge to follow: the part has no edge turning {} degrees \
+            return Err(PathError::refused(
+                crate::topic::EDGE_FOLLOWING,
+                format!(
+                    "edge following has no edge to follow: the part has no edge turning {} degrees \
                  or more and at least {} mm long; lower {} or {}",
-                parameters.number(parameter::CREASE_ANGLE).unwrap_or(0.0),
-                parameters.number(parameter::MIN_LENGTH).unwrap_or(0.0),
-                parameter::CREASE_ANGLE,
-                parameter::MIN_LENGTH,
-            )));
+                    parameters.number(parameter::CREASE_ANGLE).unwrap_or(0.0),
+                    parameters.number(parameter::MIN_LENGTH).unwrap_or(0.0),
+                    parameter::CREASE_ANGLE,
+                    parameter::MIN_LENGTH,
+                ),
+            )
+            .with_setting(parameter::CREASE_ANGLE));
         }
         follow_chains(
             input,
@@ -697,14 +705,20 @@ fn sites(input: &StrategyInput<'_>, points: &[Point3], on_surface: bool) -> Resu
     let placed: Vec<Result<(Point3, Degrees, UnitVec3)>> = parallel::map_in_order(points, |&p| {
         let radial = Vec3::new(0.0, p.y, p.z);
         if radial.length() < MIN_RADIUS {
-            return Err(PathError::Strategy(format!(
-                "a chain passes within {MIN_RADIUS} mm of the rotary axis at ({:.3}, {:.3}, \
+            return Err(PathError::refused(
+                crate::topic::EDGE_FOLLOWING,
+                format!(
+                    "a chain passes within {MIN_RADIUS} mm of the rotary axis at ({:.3}, {:.3}, \
                      {:.3}), where A cannot face it; edge following cannot cut it",
-                p.x, p.y, p.z
-            )));
+                    p.x, p.y, p.z
+                ),
+            ));
         }
         let a = input.rotary.a_facing(radial).ok_or_else(|| {
-            PathError::Strategy("a chain point lies on the rotary axis".to_owned())
+            PathError::refused(
+                crate::topic::EDGE_FOLLOWING,
+                "a chain point lies on the rotary axis".to_owned(),
+            )
         })?;
         let axis = input.rotary.tool_axis(a);
         let point = if on_surface {
@@ -714,11 +728,14 @@ fn sites(input: &StrategyInput<'_>, points: &[Point3], on_surface: bool) -> Resu
             let height = radial.length();
             let from = p + axis.get() * (reach - height);
             drop_along(input, from, inward(axis), 2.0 * reach).ok_or_else(|| {
-                PathError::Strategy(format!(
-                    "a point of a curve at ({:.3}, {:.3}, {:.3}) does not project onto the \
+                PathError::refused(
+                    crate::topic::EDGE_FOLLOWING,
+                    format!(
+                        "a point of a curve at ({:.3}, {:.3}, {:.3}) does not project onto the \
                          surface along the tool axis",
-                    p.x, p.y, p.z
-                ))
+                        p.x, p.y, p.z
+                    ),
+                )
             })?
         };
         Ok((point, a, axis))
@@ -865,12 +882,15 @@ pub fn follow_chains(
         });
     }
     if cuts.is_empty() {
-        return Err(PathError::Strategy(if sideless > 0 {
-            "every chain runs along the tool axis, so none has a side to carve to; engrave it"
-                .to_owned()
-        } else {
-            "edge following found no chain with two points to cut".to_owned()
-        }));
+        return Err(PathError::refused(
+            crate::topic::EDGE_FOLLOWING,
+            if sideless > 0 {
+                "every chain runs along the tool axis, so none has a side to carve to; engrave it"
+                    .to_owned()
+            } else {
+                "edge following found no chain with two points to cut".to_owned()
+            },
+        ));
     }
     let cuts = order(cuts);
 
@@ -908,15 +928,14 @@ pub fn follow_chains(
     let full = plan.levels.last().copied().unwrap_or(0.0);
     let mut notes = vec![
         Notice::information(format!(
-            "{} chains ({} open, {} closed), {} passes, {} mm deep in {} \
-             level{}; the tool cuts a line {:.3} mm wide at that depth",
-            cuts.len(),
+            "{} ({} open, {} closed), {}, {} mm deep in {}; the tool cuts a line \
+             {:.3} mm wide at that depth",
+            crate::counted(cuts.len(), "chain", "chains"),
             cuts.len() - closed,
             closed,
-            passes.len(),
+            crate::counted(passes.len(), "pass", "passes"),
             trim(full),
-            plan.levels.len(),
-            if plan.levels.len() == 1 { "" } else { "s" },
+            crate::counted(plan.levels.len(), "level", "levels"),
             plan.width_at_depth,
         ))
         .about(topic::EDGE_FOLLOWING),
@@ -934,9 +953,9 @@ pub fn follow_chains(
     if plan.carve {
         notes.push(
             Notice::information(format!(
-                "carving {} lines across each chain, the outer ones {:.3} mm \
+                "carving {} across each chain, the outer ones {:.3} mm \
                  either side of it",
-                plan.offsets.len(),
+                crate::counted(plan.offsets.len(), "line", "lines"),
                 plan.offsets.last().copied().unwrap_or(0.0)
             ))
             .about(topic::EDGE_FOLLOWING),

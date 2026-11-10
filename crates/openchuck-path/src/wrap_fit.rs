@@ -601,10 +601,14 @@ pub(crate) fn fit_region(
         parts.push((part, n as usize));
     }
     if total > MAX_POINTS {
-        return Err(PathError::Strategy(format!(
-            "the region needs {total:.0} points at a spacing of {} mm; increase the tolerance",
-            fit.spacing
-        )));
+        return Err(PathError::refused(
+            crate::topic::REGION,
+            format!(
+                "the region needs {total:.0} points at a spacing of {} mm; increase the tolerance",
+                fit.spacing
+            ),
+        )
+        .with_setting(crate::params::names::TOLERANCE));
     }
     let mut out = Vec::new();
     for (part, n) in parts {

@@ -482,9 +482,9 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
             name: ENTRY.to_owned(),
             label: "Entry".to_owned(),
             description: "How the tool enters the cut: a straight plunge, a tangent arc (lead), \
-                          a straight ramp, or a descending helix (decision record 0026). On a \
+                          a straight ramp, or a descending helix. On a \
                           ring or a spiral the lead arcs turn with the part, in the plane of the \
-                          cut at the ring's X (decision record 0544)."
+                          cut at the ring's X."
                 .to_owned(),
             kind: ParameterKind::Choice {
                 options: EntryStyle::ALL

@@ -175,6 +175,19 @@ pub mod topic {
     pub const RAPID_CUT: &str = "Rapid cut";
     /// Moves shorter than the controller can run at their feed.
     pub const SHORT_BLOCKS: &str = "Short blocks";
+    /// An operation itself: its name, strategy or whether it is turned on.
+    pub const OPERATION: &str = "Operation";
+    /// An operation's setup, missing from the project.
+    pub const SETUP: &str = "Setup";
+    /// An operation's tool, not chosen or missing.
+    pub const TOOL: &str = "Tool";
+    /// A setup's part: not chosen, missing or with no extent.
+    pub const PART: &str = "Part";
+    /// The stock material whose cutting data an operation takes.
+    pub const MATERIAL: &str = "Material";
+    /// What a Facing operation covered, and what it left unfaced on
+    /// purpose (decision record 0644 item 3).
+    pub const FACING: &str = openchuck_path::topic::FACING;
 
     /// Every topic above, for a check that a message takes one.
     pub const ALL: &[&str] = &[
@@ -208,6 +221,12 @@ pub mod topic {
         PROJECT_CHECKS,
         RAPID_CUT,
         SHORT_BLOCKS,
+        OPERATION,
+        SETUP,
+        TOOL,
+        PART,
+        MATERIAL,
+        FACING,
     ];
 }
 

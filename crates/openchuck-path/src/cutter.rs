@@ -788,19 +788,23 @@ fn piece_normal(piece: &ProfilePiece, p: ProfilePoint) -> (f64, f64) {
 /// profile is refused with a message rather than approximated.
 pub fn grow_profile(profile: &RevolvedProfile, offset: f64) -> Result<RevolvedProfile> {
     if !(offset.is_finite() && offset >= 0.0) {
-        return Err(PathError::Strategy(format!(
-            "the stock to leave {offset} mm must be finite and not negative"
-        )));
+        return Err(PathError::refused(
+            crate::topic::STOCK_TO_LEAVE,
+            format!("the stock to leave {offset} mm must be finite and not negative"),
+        )
+        .with_setting(crate::params::names::STOCK_TO_LEAVE));
     }
     if offset == 0.0 {
         return Ok(profile.clone());
     }
     if !profile.is_convex() {
-        return Err(PathError::Strategy(
+        return Err(PathError::refused(
+            crate::topic::STOCK_TO_LEAVE,
             "stock to leave is not supported for this tool: its profile is not convex \
              (a concave custom profile); set the stock to leave to 0 or use a convex tool"
                 .to_owned(),
-        ));
+        )
+        .with_setting(crate::params::names::STOCK_TO_LEAVE));
     }
     let s = offset;
     // Work in the original frame, then lift by `s` so the grown tip is the origin.
