@@ -193,7 +193,6 @@ Generated G-code must be verified by the user before it is run on a machine. Ope
 Before that, on standard error, it prints what the run found, each at its level, then the checks that did not stop the export:
 
 ```text
-warning: Held region (operation 'Finish'): the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left.
 warning: Held region (operation 'Finish'): nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
 note: Feed limit (operation 'Rough'): 9536 moves were limited by the machine's feed limits. In the worst case the target was 1000.0 mm/min, but the move was reduced to 22.0 mm/min to stay within the machine's capabilities.
 note: Feed limit (operation 'Finish'): 7818 moves were limited by the machine's feed limits. In the worst case the target was 500.0 mm/min, but the move was reduced to 0.7 mm/min to stay within the machine's capabilities.
@@ -202,7 +201,6 @@ note: Free ends (operation 'Finish'): the end face at X 61.000 has nothing beyon
 note: Rotary axis (operation 'Finish'): moves 19077 to 19148 (72 moves): A turns with the contact point at the rotary axis during these moves, so the contact point barely moves and the rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min.
 short-block settings: Report (machine profile), 7.000 ms (machine profile), 32 blocks (machine profile)
 checks before writing the G-code:
-warning: Held region (operation 'Finish'): the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left.
 warning: Held region (operation 'Finish'): nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
 warning: Operation 'Rough' has not been simulated. Run the simulation to see what it removes.
 warning: Operation 'Finish' has not been simulated. Run the simulation to see what it removes.

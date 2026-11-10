@@ -354,7 +354,35 @@ fn find(
     });
     turns.retain(|t| (low..=x1 + extra as f64 * step).contains(&t.x));
     let held_at = |x: f64| input.keep_out.iter().any(|&(a, b)| (a..=b).contains(&x));
-    let held: Vec<f64> = turns.iter().map(|t| t.x).filter(|&x| held_at(x)).collect();
+    // A turn the keep-out stops is named only where the part itself makes
+    // the face (decision record 0343 item 6). The target also holds the held
+    // region's solid (decision record 0035), whose own end face always lies
+    // inside its keep-out: that face is never cut (SET-09), and what the
+    // keep-out leaves beside it is said by the held region's own warning
+    // (decision record 0161 item 3), so it is not named as a shoulder (issue
+    // #765). The part makes the face where, on a line of A the face was
+    // found on, the tool dropped on the part alone just across the jump
+    // stands as high as the face's top.
+    let across = 2.0 * CLEAR * tolerance;
+    let of_part = |t: &Turn| {
+        let x = if t.up { t.x + across } else { t.x - across };
+        t.tops.iter().enumerate().any(|(k, &top)| {
+            top.is_finite() && {
+                let a = 360.0 * k as f64 / angles as f64;
+                let line = input
+                    .rotary
+                    .tool_line(Millimetres(x), Degrees(a), Millimetres(0.0));
+                input.surface.drop_on_part(profile, &line).is_some_and(|c| {
+                    input.rotary.to_axis(c.tip, Degrees(a)).height >= top - tolerance
+                })
+            }
+        })
+    };
+    let held: Vec<f64> = turns
+        .iter()
+        .filter(|t| held_at(t.x) && of_part(t))
+        .map(|t| t.x)
+        .collect();
     turns.retain(|t| !held_at(t.x));
     if turns.len() > MAX_TURNS {
         return Err(PathError::refused(
