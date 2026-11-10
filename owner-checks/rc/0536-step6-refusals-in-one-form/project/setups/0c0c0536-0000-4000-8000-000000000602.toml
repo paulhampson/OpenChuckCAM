@@ -1,0 +1,24 @@
+schema = 25
+id = "0c0c0536-0000-4000-8000-000000000602"
+order = "W"
+name = "Setup 2, low clearance"
+part = "75b05aaf-5593-4e0f-9bcb-76e2fef56cad"
+material = "Hardwood"
+part_offset = 0.0
+
+[work_offset]
+register = "g54"
+x = 0.0
+
+[stock]
+type = "cylinder"
+diameter = 24.000000238343276
+length = 63.0
+x_start = -1.0
+
+[clearance]
+radius = 10.0
+safe_z = 40.0
+
+[workholding.start]
+length = 8.0

@@ -1,0 +1,40 @@
+schema = 25
+id = "0c0c0536-0000-4000-8000-000000000605"
+order = "X"
+name = "O-flute, not centre cutting"
+
+[tool]
+diameter = 3.175
+flute_length = 25.0
+overall_length = 42.0
+shank_diameter = 3.175
+flute_count = 1
+material = "carbide"
+centre_cutting = false
+
+[tool.shape]
+type = "flat_end"
+
+[controller]
+number = 105
+
+[cutting_data.Hardwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 1.0
+
+[cutting_data.Plastic]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 1.0
+
+[cutting_data.Softwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 2.0

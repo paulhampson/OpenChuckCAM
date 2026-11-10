@@ -1,0 +1,15 @@
+schema = 25
+id = "0c0c0536-0000-4000-8000-000000000623"
+order = "W"
+name = "Rough, deep stepdown"
+setup = "57ad6798-2544-4dfb-90a0-caf67ec69484"
+strategy = "rotary_roughing"
+tool = "c0de0001-0000-4000-8000-000000000104"
+selections = []
+
+[parameters]
+feed = 1000.0
+plunge_feed = 300.0
+stepdown = 30.0
+stepover = 2.2225
+stock_to_leave = 0.3

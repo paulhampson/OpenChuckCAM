@@ -1,0 +1,17 @@
+schema = 25
+id = "0c0c0536-0000-4000-8000-000000000603"
+order = "X"
+name = "Setup 3, cylinder in long stock"
+part = "0c0c0536-0000-4000-8000-000000000611"
+material = "Hardwood"
+part_offset = 0.0
+
+[work_offset]
+register = "g54"
+x = 0.0
+
+[stock]
+type = "cylinder"
+diameter = 24.0
+length = 62.0
+x_start = -10.0

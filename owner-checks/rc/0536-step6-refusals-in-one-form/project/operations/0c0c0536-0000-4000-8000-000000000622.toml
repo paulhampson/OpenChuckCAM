@@ -1,0 +1,13 @@
+schema = 25
+id = "0c0c0536-0000-4000-8000-000000000622"
+order = "V"
+name = "Face end, wide stepover"
+setup = "57ad6798-2544-4dfb-90a0-caf67ec69484"
+strategy = "facing"
+tool = "c0de0001-0000-4000-8000-000000000104"
+selections = []
+
+[parameters]
+shape = "end"
+stepdown = 0.5
+stepover = 5.0
