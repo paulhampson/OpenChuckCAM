@@ -739,18 +739,25 @@ pub(crate) fn in_rings(parameters: &Parameters) -> bool {
 /// band's edge, as roughing's do (decision record 0550, which amends 0390
 /// item 3 and 0420 item 1; 0161). With no band, or one that leaves nothing,
 /// the whole range, as before. With the faces across the axis (`turns`)
-/// that lie inside it.
+/// that are not inside a band: those within the range, and those past an
+/// end that no band covers (the turn beside an end face beyond the
+/// target's end, issue 404), as before 0550 (issue #750).
 pub(crate) fn ring_span(
     (x0, x1): (f64, f64),
     keep_out: &[(f64, f64)],
     turns: &[f64],
 ) -> ((f64, f64), Vec<f64>) {
     let (lo, hi) = crate::simultaneous::outside_held(x0, x1, keep_out);
-    let span = if hi > lo { (lo, hi) } else { (x0, x1) };
+    let (span, cut) = if hi > lo {
+        ((lo, hi), (lo > x0, hi < x1))
+    } else {
+        ((x0, x1), (false, false))
+    };
+    // A turn past an end is dropped only where a band shortened that end.
     let inside = turns
         .iter()
         .copied()
-        .filter(|&t| t >= span.0 && t <= span.1)
+        .filter(|&t| (t >= span.0 || !cut.0) && (t <= span.1 || !cut.1))
         .collect();
     (span, inside)
 }
@@ -1179,4 +1186,31 @@ fn adaptive_passes(
     let first_x = |p: &Pass| p.points.first().map_or(f64::INFINITY, |c| c.tip.x);
     added.sort_by(|p, q| first_x(p).total_cmp(&first_x(q)));
     Ok((added, outcome, settings))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ring_span;
+
+    /// Issue #750: a face's turn past an end of the part (issue 404, found
+    /// by `faces::turns_to_the_ends`) is still a ring place where no held
+    /// region covers that end, as before decision 0550; only a turn inside
+    /// a band is dropped (0550 item 1).
+    #[test]
+    fn req_op_04_req_set_09_a_turn_past_an_end_no_band_covers_is_still_a_ring_place() {
+        let turns = [-0.4, 5.0, 10.3];
+        // No band: the whole range and every turn, past the ends too.
+        let (span, inside) = ring_span((0.0, 10.0), &[], &turns);
+        assert_eq!(span, (0.0, 10.0));
+        assert_eq!(inside, turns.to_vec());
+        // A band over the start: the turn inside it goes, the one past the
+        // free end stays.
+        let (span, inside) = ring_span((0.0, 10.0), &[(-5.0, 2.0)], &turns);
+        assert_eq!(span, (2.0, 10.0));
+        assert_eq!(inside, vec![5.0, 10.3]);
+        // Bands over both ends.
+        let (span, inside) = ring_span((0.0, 10.0), &[(-5.0, 2.0), (9.0, 15.0)], &turns);
+        assert_eq!(span, (2.0, 9.0));
+        assert_eq!(inside, vec![5.0]);
+    }
 }
