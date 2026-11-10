@@ -3,9 +3,9 @@
 1. On the Simulate step, press **Post and export...** (bottom right), or choose **File > Post and export...**. The dialog opens.
 
 <figure>
-  <img src="images/16-export-dialog.png" width="1366" height="768"
-       alt="The Post and export dialog: the Makera Z1 post, one file per setup, the output folder, file name templates and a preview of the start of the program.">
-  <figcaption><b>Figure 1.</b> The Post and export dialog, with a preview of the start of the program.</figcaption>
+  <img src="images/16-export-dialog.png" width="1920" height="1080"
+       alt="The Post and export dialog: the Makera Z1 post, one file per setup, the output folder and file name templates on the left; the file to write, its line count and programmed time, and the top of the Preview with its size and SHA-256 hash on the right.">
+  <figcaption><b>Figure 1.</b> The Post and export dialog. The <b>Preview</b> starts at the lower right.</figcaption>
 </figure>
 
 The dialog shows:
@@ -23,29 +23,29 @@ File names
 : The names are made from templates (`{n}-{contents}` gives `01-setup-1.nc`). The defaults are fine.
 
 Files to write
-: The list shows the file's lines (here 29,125) and programmed time. Below it, a read-only **Preview** shows the program as it will be written, with its size, its SHA-256 hash, and **Go to line** and **Find** to read it.
+: The list shows the file's lines (here 27,991) and programmed time. Below it, a read-only **Preview** shows the program as it will be written, with its size, its SHA-256 hash, and **Go to line** and **Find** to read it.
 
 2. Scroll down to **Checks before writing**.
 
 <figure>
-  <img src="images/17-export-checks.png" width="1366" height="768"
-       alt="The Checks before writing part of the dialog: the tool numbers table, a warning that machine values are not confirmed, and the notice to verify the G-code before running it with the box I will verify this G-code before running it on a machine.">
-  <figcaption><b>Figure 2.</b> The checks before writing: the tool numbers, the warning about unconfirmed machine values, and the notice to verify the G-code.</figcaption>
+  <img src="images/17-export-checks.png" width="1920" height="1080"
+       alt="The Checks before writing part of the dialog: the tool numbers table, the held-region warning of the Finish operation, a warning that machine values are not confirmed, the first lines of the program in the preview, and the notice to verify the G-code before running it with the box I will verify this G-code before running it on a machine.">
+  <figcaption><b>Figure 2.</b> The checks before writing: the tool numbers, two warnings (the held region of Finish, and the unconfirmed machine values), and the notice to verify the G-code.</figcaption>
 </figure>
 
-3. Read the warning about the unconfirmed machine values, and the notice **"Verify this G-code before you run it."** If an operation had a partial path, the dialog would ask you to accept it here as well; this tutorial has none.
+3. Read the two warnings, the held region of **Finish** (as in [step 8](08-generate.md)) and the unconfirmed machine values, and the notice **"Verify this G-code before you run it."** If an operation had a partial path, the dialog would ask you to accept it here as well; this tutorial has none.
 4. Tick **I will verify this G-code before running it on a machine** (the program asks this once per project on each computer).
 5. Press **Write G-code**.
 
 <figure>
-  <img src="images/18-export-result.png" width="1366" height="768"
+  <img src="images/18-export-result.png" width="1920" height="1080"
        alt="The Export result window: Wrote 3 files, listing 01-setup-1.nc, baluster-setup-sheet.html and baluster-setup-sheet.pdf in the output folder.">
   <figcaption><b>Figure 3.</b> The result: three files written to the output folder.</figcaption>
 </figure>
 
 Three files are written to the output folder:
 
-- `01-setup-1.nc`: the G-code (about 810 KB for this job).
+- `01-setup-1.nc`: the G-code (about 800 KB for this job).
 - `baluster-setup-sheet.html` and `baluster-setup-sheet.pdf`: the [setup sheet](../glossary.md#setup-sheet). It lists the project, machine, stock, held length, tools, operations with their speeds and times, each program file with its **SHA-256 hash**, and the notice to verify. Compare the hash of a file on the machine with the sheet to be sure it is the file the sheet describes.
 
 Dismiss the result and save the project with **File > Save**.

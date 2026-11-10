@@ -30,8 +30,8 @@ def run(cap, work):
     cap.shot("02-flat")
     b.dump_results(cap, work, "flat")
     cap.scroll(1740, 700, 6)
-    cap.click(1675, 437, 1)                    # the tool list (T1 3 mm flat end mill)
-    cap.click(1650, 506, 1.5)                  # T2 3 mm ball
+    cap.click(1675, 465, 1)                    # the tool list (T1 3 mm flat end mill), below Save to library...
+    cap.click(1650, 529, 1.5)                  # T2 3 mm ball
     b.generate(cap)
     cap.click(455, 790, 1)                     # Results
     cap.shot("03-ball")
@@ -45,7 +45,7 @@ def run(cap, work):
     cap.shot("05-avoid")
     b.dump_results(cap, work, "avoid")
     cap.scroll(1740, 700, 6)
-    cap.click(1777, 793, 1.5)                  # Keep off the end faces: off
+    cap.click(1777, 780, 1.5)                  # Keep off the end faces: off
     cap.shot("06-keep-off-setting")
     b.generate(cap)
     cap.click(455, 790, 1)                     # Results

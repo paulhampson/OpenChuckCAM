@@ -5,7 +5,7 @@
 3. Under **Material**, pick **Hardwood**.
 
 <figure>
-  <img src="images/05-stock.png" width="1366" height="768"
+  <img src="images/05-stock.png" width="1920" height="1080"
        alt="The Stock section: a cylinder of 24 mm diameter and 63 mm length, drawn around the part.">
   <figcaption><b>Figure 1.</b> A cylinder of stock, 24 mm across and 63 mm long, drawn as a dashed outline around the part.</figcaption>
 </figure>

@@ -42,6 +42,8 @@ python3 user-docs/tools/capture.py
 
 The click positions in the script belong to the layout of one build. When a screen changes, change the positions and the pages that describe it, and capture again. If you check the screens against a newer build without capturing, add `reviewed_at = "<commit>"` to `CAPTURED.toml`. The docs check warns on a pull request when the screens have changed since the capture or review commit, and a release refuses it (decision 0400, section G).
 
+`CAPTURED.toml` must name a commit that stays on `main`. The script writes `HEAD`; when you capture on a branch, that commit is gone once the pull request is squash-merged, and the release check then fails with "is not in this checkout's history". So capture from a build of a `main` commit, on a branch that changes no screen folder (`git diff <main commit> -- apps/openchuck-ui crates/openchuck-viewport crates/openchuck-app/src` is empty), and set `captured_at` to that `main` commit before committing. The release passes when that commit contains the last change to the screen folders.
+
 The worked examples' screens are taken the same way, one example at a time, with `tools/capture_example.py NAME` (its opening comment says how). The blisk examples (`tools/examples/blisk_*.py`) also need `xclip` (Debian or Ubuntu: `apt-get install xclip`), which reads the Results text after **Copy all**; they stop before their first step without it.
 
 ## How it is published

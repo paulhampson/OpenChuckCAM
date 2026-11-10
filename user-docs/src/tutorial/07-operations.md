@@ -5,12 +5,12 @@ An [operation](../glossary.md#operation) is one machining job with one tool. You
 Choose **+ New operation**. The list of [strategies](../glossary.md#strategy) shows what the program can do:
 
 <figure>
-  <img src="images/11-strategy-list.png" width="1366" height="768"
-       alt="The strategy list: Rotary roughing and Facing under Roughing; Helical, Axial, Indexed, Simultaneous 4-axis finishing, Rest machining and Pencil clean-up under Finishing; Edge and curve following and Swarf under Specialist.">
-  <figcaption><b>Figure 1.</b> The strategy list, grouped under Roughing, Finishing and Specialist.</figcaption>
+  <img src="images/11-strategy-list.png" width="1920" height="1080"
+       alt="The strategy list: Rotary roughing and Facing under Roughing; Helical, Axial, Indexed, Simultaneous 4-axis finishing, Rest machining, Pencil clean-up and a greyed Face flow finishing under Finishing, with a note under it that it needs a STEP model. The list continues below the edge of the dialog.">
+  <figcaption><b>Figure 1.</b> The strategy list, grouped under Roughing and Finishing. The Specialist group is further down the list.</figcaption>
 </figure>
 
-Each entry has a one-paragraph description. Swarf is greyed because it needs a STEP model.
+Each entry has a one-paragraph description. Face flow finishing is greyed because it needs a STEP model, and the list says so under it; Swarf, in the Specialist group further down, is greyed for the same reason.
 
 ## Roughing
 
@@ -18,7 +18,7 @@ Each entry has a one-paragraph description. Swarf is greyed because it needs a S
 2. Press **Add**.
 
 <figure>
-  <img src="images/09-add-roughing.png" width="1366" height="768"
+  <img src="images/09-add-roughing.png" width="1920" height="1080"
        alt="The Add operation dialog with the name Rough, strategy Rotary roughing, Setup 1 and the O-flute tool.">
   <figcaption><b>Figure 2.</b> The Add operation dialog for the Rough operation.</figcaption>
 </figure>
@@ -26,7 +26,7 @@ Each entry has a one-paragraph description. Swarf is greyed because it needs a S
 3. In the Inspector, set **Stepdown** to **1** mm. This field starts empty: the program does not guess how deep a layer should be.
 
 <figure>
-  <img src="images/10-roughing-settings.png" width="1366" height="768"
+  <img src="images/10-roughing-settings.png" width="1920" height="1080"
        alt="The Rough operation's Inspector: cutting feed 1000 mm/min, stepover 2.2225 mm, stock to leave 0.3 mm and stepdown 1 mm.">
   <figcaption><b>Figure 3.</b> The Rough operation's settings: stepover 2.2225 mm, stock to leave 0.3 mm and stepdown 1 mm.</figcaption>
 </figure>
@@ -45,8 +45,8 @@ The **cutting feed** shown is the programmed [feed](../glossary.md#feed). The ma
 3. Press **Add**.
 
 <figure>
-  <img src="images/12-finishing-settings.png" width="1366" height="768"
-       alt="The Finish operation's Inspector: ball tool T204, cutting feed 500 mm/min, stepover 0.4536 mm, stock to leave 0.000 mm, Allowed excess 0.010 mm, and Adaptive spacing ticked.">
+  <img src="images/12-finishing-settings.png" width="1920" height="1080"
+       alt="The Finish operation's Inspector: ball tool T204, cutting feed 500 mm/min, stepover 0.453571 mm, stock to leave 0.000 mm, Allowed excess 0.010 mm, and Adaptive spacing ticked.">
   <figcaption><b>Figure 4.</b> The Finish operation's settings, with the ball tool T204, no stock to leave, and <b>Adaptive spacing</b> ticked.</figcaption>
 </figure>
 
@@ -56,13 +56,13 @@ Helical finishing follows the surface in a spiral around the part as the tool mo
 
 New finishing operations have **Adaptive spacing** ticked. The program then measures the material left between neighbouring passes and adds passes where more than the **Allowed excess** (0.01 mm by default) would be left. On this piece, with this tool, it cannot confirm the excess at some places before it reaches its limits, so it keeps the path made so far, marks it as partial, and asks you to accept that before it writes any G-code. A partial path is not wrong, but it is not complete, so this tutorial keeps it simple:
 
-1. Scroll to the end of the Inspector.
+1. Scroll down the Inspector to **Adaptive spacing**, near the end of **Pattern and tolerance**.
 2. Untick **Adaptive spacing**.
 
 <figure>
-  <img src="images/12b-adaptive-spacing-off.png" width="1366" height="768"
+  <img src="images/12b-adaptive-spacing-off.png" width="1920" height="1080"
        alt="The Finish operation's Inspector scrolled to the end of the Pattern and tolerance section, with Adaptive spacing unticked, Scallop height 0.000 mm and Passes set to Spiral.">
-  <figcaption><b>Figure 5.</b> <b>Adaptive spacing</b> unticked. The setting above it is now <b>Scallop height</b>, which stays at 0, so the stepover alone sets the spacing.</figcaption>
+  <figcaption><b>Figure 5.</b> <b>Adaptive spacing</b> unticked. Further up, <b>Allowed excess</b> has become <b>Scallop height</b>, which stays at 0, so the stepover alone sets the spacing.</figcaption>
 </figure>
 
 [Adaptive spacing](../glossary.md#adaptive-spacing) is worth trying on your own parts; read its warning, if it gives one, before you use the program. **Passes** can be **Spiral** (one continuous helix, the choice here) or **Rings** (separate rings, one after the other).

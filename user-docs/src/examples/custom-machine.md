@@ -14,7 +14,7 @@ You need the tutorial's finished project, [`testdata/examples/baluster/baluster-
 3. Find **Machine profiles** at the bottom of the Inspector; in a smaller window, scroll the Inspector down to it.
 
 <figure>
-<a href="images/custom_machine/01-machine-section.png"><img src="images/custom_machine/01-machine-section.png" width="1920" height="1080" alt="The Setup step with the Inspector scrolled to Machine profiles: the library folder does not exist yet, with the buttons Create the library folder and Manage machines..., and the list showing Makera Z1 (built-in makera-z1)."></a>
+<a href="images/custom_machine/01-machine-section.png"><img src="images/custom_machine/01-machine-section.png" width="1920" height="1080" alt="The Setup step with Machine profiles at the bottom of the Inspector: the library folder does not exist yet, with the buttons Create the library folder and Manage machines..., and the list showing Makera Z1 (built-in makera-z1)."></a>
 <figcaption><b>Figure 1.</b> The machine section of the Inspector. "Matches built-in makera-z1" says the project's copy is the same as the built-in profile.</figcaption>
 </figure>
 
@@ -63,7 +63,7 @@ Scroll down the form and go on:
 Set **Safe Z** before **Safe cylinder radius**: the safe Z cannot be below the safe cylinder, and a radius of 50 mm is refused while the safe Z is still the Z1's 40 mm.
 
 <figure>
-<a href="images/custom_machine/04-feeds-and-clearance.png"><img src="images/custom_machine/04-feeds-and-clearance.png" width="1920" height="1080" alt="The Maximum feeds, Clearance and Tools and spindle groups of the draft: feeds 3000, 1500 and 7200, rapids 5000, 3000 and 7200, A in the feed word Separate, safe cylinder radius 50.000, safe Z 60.000, highest tool number 99, each changed value Not confirmed on the machine."></a>
+<a href="images/custom_machine/04-feeds-and-clearance.png"><img src="images/custom_machine/04-feeds-and-clearance.png" width="1920" height="1080" alt="The Maximum feeds, Clearance and Tools and spindle groups of the draft: feeds 3000, 1500 and 7200, rapids 5000, 3000 and 7200, A in the feed word Separate, safe cylinder radius 50.000, safe Z 60.000, highest tool number 99, with Not confirmed on the machine and a Mark confirmed... button under the feeds and under the clearance values."></a>
 <figcaption><b>Figure 4.</b> The feeds, the clearance and the highest tool number of the example router.</figcaption>
 </figure>
 
@@ -106,7 +106,7 @@ When you have measured a value on the machine, click **Mark confirmed...** next 
 3. Click **Use this machine**. The project takes its own copy of the profile.
 
 <figure>
-<a href="images/custom_machine/08-in-use.png"><img src="images/custom_machine/08-in-use.png" width="1920" height="1080" alt="The Setup step with Setup 1 now on Example router: the view shows Safe Z +60 and Clearance R50; the Setup checks list four warnings, among them Safe Z cannot be checked against the Z travel because the axis height is not confirmed, and Tool 104 may take the spindle above the top of the Z travel at the safe Z; the status bar says 8 machine values unconfirmed."></a>
+<a href="images/custom_machine/08-in-use.png"><img src="images/custom_machine/08-in-use.png" width="1920" height="1080" alt="The Setup step with Setup 1 now on Example router: the view shows Safe Z +60 and Clearance R50; the Setup checks list four warnings, among them Safe Z cannot be checked against the Z travel because the axis height is not confirmed, and Tool length warnings that tools 104 and 204 may take the spindle above the top of the Z travel at the safe Z; the status bar says 8 machine values unconfirmed."></a>
 <figcaption><b>Figure 8.</b> The project on the example router. The view shows the new safe Z and clearance, and the setup checks show what the new values mean for this job.</figcaption>
 </figure>
 
@@ -115,7 +115,7 @@ When you have measured a value on the machine, click **Mark confirmed...** next 
 The setup checks now say:
 
 - "Safe Z cannot be checked against the Z travel: the machine's axis height is not confirmed on the machine." Confirm the axis height, and this check can be made.
-- "Tool 104 (Z1 O-flute 3.175x25) may take the spindle above the top of the Z travel at the safe Z ...", and the same for tool 204. The profile still has the Z1's **Spindle to axis** of 73.1 mm, and a safe Z of 60 mm leaves too little room above it for these tools. Measure the router's spindle-to-axis distance and set it; then lower the safe Z or use shorter tools if the warning remains. A tool that may take the spindle past the top of its travel is a possible collision, so if the warning is still there when you export, the export asks you to acknowledge it before it writes anything.
+- "Tool length (tool 'Z1 O-flute 3.175x25', setup 'Setup 1'): tool 104 may take the spindle above the top of the Z travel at the safe Z: ...", and the same for tool 204. The profile still has the Z1's **Spindle to axis** of 73.1 mm, and a safe Z of 60 mm leaves too little room above it for these tools. Measure the router's spindle-to-axis distance and set it; then lower the safe Z or use shorter tools if the warning remains. A tool that may take the spindle past the top of its travel is a possible collision, so if the warning is still there when you export, the export asks you to acknowledge it before it writes anything.
 
 The status bar counts the unconfirmed values: "8 machine values unconfirmed". Every operation is now out of date, because the machine changed; generate them again before you post.
 

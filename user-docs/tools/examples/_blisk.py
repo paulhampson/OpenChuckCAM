@@ -86,38 +86,8 @@ def add_operation(cap, strategy, tool, name):
 
 
 def generate(cap, timeout=900):
-    """Generate the stale operations and wait until the status bar reads as it did before (Ready).
-
-    Limitation: this is a heuristic on the status bar's pixels, sampled every 5 s. It cannot tell a
-    run that never started (for example an operation in error) from one that ended between two
-    samples: after 30 s with no change it prints "nothing ran" and goes on. Check the screens and
-    the Results text the capture prints before committing them. A run still going after `timeout`
-    seconds raises TimeoutError.
-    """
-    ref = status(cap)
-    cap.click(1854, 1058, 3)                   # Generate stale
-    waited, busy = 0, False
-    while waited < timeout:
-        cap.pause(5)
-        waited += 5
-        now = status(cap)
-        busy = busy or now != ref
-        if busy and now == ref:
-            break
-        if not busy and waited >= 30:
-            print("nothing ran: the operation may be in error", flush=True)
-            break
-    else:
-        raise TimeoutError(f"generation did not end within {timeout} s")
-    cap.pause(2)
-    print("generated in about", waited, "s", flush=True)
-
-
-def status(cap):
-    """The left end of the status bar ("Ready", or the progress of a job), as raw pixels."""
-    out = subprocess.run(["import", "-window", "root", "-crop", "120x24+0+1046", "rgb:-"],
-                         env=cap.ENV, capture_output=True, check=False)
-    return out.stdout
+    """Generate the stale operations and wait, bounded: the shared `capture.generate` (issue 629)."""
+    cap.generate(timeout)
 
 
 def dump_results(cap, work, label, copy_all=(561, 832)):
