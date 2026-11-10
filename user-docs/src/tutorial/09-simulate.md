@@ -27,12 +27,12 @@ The results on the right say how closely the cut matches the model:
 - **By operation**: how many moves each makes and the volume it removes.
 - **Cell size 0.100 mm** is the simulation's resolution. The stepped surface in the view is that cell size; it is not the finish the machine would leave. A finer cell is more accurate and slower.
 
-Tick **Deviation colours** at the top of the Inspector to see where the material left is. Grey is on the surface, light blue has up to 1 mm left, and red would be cut below the surface.
+Tick **Deviation colours** at the top of the Inspector to see where the material left is. Grey is on the surface, the blues show material left (darker for more, the darkest for more than 1 mm), and red would be cut below the surface.
 
 <figure>
   <img src="../images/hero-2-deviation.png" width="1920" height="1080"
-       alt="The cut part in 3D, coloured by deviation. Most of the surface is grey. Light blue rings mark the inside corners at the shoulder, the collar and the cove, and the end of the ball finial, where material is left. The legend at the lower left explains the colours.">
-  <figcaption><b>Figure 3.</b> The cut part coloured by deviation. The blue rings are material left in inside corners that the 3.175 mm ball tool cannot reach.</figcaption>
+       alt="The cut part in 3D, coloured by deviation. Most of the surface is grey. Light blue rings mark the inside corners at the shoulder, the collar and the cove, where material is left; a darker blue arc at the shoulder and a darker blue disc at the end of the ball finial show more. The legend at the lower left explains the colours.">
+  <figcaption><b>Figure 3.</b> The cut part coloured by deviation. The blue rings are material left in inside corners that the 3.175 mm ball tool cannot reach. The end of the finial also has material left.</figcaption>
 </figure>
 
 The most material left in this run, 0.924 mm, is at the inside corner where the plain end meets the shoulder. A ball tool has a round end of 1.6 mm radius, so it cannot cut a sharper corner than that, as the strategy's description warns. A smaller tool in a later operation, such as **Rest machining** or **Pencil clean-up**, reaches into corners like these. Check the corners of your own parts the same way.
@@ -40,6 +40,6 @@ The most material left in this run, 0.924 mm, is at the inside corner where the 
 > [!WARNING]
 > Treat the simulation as a check on the toolpaths, not a guarantee. It does not model the chuck, the holder or the machine, and it cannot show whether your tool, speed and feed will cut well.
 
-The **Playback** panel also shows the programmed time: about 28 minutes 22 seconds here. This is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.
+The **Playback** panel also shows the programmed time: about 27 minutes 47 seconds here. This is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.
 
 When you are satisfied, press **Post and export...** at the bottom right.

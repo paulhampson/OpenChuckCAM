@@ -13,6 +13,6 @@ The status bar shows the progress. On this part it takes a few minutes on a comp
 
 The orange lines are the roughing toolpath in the front view, with the held region hatched on the left. The eye icon beside an operation shows or hides its path in the view; hiding a path changes only the view, never what is machined. Use the view buttons (**Front**, **Top**, **Iso**, **Fit**) and the mouse to look around.
 
-The warning on **2 Finish** is in the Messages list under the view. It says that nothing within one tool radius of the held region is cut: the grip leaves the plain end, and the part of the surface beside it, uncut. That is what this tutorial means to do, as in [step 5](05-hold.md), so the project chip still reads **Needs attention**. Click a message to see the operation it is about.
+The Messages list under the view now holds two warnings: the setup's grip warning from [step 5](05-hold.md), and the warning on **2 Finish**. The second says that nothing within one tool radius of the held region is cut: the grip leaves the plain end, and the part of the surface beside it, uncut. That is what this tutorial means to do, so the project chip still reads **Needs attention**. Click a message to see the operation it is about.
 
 Press **Continue to simulate**.

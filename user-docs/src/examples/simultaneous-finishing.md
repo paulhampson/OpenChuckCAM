@@ -48,11 +48,11 @@ The project already has the setup (a 38 mm hardwood bar, gripped for 6 mm) and t
 3. Click **Iso** above the view, then **Results** under it. The notes are listed under **Information**.
 
 <figure>
-<a href="images/simultaneous/03-finish-path.png"><img src="images/simultaneous/03-finish-path.png" width="1920" height="1080" alt="The Iso view with the finishing path drawn in orange round each of the three pins of the crankshaft; the Results tab, with Information turned off, reads 2 operations, 40284 moves, 88.3 s to generate, Errors 0, Warnings 3, Information 35, and lists the three warnings of Finish: Held region, Inside corners and Tool holder."></a>
+<a href="images/simultaneous/03-finish-path.png"><img src="images/simultaneous/03-finish-path.png" width="1920" height="1080" alt="The Iso view with the finishing path drawn in orange round each of the three pins of the crankshaft; the Results tab, with Information turned off, reads 2 operations, 40284 moves, 92.5 s to generate, Errors 0, Warnings 2, Information 35, and lists the two warnings of Finish: Inside corners and Tool holder."></a>
 <figcaption><b>Figure 3.</b> The finishing path follows each pin round its own centre, not round the rotary axis.</figcaption>
 </figure>
 
-The finish gives these notes and three warnings. Figure 3 shows the warnings; the notes are under **Information**. Read them before you look at the simulation.
+The finish gives these notes and two warnings. Figure 3 shows the warnings; the notes are under **Information**. Read them before you look at the simulation.
 
 The off-axis pins
 : "the part's section does not surround the rotary axis at X 4.088 to 9.960, X 15.008 to 24.953, X 30.001 to 39.946, so the path there goes round the section's own centre: the tool moves across the axis as A turns, to stay on the surface normal". Over each pin, Y and Z change as A turns, so the machine moves on all four axes at once.
@@ -62,9 +62,6 @@ How far the tool leans
 
 Surfaces it cannot see straight on
 : "surfaces hidden from the drive (such as the walls of a slot, an undercut, or sides of the section facing each other) between X 10.160 and 29.951 are finished with passes of their own after the main ones, the tool leaning from the surface normal as little as the part lets it reach them: up to 2.2 degrees (at X 10.160, A 118.471); the tool above its flutes is taken as no wider than its cutting part". The webs between the pins face each other, so they get passes of their own. A warning of its own goes with it, "Tool holder (operation 'Finish')": "the tool holder is not checked on the passes that finish the surfaces hidden from the drive between X 10.160 and 29.951, where the tool leans up to 2.2 degrees". Check the holder's clearance yourself where the tool leans.
-
-A shoulder over the grip, a warning
-: "Held region (operation 'Finish'): the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 3.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left."
 
 Inside corners, a warning
 : "Inside corners (operation 'Finish'): at X 10.000, 15.000, 25.000 and 30.000 faces across the rotary axis meet a section that does not surround the axis in an inside corner: where a corner is sharper than the tool's radius, this tool's round end (radius 1.587 mm) leaves up to about 0.66 mm across it; a flat end can finish them". A ball cannot cut a sharp inside corner; plan another operation if those corners matter.
@@ -98,7 +95,7 @@ Now give the finish a lead:
 2. Click **Generate**.
 
 <figure>
-<a href="images/simultaneous/05-lead-10.png"><img src="images/simultaneous/05-lead-10.png" width="1920" height="1080" alt="The same view after generating with Lead angle 10.00; the Results tab reads 2 operations, 40183 moves, 38.5 s to generate, Errors 0, Warnings 3, Information 31, and the Tool holder warning now says the tool leans up to 12.2 degrees."></a>
+<a href="images/simultaneous/05-lead-10.png"><img src="images/simultaneous/05-lead-10.png" width="1920" height="1080" alt="The same view after generating with Lead angle 10.00; the Results tab reads 2 operations, 40183 moves, 42.5 s to generate, Errors 0, Warnings 2, Information 31, and the Tool holder warning now says the tool leans up to 12.2 degrees."></a>
 <figcaption><b>Figure 5.</b> With a 10° lead, the tool leans up to 12.2° on the hidden surfaces.</figcaption>
 </figure>
 

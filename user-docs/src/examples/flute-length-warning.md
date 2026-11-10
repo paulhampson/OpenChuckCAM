@@ -32,7 +32,7 @@ Because the shank may meet the stock, the program treats this warning as a possi
 ## 2. Read the two warnings
 
 <figure>
-<a href="images/flutes/02-flute-warnings.png"><img src="images/flutes/02-flute-warnings.png" width="1920" height="1080" alt="The Operations step after generating: 2 Finish has a warning triangle; the Messages list shows Warnings 5, two of them starting Flute length (operation 'Finish', tool 'Short-flute ball 3.175x3'), each with the links 2 Finish and Show setting."></a>
+<a href="images/flutes/02-flute-warnings.png"><img src="images/flutes/02-flute-warnings.png" width="1920" height="1080" alt="The Operations step after generating: 2 Finish has a warning triangle; the Messages list shows Warnings 4, two of them starting Flute length (operation 'Finish', tool 'Short-flute ball 3.175x3'), each with the links 2 Finish and Show setting."></a>
 <figcaption><b>Figure 2.</b> Two flute-length warnings for the finish. The path was made: the operation shows a warning, not an error.</figcaption>
 </figure>
 
@@ -89,7 +89,7 @@ This is the first thing to try. Set **Flute length** back to `22`, or choose the
 3. Set **Stepdown** to `2`, less than the 3 mm of flute, and click **Generate**.
 
 <figure>
-<a href="images/flutes/05-finishing-layers.png"><img src="images/flutes/05-finishing-layers.png" width="1920" height="1080" alt="The finish generated in layers: more rapid moves round the part in the view; the Inspector shows Material preset No preset, the Tool and feeds section open with Cutting feed 500 and Plunge feed 200, Face free ends ticked with the note The last path was made with a warning about this setting (see Messages): change it to accept or remove the warning, Finish allowance 0.100 default, Finishing layers ticked and Stepdown 2.000; the Messages list shows Warnings 4, and the only flute-length warning is the one about the end face at X 61.000."></a>
+<a href="images/flutes/05-finishing-layers.png"><img src="images/flutes/05-finishing-layers.png" width="1920" height="1080" alt="The finish generated in layers: more rapid moves round the part in the view; the Inspector shows Material preset No preset, the Tool and feeds section open with Cutting feed 500 and Plunge feed 200, Face free ends ticked with the note The last path was made with a warning about this setting (see Messages): change it to accept or remove the warning, Finish allowance 0.100 default, Finishing layers ticked and Stepdown 2.000; the Messages list shows Warnings 3, and the only flute-length warning is the one about the end face at X 61.000."></a>
 <figcaption><b>Figure 5.</b> With finishing layers of 2 mm, the warning about the passes is gone. The warning about the end face remains.</figcaption>
 </figure>
 
@@ -104,8 +104,8 @@ The end-face warning remains, because the stock beside the end is still deeper t
 1. Untick **Face free ends** and click **Generate**.
 
 <figure>
-<a href="images/flutes/06-face-free-ends-off.png"><img src="images/flutes/06-face-free-ends-off.png" width="1920" height="1080" alt="The Simulate step with the Results tab open and Information turned off: 2 operations, 46948 moves, 13.4 s to generate, Warnings 3; the warnings listed are the flute-length warning about the end face at X 61.000, the held-region warning about the step at X 8.589 and the held-region warning that nothing within one tool radius of the held region is cut; under By operation, Finish has 37002 moves; the mark beside 2 Finish is an amber warning triangle."></a>
-<figcaption><b>Figure 6.</b> The Results tab still lists the flute-length warning about the end face at X 61.000.</figcaption>
+<a href="images/flutes/06-face-free-ends-off.png"><img src="images/flutes/06-face-free-ends-off.png" width="1920" height="1080" alt="The Operations step with the Results tab open and Information turned off: 2 operations, 46948 moves, 14.5 s to generate, Warnings 1, the held-region warning that nothing within one tool radius of the held region is cut; the Inspector shows Face free ends unticked, Finishing layers ticked and Stepdown 2.000; the mark beside 2 Finish is an amber warning triangle, for the held-region warning."></a>
+<figcaption><b>Figure 6.</b> With <b>Face free ends</b> unticked, the flute-length warning about the end face is gone. The held-region warning remains.</figcaption>
 </figure>
 
 ## Read the result
@@ -119,7 +119,7 @@ The end-face warning remains, because the stock beside the end is still deeper t
 
 The finish in layers, with **Face free ends** off, takes 37,002 moves against 19,152 for the tutorial's finish.
 
-With every warning gone, the end of the part still keeps what the roughing left: "Most material left: 1.320 mm at X 60.68". No warning means the program found nothing to warn about along the path; it does not mean that the end is finished, or that nothing touches the stock.
+With every flute-length warning gone, the end of the part still keeps what the roughing left: "Most material left: 1.320 mm at X 60.68". No warning means the program found nothing to warn about along the path; it does not mean that the end is finished, or that nothing touches the stock.
 
 A longer-flute tool is the change that keeps the path the same. Layers make the path longer, and turning off **Face free ends** leaves material on the end.
 

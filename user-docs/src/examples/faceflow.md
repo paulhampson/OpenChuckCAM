@@ -5,7 +5,7 @@ This example finishes one hub floor of a bladed disk (a blisk) with face-flow fi
 > [!WARNING]
 > Face-flow finishing leaves out what it cannot reach and says so, but it checks only what its notes and warnings name. Generated G-code must be verified by you before it is run on a machine: watch the [simulation](../glossary.md#simulation), read every warning, and run an [air cut](../glossary.md#air-cut) first.
 
-You need the example project [`testdata/examples/blisk-start/blisk-project`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/blisk-start/blisk-project). Copy it to a folder of your own and open the copy with **File > Open project**. Face-flow finishing needs a STEP part: it works on the model's exact faces, so it cannot be used on a mesh part. The numbers on this page come from OpenChuckCAM 0.55.0 on Linux (main at 7045731).
+You need the example project [`testdata/examples/blisk-start/blisk-project`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/blisk-start/blisk-project). Copy it to a folder of your own and open the copy with **File > Open project**. Face-flow finishing needs a STEP part: it works on the model's exact faces, so it cannot be used on a mesh part. The numbers on this page come from OpenChuckCAM 0.55.0 on Linux (main at 55e6348).
 
 ## 1. Make the sets
 
@@ -27,10 +27,10 @@ The edge set is optional: without it, each face starts from its longest side. It
 <figcaption><b>Figure 1.</b> Face-flow finishing shows <b>Cut on</b> for the faces and <b>Guide edge</b> for the edge the passes follow.</figcaption>
 </figure>
 
-4. Click **Generate stale** at the bottom right. It took about 30 s on the test computer.
+4. Click **Generate stale** at the bottom right. It took about 35 s on the test computer.
 
 <figure>
-<a href="images/blisk_faceflow/02-stepover.png"><img src="images/blisk_faceflow/02-stepover.png" width="1920" height="1080" alt="The face-flow passes drawn in orange along the twisted hub floor, with a strip of white-cased black diagonal hatching along both blade walls marking the unreachable area, labelled Unreachable (Floor finish) in the legend, and a numbered black-and-white marker 1 on the floor. Results: 1 operation, 2310 moves, 29.7 s to generate, Warnings 1, and the lines quoted in the text."></a>
+<a href="images/blisk_faceflow/02-stepover.png"><img src="images/blisk_faceflow/02-stepover.png" width="1920" height="1080" alt="The face-flow passes drawn in orange along the twisted hub floor, with a strip of white-cased black diagonal hatching along both blade walls marking the unreachable area, labelled Unreachable (Floor finish) in the legend, and a numbered black-and-white marker 1 on the floor. Results: 1 operation, 2310 moves, 34.3 s to generate, Warnings 1, and the lines quoted in the text."></a>
 <figcaption><b>Figure 2.</b> With the stepover of the tool's cutting data, 1 mm: the passes follow the floor, and the hatched area along the walls is where the ball does not fit.</figcaption>
 </figure>
 
@@ -65,7 +65,7 @@ A [scallop](../glossary.md#scallop) height sets the spacing by the ridge a ball 
 </figure>
 
 <figure>
-<a href="images/blisk_faceflow/04-scallop.png"><img src="images/blisk_faceflow/04-scallop.png" width="1920" height="1080" alt="The floor with about twice as many orange passes. Results: 1 operation, 4803 moves, 31.2 s to generate; face 20 is cut from its guide, edge 65 (49.1 mm long), towards the opposite side in 34 passes up to 0.462 mm apart along the face; face-flow finishing cuts 25 passes on 1 face; 170.3 mm2 unreached."></a>
+<a href="images/blisk_faceflow/04-scallop.png"><img src="images/blisk_faceflow/04-scallop.png" width="1920" height="1080" alt="The floor with about twice as many orange passes. Results: 1 operation, 4803 moves, 32.8 s to generate; face 20 is cut from its guide, edge 65 (49.1 mm long), towards the opposite side in 34 passes up to 0.462 mm apart along the face; face-flow finishing cuts 25 passes on 1 face; 170.3 mm2 unreached."></a>
 <figcaption><b>Figure 4.</b> A 0.02 mm scallop height with a 3 mm ball puts the passes up to 0.462 mm apart.</figcaption>
 </figure>
 
@@ -75,7 +75,7 @@ A [scallop](../glossary.md#scallop) height sets the spacing by the ridge a ball 
 | Passes cut | 12 | 25 |
 | Unreached area | 173.8 mm2 | 170.3 mm2 |
 | Moves | 2310 | 4803 |
-| Time to generate | 29.7 s | 31.2 s |
+| Time to generate | 34.3 s | 32.8 s |
 
 Closer passes take longer to cut and leave smaller ridges. They do not get the ball into the corners: the unreached area hardly changes.
 

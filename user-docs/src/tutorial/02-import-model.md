@@ -6,8 +6,8 @@
 
 <figure>
   <img src="images/03-import-model.png" width="1920" height="1080"
-       alt="The Import model dialog after checking: the units set to mm, the largest side 61 mm, and the placement Centre on the rotary axis, with the part drawn behind the dialog.">
-  <figcaption><b>Figure 1.</b> The Import model dialog after the check: the units and the placement. The part's size is in the panel behind the dialog.</figcaption>
+       alt="The Import model dialog after checking: the units set to mm, the largest side 61 mm, and the placement Centre on the rotary axis. The part's size is listed in a panel at the right of the view.">
+  <figcaption><b>Figure 1.</b> The Import model dialog after the check: the units and the placement. The part's size is in the panel at the right of the view.</figcaption>
 </figure>
 
 The dialog shows what the file holds before anything enters the project:

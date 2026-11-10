@@ -14,7 +14,7 @@ You need the tutorial's finished project, [`testdata/examples/baluster/baluster-
 3. Find **Machine profiles** at the bottom of the Inspector; in a smaller window, scroll the Inspector down to it.
 
 <figure>
-<a href="images/custom_machine/01-machine-section.png"><img src="images/custom_machine/01-machine-section.png" width="1920" height="1080" alt="The Setup step with the Inspector scrolled to Machine profiles: the library folder does not exist yet, with the buttons Create the library folder and Manage machines..., and the list showing Makera Z1 (built-in makera-z1)."></a>
+<a href="images/custom_machine/01-machine-section.png"><img src="images/custom_machine/01-machine-section.png" width="1920" height="1080" alt="The Setup step with Machine profiles at the bottom of the Inspector: the library folder does not exist yet, with the buttons Create the library folder and Manage machines..., and the list showing Makera Z1 (built-in makera-z1)."></a>
 <figcaption><b>Figure 1.</b> The machine section of the Inspector. "Matches built-in makera-z1" says the project's copy is the same as the built-in profile.</figcaption>
 </figure>
 

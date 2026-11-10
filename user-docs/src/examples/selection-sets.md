@@ -7,7 +7,7 @@ This example makes the five kinds of [selection set](../glossary.md#selection-se
 
 You need the example project [`testdata/examples/blisk-start/blisk-project`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/blisk-start/blisk-project). Copy it to a folder of your own and open the copy with **File > Open project**, so the example in the repository stays as it is. It holds the public blisk model (a STEP file), the built-in Makera Z1, oak stock 42 mm across, a 3 mm flat end mill (T1) and a 3 mm ball end mill (T2), and no sets or operations yet. Reading a STEP file needs the STEP reader that comes with the program ([Import a STEP file](../how-to/import-step.md)).
 
-The numbers on this page come from OpenChuckCAM 0.55.0 on Linux (main at 7045731). Another version can give other numbers.
+The numbers on this page come from OpenChuckCAM 0.55.0 on Linux (main at 55e6348). Another version can give other numbers.
 
 ## What the sets are for
 
@@ -94,7 +94,7 @@ A check set keeps the tool the operation's stock to leave away from its faces. H
 6. Click **Generate stale** at the bottom right. It took about 30 s on the test computer.
 
 <figure>
-<a href="images/blisk_selection_sets/06-faceflow-result.png"><img src="images/blisk_selection_sets/06-faceflow-result.png" width="1920" height="1080" alt="The face-flow passes in orange along the hub floor, with white-cased black diagonal hatching marking the unreachable area along the blade walls, labelled Unreachable (Floor finish) in the legend, a numbered black-and-white marker 1 on the floor, and the check set Blade wall hatched. Results: 1 operation, 2133 moves, 30.0 s to generate, Warnings 1, and the lines quoted in the text."></a>
+<a href="images/blisk_selection_sets/06-faceflow-result.png"><img src="images/blisk_selection_sets/06-faceflow-result.png" width="1920" height="1080" alt="The face-flow passes in orange along the hub floor, with white-cased black diagonal hatching marking the unreachable area along the blade walls, labelled Unreachable (Floor finish) in the legend, a numbered black-and-white marker 1 on the floor, and the check set Blade wall hatched. Results: 1 operation, 2133 moves, 32.1 s to generate, Warnings 1, and the lines quoted in the text."></a>
 <figcaption><b>Figure 6.</b> The passes follow the floor along the guide. The hatched area beside the walls is the part of the floor the 3 mm ball cannot reach.</figcaption>
 </figure>
 
@@ -115,7 +115,7 @@ Without the check set and with no stock to leave, the same floor reported 173.8 
 3. Click **Generate stale**.
 
 <figure>
-<a href="images/blisk_selection_sets/08-swarf-before.png"><img src="images/blisk_selection_sets/08-swarf-before.png" width="1920" height="1080" alt="Blade wall swarf generated with only Cut on Blade wall: the Inspector shows Warning, and the Results, 2 operations, 2181 moves, 28.4 s to generate, Warnings 4, list the warnings that the swarf on face 19 cuts 0.014 mm into face 1 and 0.023 mm into face 20."></a>
+<a href="images/blisk_selection_sets/08-swarf-before.png"><img src="images/blisk_selection_sets/08-swarf-before.png" width="1920" height="1080" alt="Blade wall swarf generated with only Cut on Blade wall: the Inspector shows Warning, and the Results, 2 operations, 2181 moves, 28.6 s to generate, Warnings 4, list the warnings that the swarf on face 19 cuts 0.0158 mm into the finished surface and 0.014 mm into face 1; the warning about face 20 is further down the list."></a>
 <figcaption><b>Figure 7.</b> Before: no avoid set. The swarf cuts a little into the rim and the floor, and says so.</figcaption>
 </figure>
 
@@ -137,7 +137,7 @@ Now add the avoid sets:
 6. Click **Generate stale**.
 
 <figure>
-<a href="images/blisk_selection_sets/10-swarf-after.png"><img src="images/blisk_selection_sets/10-swarf-after.png" width="1920" height="1080" alt="Both operations generated, the avoid sets Hub floor and Rim hatched on the part. Results: 2 operations, 2183 moves, 28.9 s to generate, Warnings 3, Generated Blade wall swarf, Reused Floor finish, and the swarf warnings listed in the text."></a>
+<a href="images/blisk_selection_sets/10-swarf-after.png"><img src="images/blisk_selection_sets/10-swarf-after.png" width="1920" height="1080" alt="Both operations generated, the avoid sets Hub floor and Rim hatched on the part. Results: 2 operations, 2183 moves, 33.1 s to generate, Warnings 3, Generated Blade wall swarf, Reused Floor finish, and the swarf warnings listed in the text."></a>
 <figcaption><b>Figure 9.</b> After: the warning about the floor is gone, and the rim is reported as a cut into a set that only warns.</figcaption>
 </figure>
 
