@@ -35,10 +35,6 @@ The grip is still 8 mm long, so it now holds X = -13 to -5, and the bar from X =
 <figcaption><b>Figure 1.</b> A 5 mm head zone and a 4 mm tail zone. The amber line under <b>Retaining tabs (0)</b> says the part stays joined to the stock at the held end.</figcaption>
 </figure>
 
-<!-- Workaround for issue #604 (default-tab lines stale after a stock change). Remove this note when #604 is fixed. -->
-> [!NOTE]
-> After you change the stock, the lines under **Retaining tabs** can still say "No room for a default tab at the head: the held region reaches the part." and **Add default tabs** can stay greyed. The zone lines above them are right. To bring them up to date, save the project (**File > Save**) and open it again. This example uses **Head tab** and **Tail tab**, which do not depend on those lines.
-
 ## 2. Add a head and a tail tab
 
 1. Click **Head tab**. A cylinder tab appears in the head zone, with **Place automatically** ticked.
