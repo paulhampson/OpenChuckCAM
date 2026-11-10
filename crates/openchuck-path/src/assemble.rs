@@ -867,18 +867,7 @@ pub(crate) fn assemble_limited(
     if b.raised_entries > 0 {
         b.notes.insert(
             0,
-            Notice::information(if b.raised_entries == 1 {
-                "1 entry starts higher than the link before it ends, so the move to the \
-                 entry's start stays clear of the stock beside the first cut point"
-                    .to_owned()
-            } else {
-                format!(
-                    "{} entries start higher than the links before them end, so the move to \
-                     each entry's start stays clear of the stock beside the first cut point",
-                    b.raised_entries
-                )
-            })
-            .about(topic::ENTRY),
+            Notice::information(raised_entries_note(b.raised_entries)).about(topic::ENTRY),
         );
     }
     if kept_high > 0 {
@@ -1237,6 +1226,22 @@ fn clear_traverse(
     b.retract(needed.min(probe))?;
     b.raised_entries += 1;
     Ok(())
+}
+
+/// The note on the `count` entries a lead raised before moving across to its
+/// start, so that the move clears the stock beside the first cut point
+/// (issue #642, decision 0544 item 6).
+fn raised_entries_note(count: usize) -> String {
+    if count == 1 {
+        "1 entry starts higher than the link before it ends, so the move to the entry's start \
+         stays clear of the stock beside the first cut point"
+            .to_owned()
+    } else {
+        format!(
+            "{count} entries start higher than the links before them end, so the move to each \
+             entry's start stays clear of the stock beside the first cut point"
+        )
+    }
 }
 
 /// The most samples one local link is checked at.
@@ -1757,5 +1762,21 @@ mod tests {
             .unwrap();
         let f = 60.0 * (written_z.hypot(0.001)) / b.segments[0].duration.0;
         assert!(f <= fast_z.linear.0, "F{f:.3}");
+    }
+
+    /// Issue #642, decision 0544 item 6: the note counts the raised entries,
+    /// singular for one.
+    #[test]
+    fn req_op_14_req_op_11_the_raised_entries_note_counts_them() {
+        assert_eq!(
+            raised_entries_note(1),
+            "1 entry starts higher than the link before it ends, so the move to the entry's \
+             start stays clear of the stock beside the first cut point"
+        );
+        assert_eq!(
+            raised_entries_note(3),
+            "3 entries start higher than the links before them end, so the move to each \
+             entry's start stays clear of the stock beside the first cut point"
+        );
     }
 }
