@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="300" viewBox="0 0 720 300" font-family="sans-serif" font-size="13">
+  <rect width="720" height="300" fill="#ffffff"/>
+  <!-- Left: before -->
+  <text x="20" y="24" font-weight="bold">Before (0543 D2, a spiral ramp)</text>
+  <text x="20" y="42" fill="#555">the part unrolled: X across, A up</text>
+  <line x1="40" y1="260" x2="330" y2="260" stroke="#000"/>
+  <text x="300" y="278">X</text>
+  <line x1="40" y1="260" x2="40" y2="60" stroke="#000"/>
+  <text x="26" y="66">A</text>
+  <!-- other blades -->
+  <rect x="270" y="80" width="40" height="22" fill="#d9d9d9" stroke="#888"/>
+  <rect x="270" y="200" width="40" height="22" fill="#d9d9d9" stroke="#888"/>
+  <text x="200" y="76" fill="#555">other blades' tips</text>
+  <!-- swarf pass -->
+  <polyline points="290,150 230,160 170,172 110,186 70,196" fill="none" stroke="#e07000" stroke-width="3"/>
+  <text x="80" y="214" fill="#e07000">swarf pass along the blade</text>
+  <!-- ramp round the part at start X -->
+  <line x1="290" y1="70" x2="290" y2="150" stroke="#c00000" stroke-width="3" stroke-dasharray="6,4"/>
+  <text x="140" y="110" fill="#c00000">ramp: A turns at the start X</text>
+  <text x="140" y="126" fill="#c00000">through the other blades</text>
+  <!-- Right: after -->
+  <text x="380" y="24" font-weight="bold">Decision 0645 (a ramp along the face)</text>
+  <text x="380" y="42" fill="#555">the same view</text>
+  <line x1="400" y1="260" x2="690" y2="260" stroke="#000"/>
+  <text x="660" y="278">X</text>
+  <line x1="400" y1="260" x2="400" y2="60" stroke="#000"/>
+  <text x="386" y="66">A</text>
+  <rect x="630" y="80" width="40" height="22" fill="#d9d9d9" stroke="#888"/>
+  <rect x="630" y="200" width="40" height="22" fill="#d9d9d9" stroke="#888"/>
+  <polyline points="650,150 590,160 530,172 470,186 430,196" fill="none" stroke="#e07000" stroke-width="3"/>
+  <polyline points="650,146 560,161 650,154 560,169 650,150" fill="none" stroke="#0060c0" stroke-width="2"/>
+  <text x="440" y="120" fill="#0060c0">ramp: back and forth over the</text>
+  <text x="440" y="136" fill="#0060c0">pass's own path, A reversing,</text>
+  <text x="440" y="152" fill="#0060c0">descending along the tool axis</text>
+  <text x="440" y="214" fill="#e07000">swarf pass along the blade</text>
+</svg>

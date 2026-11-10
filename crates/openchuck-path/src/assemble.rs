@@ -441,18 +441,21 @@ pub fn assemble_with_entry(
     entry: &EntryParameters,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
-    assemble_limited(passes, input, common, entry, None, context)
+    assemble_limited(passes, input, common, entry, None, true, context)
 }
 
 /// [`assemble_with_entry`], with every cutting move inside a pass that goes
 /// down along the tool axis slowed, where needed, so its tip goes down no
 /// faster than `descent_limit` (the plunge feed; decision record 0548).
+/// `round_the_part` is [`Strategy::ramps_round_the_part`](crate::Strategy::ramps_round_the_part).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn assemble_limited(
     passes: &[Pass],
     input: &StrategyInput<'_>,
     common: &CommonParameters,
     entry: &EntryParameters,
     descent_limit: Option<FeedRate>,
+    round_the_part: bool,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
     let rotary = input.rotary;
@@ -569,7 +572,7 @@ pub(crate) fn assemble_limited(
         straight_plunges: Vec::new(),
     };
 
-    let entry = entry::Entry::new(input, common, entry)?;
+    let entry = entry::Entry::new(input, common, entry, round_the_part)?;
     let entry_nub_radius = entry.nub_radius();
     if entry_nub_radius > 0.0 {
         split_nubs(

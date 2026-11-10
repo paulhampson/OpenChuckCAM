@@ -82,6 +82,10 @@ pub(super) struct Entry {
     /// A height above all the stock (the retract height), from which the
     /// stock under a ramp's path is probed.
     probe_height: f64,
+    /// A ramp may turn A round the part before a ring or spiral pass
+    /// ([`crate::Strategy::ramps_round_the_part`]); otherwise it follows
+    /// the pass (decision record 0645).
+    round_the_part: bool,
 }
 
 impl Entry {
@@ -89,6 +93,7 @@ impl Entry {
         input: &StrategyInput<'_>,
         common: &CommonParameters,
         e: &EntryParameters,
+        round_the_part: bool,
     ) -> Result<Self> {
         let radius = input.tool.cutting_radius();
         let leave = common.stock_to_leave.0;
@@ -125,6 +130,7 @@ impl Entry {
                 crate::params::Retract::Clearance => input.clearance.radius.0,
                 crate::params::Retract::SafeZ => input.clearance.safe_z.0,
             },
+            round_the_part,
         })
     }
 
@@ -366,6 +372,19 @@ impl Entry {
             // (`ring_plan` plans the descent on the axis otherwise).
             _ if on_axis => plunge(b, stock, common, head),
             Start::SinglePoint => self.single_point(b, stock, common, pass, head),
+            // A strategy whose passes turn A without cutting all round the
+            // part (swarf along a blade): back and forth over the pass's
+            // own path up to its first rapid, A reversing during the entry
+            // only, never round the part (decision record 0645; #778).
+            Start::FullRing { end, .. } if !self.round_the_part => {
+                self.follow(b, input, stock, common, pass, points, end, true)
+            }
+            Start::Spiral { .. } if !self.round_the_part => {
+                let last = (1..points.len())
+                    .find(|k| rapids.contains(k))
+                    .map_or(points.len().saturating_sub(1), |k| k - 1);
+                self.follow(b, input, stock, common, pass, points, last, true)
+            }
             Start::FullRing { .. } | Start::Spiral { .. } => plunge(b, stock, common, head),
             Start::Line { end } => {
                 // A line shorter than the minimum (the step before a ring,
@@ -692,7 +711,7 @@ impl Entry {
         points: &[CutPoint],
         rapids: &[usize],
     ) -> Result<Option<RingRamp>> {
-        if self.style != EntryStyle::Ramp {
+        if self.style != EntryStyle::Ramp || !self.round_the_part {
             return Ok(None);
         }
         let shape = pass_shape::start(&b.rotary, points, rapids, self.tolerance);

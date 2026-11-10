@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RAMPENTRY; issue #778; decision 0645, proposed)
+
+- **Added, changed output:** `Strategy::ramps_round_the_part`, a provided method (true by default): whether a ramp entry may turn A round the part before a pass that starts as a ring or a spiral (decision 0543 D2). Swarf returns false, so its Entry Ramp goes back and forth over the pass's own path along the blade, A reversing during the entry only, instead of turning A round the rotary axis at the pass's start, where on the blisk it cut through the other blades' tips (issue #778). Swarf with Entry Ramp changes; every other strategy and entry is unchanged. Generated G-code remains the user's to verify before running it on a machine.
+
 ## 0.55.0 (provisional, as the Merge Manager sequences it; MSGREVIEW, decision 0644, accepted; decision 0536 step 6; issue #567)
 
 - **Breaking, changed output (0.55.0, or the next free version):** `PathError::Refused { topic, text, setting }`, a refusal by a named check with the operation setting to change, built with `PathError::refused(topic, text)` and `.with_setting(key)`; it displays as "<topic>: <text>". New topics in `openchuck_path::topic`: End facing, Facing completion, Facing motion, Box facing, Facing check, Facing extent, Surface, Region, Lead entry, Helix entry, Setting, Stock to leave, Stock, Toolpath, Facing, Rotary roughing, Axial finishing, Helical finishing, Simultaneous 4-axis finishing and Radial drilling.
