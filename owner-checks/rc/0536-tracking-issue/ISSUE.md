@@ -1,5 +1,5 @@
 <!-- Title: Release candidate: owner checks for the message work (0536 steps 3 to 6) -->
-<!-- Posted as #668 with steps 3 to 5; the step 6 section below replaces its placeholder. -->
+<!-- Posted as #668; this is its body as last posted (10 Nov 2026, steps 3 to 6). The posting route wraps the step 4 zip link in backticks; it stays readable. -->
 <!-- Body for the coordinator to post (lane OWNERCHECKS2). Everything below the line is the issue body. -->
 
 ---
@@ -17,7 +17,11 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 **What changed.** Every message starts with a topic and the item it is about, "Topic (operation '...', tool '...'): ...", and ends with what to change. **Show setting** opens the operation and marks the named field, whatever kind it is (number, tick box, list).
 
-**Steps** ([folder](https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step3-lead-in-show-setting), [zip](https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step3-lead-in-show-setting/0536-step3-lead-in-show-setting.zip), [CHECK.md](https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step3-lead-in-show-setting/CHECK.md); about 10 minutes): open the project, **Operations**, **Generate**, read **Messages** and **Results**, and click each **Show setting**.
+- Folder: https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step3-lead-in-show-setting
+- Zip: https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step3-lead-in-show-setting/0536-step3-lead-in-show-setting.zip
+- CHECK.md: https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step3-lead-in-show-setting/CHECK.md
+
+**Steps** (about 10 minutes): open the project, **Operations**, **Generate**, read **Messages** and **Results**, and click each **Show setting**.
 
 **Expect:**
 - "Flute length (operation 'Short flutes', tool 'Short-flute ball 3.175x5 (check 0536)'): the stock stands up to 9.335 mm above the tool's tip ... or turn on Finishing layers." **Show setting** marks **Finishing layers** (a tick box) on Short flutes.
@@ -33,7 +37,11 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 **What changed.** Setup, model, tool and export messages take the same form, in Messages, the Results tab, the export checks and the command line. The text after the topic starts in lower case and every message ends with a full stop. **Show setting** also opens a setup's field (clearance, safe Z, the machine's short-block mode) or a tool's field in the tool library. A rapid that removes material and short blocks left in Report mode are listed in Messages. The command-line help names no requirement, decision or gate, and the command line prints the "verify" notice when it refuses for a missing acknowledgement flag (#645).
 
-**Steps** ([folder](https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step4-setup-export-cli-messages), [zip](https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step4-setup-export-cli-messages/0536-step4-setup-export-cli-messages.zip), [CHECK.md](https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step4-setup-export-cli-messages/CHECK.md); about 10 minutes; the setup's safe cylinder is set inside its minimum clearance on purpose): open the project and read **Messages**; click **Show setting** on the Clearance message; **Generate**, **File > Post and export...**, read **Checks before writing**. Optionally, on the command line, read `openchuck-cli --help` and run `regenerate --out` without `--acknowledge-collision-warnings`.
+- Folder: https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step4-setup-export-cli-messages
+- Zip (download from its page): https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step4-setup-export-cli-messages/0536-step4-setup-export-cli-messages.zip
+- CHECK.md: https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step4-setup-export-cli-messages/CHECK.md
+
+**Steps** (about 10 minutes; the setup's safe cylinder is set inside its minimum clearance on purpose): open the project and read **Messages**; click **Show setting** on the Clearance message; **Generate**, **File > Post and export...**, read **Checks before writing**. Optionally, on the command line, read `openchuck-cli --help` and run `regenerate --out` without `--acknowledge-collision-warnings`.
 
 **Expect:**
 - "Clearance (setup 'Setup 1'): the safe cylinder (radius 30.000 mm) is inside the minimum clearance (radius 35.000 mm, set for this setup): links may hit the chuck, jaws, headstock or tailstock. Raise the setup's clearance or switch on Clearance from stock, and check the clearance on your machine before running." **Show setting** opens the Setup step with the clearance field marked.
@@ -49,7 +57,11 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 **What changed.** What you did (Saved, Opened, Added, Copied) is a finished entry in the **Jobs** tab, never a message. Changed tool numbers and a recovered checkpoint are warnings in **Messages** with **Save** (and **Undo**) until saved or undone. Importing with no project open is an error dialog whose title names the action. The status badge reads **Nothing to report** instead of "Good to go". The Facing line no longer says "verified path geometry".
 
-**Steps** ([folder](https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step5-status-and-wording), [zip](https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step5-status-and-wording/0536-step5-status-and-wording.zip), [CHECK.md](https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step5-status-and-wording/CHECK.md); about 10 minutes): with no project open, **File > Import model...**; open the project and look at **Jobs**; **Generate** and read the badge and the **Face end** line in **Results**; **Simulate**; **File > Post and export...** with a changed tool number; **Ctrl+S**.
+- Folder: https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step5-status-and-wording
+- Zip: https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step5-status-and-wording/0536-step5-status-and-wording.zip
+- CHECK.md: https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step5-status-and-wording/CHECK.md
+
+**Steps** (about 10 minutes): with no project open, **File > Import model...**; open the project and look at **Jobs**; **Generate** and read the badge and the **Face end** line in **Results**; **Simulate**; **File > Post and export...** with a changed tool number; **Ctrl+S**.
 
 **Expect:**
 - An error dialog **Import model failed**: "Import model: there is no project open. Open or create a project first."
@@ -65,7 +77,11 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 **What changed** ([decision 0644](https://github.com/paulhampson/OpenChuckCAM/blob/main/docs/decisions/0644-refusals-take-the-one-form.md)). An operation that cannot be generated reads like every other message, "Topic (operation '...'): ...", the topic naming the check that refused, with one full stop and **Show setting** at the setting it names. The Facing notes take the topic Facing. The command line's setup checks read "Topic (setup '...'): ....". A refusal that lists passes names them as the notes do. A count of one is singular ("1 layer"). No message names a requirement, decision or open item. OI-360 is closed by your decision (the read of every dialog's messages is not done).
 
-**Steps** ([folder](https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form), [zip](https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form/0536-step6-refusals-in-one-form.zip), [CHECK.md](https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form/CHECK.md); about 10 minutes; seven operations, each set up to give one kind of message): open the project, **Operations**, **Generate**, read **Messages** and **Results**, click each **Show setting**, and read the checks of **Setup 2, low clearance**.
+- Folder: https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form
+- Zip: https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form/0536-step6-refusals-in-one-form.zip
+- CHECK.md: https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form/CHECK.md
+
+**Steps** (about 10 minutes; seven operations, each set up to give one kind of message): open the project, **Operations**, **Generate**, read **Messages** and **Results**, click each **Show setting**, and read the checks of **Setup 2, low clearance**.
 
 **Expect:**
 - "Facing (operation 'Face end'): facing covered the end faces it was asked to."
