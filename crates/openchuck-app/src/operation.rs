@@ -929,8 +929,9 @@ fn generate_unnamed(
         )?
     };
     // A pass that a ramp or a lead enters by a straight plunge into the
-    // stock (a single point, a ring on the rotary axis, a face nub, a lead
-    // whose descent to its arc goes through the stock) is
+    // stock (a single point, a ring on the rotary axis, a face nub, a ramp
+    // over a stretch shorter than the tool radius, a lead whose descent to
+    // its arc goes through the stock) is
     // refused for a tool that cannot cut straight down (OI-117; decision
     // 0543 D7, decision 0544 item 7). The path library does not know the
     // tool's centre cutting, so it lists those passes and the check is made
@@ -949,8 +950,10 @@ fn generate_unnamed(
             name: operation.name.clone(),
             text: format!(
                 "{} entered by a straight plunge into the stock (a single point, a ring on the \
-                 rotary axis, where the tool descends while the part turns, a face nub, or a \
-                 lead whose descent to its arc goes down through the stock), and the tool '{}' cannot cut straight down (it is not centre cutting). Set Entry to \
+                 rotary axis, where the tool descends while the part turns, a face nub, a ramp \
+                 over a stretch shorter than the tool radius, or a lead whose descent to its arc \
+                 goes down through the stock), and the tool '{}' cannot cut straight down (it is \
+                 not centre cutting). Set Entry to \
                  Helix, or choose a tool that can plunge",
                 if passes == 1 {
                     format!("pass {} is", first + 1)

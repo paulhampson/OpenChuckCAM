@@ -134,8 +134,11 @@ pub struct GeneratedPath {
     /// by a straight plunge where the tool may cut on its way down: a pass
     /// of a single point, a ring with its tip on the rotary axis, a face nub
     /// (decision 0543 D7 and section 4, points 2 and 3; decision 0544 item
-    /// 7), and a lead whose descent to its arc's start goes down through
-    /// stock standing above it (decision 0544, 9 Nov 2026). A host that
+    /// 7), a back-and-forth ramp over a stretch shorter than the tool
+    /// radius, where the tool's centre may go down into stock its edge has
+    /// not cut (decision 0543 D3 as amended for issue #687, proposed), and a
+    /// lead whose descent to its arc's start goes down through stock
+    /// standing above it (decision 0544, 9 Nov 2026). A host that
     /// knows the tool cannot cut straight down refuses such a path. The
     /// descent through air at the approach distance that every entry makes,
     /// and a ramp's descent where there is nothing to descend into, are not

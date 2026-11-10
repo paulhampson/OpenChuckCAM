@@ -46,6 +46,11 @@ use crate::strategy::{CutPoint, StrategyInput};
 #[path = "lead.rs"]
 mod lead;
 
+/// The shortest stretch a back-and-forth ramp uses, in path tolerances
+/// (decision 0543 D3, amended for issue #687, proposed), and never more than
+/// the tool radius.
+const RAMP_MINIMUM_TOLERANCES: f64 = 10.0;
+
 /// The most segments one entry may take.
 const MAX_SEGMENTS: usize = 100_000;
 
@@ -459,16 +464,35 @@ impl Entry {
             }
             top = next;
         }
-        let minimum = input.tool.cutting_radius();
-        let (moves, steep) = super::path_ramp::back_and_forth(&path, top, self.ramp_tan, minimum)
+        // The shortest stretch a ramp goes back and forth over: ten path
+        // tolerances, at most the tool radius (decision 0543 D3 as amended
+        // for issue #687, proposed). The angle holds on any length (each leg
+        // of length L descends L tan(angle)), so the length sets only the
+        // number of legs, which `MAX_LEGS` bounds; a shorter stretch is
+        // within the path's own precision, a plunge in all but name. Over a
+        // stretch shorter than the tool radius the tool's centre may go down
+        // into stock its edge has not cut, so the pass is listed for the
+        // host's check of a tool that cannot cut straight down.
+        let radius = input.tool.cutting_radius();
+        let minimum = (RAMP_MINIMUM_TOLERANCES * self.tolerance).min(radius);
+        let super::path_ramp::Ramp {
+            moves,
+            floors,
+            steep,
+        } = super::path_ramp::back_and_forth(&path, top, self.ramp_tan, minimum)
             .map_err(|refusal| {
             let what = if arc { "stretch" } else { "line" };
             PathError::Strategy(match refusal {
                 super::path_ramp::Refusal::TooShort { length } => format!(
                     "Ramp entry: pass {} starts with a {what} of {length:.3} mm, shorter than the \
-                     {minimum:.3} mm (the tool radius) a ramp needs to go back and forth over. \
-                     Set Entry to Plunge or Helix.",
-                    pass + 1
+                     {minimum:.3} mm ({why}) a ramp needs to go back and forth over. Set \
+                     Entry to Plunge or Helix.",
+                    pass + 1,
+                    why = if minimum < radius {
+                        "ten times the tolerance"
+                    } else {
+                        "the tool radius"
+                    }
                 ),
                 super::path_ramp::Refusal::TooManyLegs { legs } => format!(
                     "Ramp entry: pass {} would need {legs} legs to ramp down its {what} of \
@@ -479,7 +503,10 @@ impl Entry {
                 ),
             })
         })?;
-        self.emit(b, input, common, pass, &moves, MoveKind::LeadIn)?;
+        self.emit(b, input, common, pass, &moves, &floors, MoveKind::LeadIn)?;
+        if total < radius {
+            b.straight_plunges.push(pass);
+        }
         if steep {
             b.steep_ramps.push(pass);
         }
@@ -500,32 +527,46 @@ impl Entry {
 
     /// Emits the moves of a ramp that follows the toolpath: up to its start
     /// if the tool is lower, to its start's angle and position at the
-    /// tool's height, down to the start, then along it. Every position is
-    /// checked against the finished surface first: on the pass's own path
-    /// this is defensive (decision 0543 section 3).
+    /// tool's height, down to the start, then along it.
+    ///
+    /// Each move stands on its floor: the height, on the tool line through
+    /// it, of the pass's own point beneath it (or of the floor the plan
+    /// used). Dropped along that line from the spindle side, the tool first
+    /// touches the finished surface at one height, so a move cuts into it
+    /// by exactly its floor's depth less its height above the floor: never
+    /// deeper than the pass itself, which its strategy has checked (decision
+    /// 0543 section 3; issue #687). Each move is checked to be no lower than
+    /// its floor. A drop of the tool itself is not used here: where the pass
+    /// runs with the tool's side exactly against a face, as beside a part's
+    /// end, which triangles a drop meets depends on rounding, and the pass's
+    /// own points failed the check its ramp was held to (#687).
+    #[allow(clippy::too_many_arguments)]
     fn emit(
         &self,
         b: &mut Builder<'_>,
-        input: &StrategyInput<'_>,
+        _input: &StrategyInput<'_>,
         common: &CommonParameters,
         pass: usize,
         moves: &[(AxisPosition, Degrees)],
+        floors: &[f64],
         kind: MoveKind,
     ) -> Result<()> {
         let Some(&(start, a)) = moves.first() else {
             return Ok(());
         };
-        let found = moves
+        let below = moves
             .iter()
-            .find_map(|(pos, a)| self.gouge(b, input, *a, std::slice::from_ref(pos)));
-        if let Some(g) = found {
+            .zip(floors)
+            .find(|((pos, _), floor)| pos.height < **floor - self.tolerance);
+        if moves.len() != floors.len() || below.is_some() {
+            let (depth, x) = below.map_or((0.0, f64::NAN), |((pos, a), floor)| {
+                (floor - pos.height, b.rotary.to_model(*pos, *a).x)
+            });
             return Err(PathError::Strategy(format!(
-                "Ramp entry: pass {} ramps over its own path, yet the tool would cut {:.3} mm \
-                 into the finished surface at X {:.3} mm. This should not happen: please report \
-                 it as a defect, and set Entry to Plunge or Helix meanwhile.",
-                pass + 1,
-                g.depth,
-                g.x
+                "Ramp entry: pass {} would go {depth:.3} mm below the pass itself, at X {x:.3} \
+                 mm. This is a fault in the program: please report it, and set Entry to Plunge \
+                 or Helix meanwhile.",
+                pass + 1
             )));
         }
         if start.height > b.at().height + EPS {
@@ -970,7 +1011,7 @@ impl Entry {
         } else {
             MoveKind::LeadIn
         };
-        self.emit(b, input, common, pass, &plan.moves, kind)?;
+        self.emit(b, input, common, pass, &plan.moves, &plan.floors, kind)?;
         if plan.follows_steep_drop {
             b.steep_ramps.push(pass);
         }

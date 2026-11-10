@@ -33,6 +33,10 @@ pub(super) const MAX_TURNS: f64 = 10.0;
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct RingRamp {
     pub moves: Vec<(AxisPosition, Degrees)>,
+    /// The floor of each move: the height on the tool line through it that
+    /// the ramp stands on, the pass's own where it follows the pass (issue
+    /// #687).
+    pub floors: Vec<f64>,
     /// True when, just before the first point, the ramp follows a drop of
     /// the pass steeper than the ramp angle.
     pub follows_steep_drop: bool,
@@ -213,8 +217,13 @@ fn round(
     if let Some(last) = moves.last_mut() {
         *last = (head, Degrees(a0));
     }
+    let mut floors = heights;
+    if let Some(last) = floors.last_mut() {
+        *last = head.height;
+    }
     RingRamp {
         moves,
+        floors,
         follows_steep_drop: steep,
         on_axis: None,
         steepened: None,
@@ -301,8 +310,13 @@ pub(super) fn plan_spiral(
             if let Some(last) = moves.last_mut() {
                 *last = (head, Degrees(a0));
             }
+            let mut floors = bases;
+            if let Some(last) = floors.last_mut() {
+                *last = head.height;
+            }
             return Ok(RingRamp {
                 moves,
+                floors,
                 follows_steep_drop: steep,
                 on_axis: None,
                 steepened: None,
@@ -377,7 +391,7 @@ pub(super) fn plan_on_axis(
     }
     let delta = 360.0 * turns;
     let n = ((delta / step.max(1e-3)).ceil() as usize).max(1);
-    let moves = (0..=n)
+    let moves: Vec<(AxisPosition, Degrees)> = (0..=n)
         .map(|k| {
             let f = k as f64 / n as f64;
             (
@@ -389,8 +403,11 @@ pub(super) fn plan_on_axis(
             )
         })
         .collect();
+    // The tip descends on the axis, over the pass's first point.
+    let floors = vec![head.height; moves.len()];
     Ok(RingRamp {
         moves,
+        floors,
         follows_steep_drop: false,
         on_axis: Some(turns),
         steepened: None,

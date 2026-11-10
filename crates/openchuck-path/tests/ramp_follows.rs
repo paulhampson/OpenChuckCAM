@@ -1092,20 +1092,41 @@ fn req_op_11_req_nfr_07_a_ring_ramp_outside_a_limited_a_range_is_refused_by_name
 }
 
 #[test]
-fn req_op_11_req_nfr_07_a_pass_shorter_than_the_tool_radius_is_refused_by_name() {
-    // Decision 0543 D3: the back-and-forth needs at least the tool radius
-    // of the pass's own path to go over. A shorter line is continued over
-    // the rest of the pass (point 1); where the whole pass is shorter, the
-    // ramp is refused, naming the stretch and the other entries.
+fn req_op_11_req_nfr_07_a_pass_shorter_than_ten_tolerances_is_refused_by_name() {
+    // Decision 0543 D3, as amended for issue #687 (proposed): the
+    // back-and-forth needs at least ten path tolerances of the pass's own
+    // path to go over, never more than the tool radius. A shorter line is
+    // continued over the rest of the pass (point 1); where the whole pass is
+    // shorter, the ramp is refused, naming the stretch, the minimum and the
+    // other entries.
     let f = cylinder();
     let mut v = finishing("rings");
     v.remove("pass_shape");
-    let short = Through(vec![(20.0, 0.0), (20.5, 0.0)]);
-    let err = make(&f, &short, &v, &[]).unwrap_err();
+    // Shorter than the tool radius (3 mm) but longer than ten tolerances
+    // (0.1 mm at the default): ramped, and listed for the host's check of a
+    // tool that cannot cut straight down.
+    let path = make(&f, &Through(vec![(20.0, 0.0), (20.5, 0.0)]), &v, &[]).unwrap();
+    assert!(
+        path.group
+            .segments
+            .iter()
+            .any(|s| s.kind == MoveKind::LeadIn)
+    );
+    assert_eq!(path.straight_plunges, vec![0]);
+    // Shorter than ten tolerances: refused.
+    let err = make(&f, &Through(vec![(20.0, 0.0), (20.05, 0.0)]), &v, &[]).unwrap_err();
+    assert!(
+        err.contains("Ramp entry: pass 1 starts with a stretch of 0.050 mm")
+            && err.contains("shorter than the 0.100 mm (ten times the tolerance)")
+            && err.contains("Set Entry to Plunge or Helix"),
+        "{err}"
+    );
+    // Ten tolerances longer than the tool radius: the radius is the minimum.
+    v.insert(names::TOLERANCE.into(), n(0.4));
+    let err = make(&f, &Through(vec![(20.0, 0.0), (20.5, 0.0)]), &v, &[]).unwrap_err();
     assert!(
         err.contains("Ramp entry: pass 1 starts with a stretch of 0.500 mm")
-            && err.contains("the tool radius")
-            && err.contains("Set Entry to Plunge or Helix"),
+            && err.contains("shorter than the 3.000 mm (the tool radius)"),
         "{err}"
     );
 }
@@ -1167,4 +1188,60 @@ fn req_op_11_req_nfr_07_the_path_lists_the_passes_entered_by_a_straight_plunge_i
     };
     let path = run(|ctx| generate(&rings, &nub, &v, ctx)).unwrap();
     assert!(!path.straight_plunges.is_empty());
+}
+
+/// Continuous rotary roughing of the public blisk (`testdata/stl/blisk.stl`)
+/// in rings with the 3 mm flat end mill of the blisk example: stock to leave
+/// 0, stepover and stepdown 1 mm, Entry Ramp at 3 degrees, with Allow
+/// single-point plunge (as in the issue's comment) and Steeper ramp near
+/// the axis on, up to 20 degrees (without it the rings 4 mm from the axis
+/// are refused by name, needing 12.9 turns; at 15 degrees, the ring 1 mm
+/// from it, needing 11.9).
+#[test]
+fn req_op_11_req_op_03_roughing_the_blisk_in_rings_ramps_beside_its_end_face_and_over_short_steps()
+{
+    let f = Fixture::new(
+        MeshSurface::new(&support::blisk()).unwrap(),
+        21.0,
+        &tool(ToolShape::FlatEnd, 3.0),
+    );
+    let mut v = roughing_values("rings");
+    v.insert(roughing::FORM.into(), t("continuous"));
+    v.insert(names::STEPOVER.into(), n(1.0));
+    v.insert(roughing::STEPDOWN.into(), n(1.0));
+    v.insert(names::STOCK_TO_LEAVE.into(), n(0.0));
+    v.insert(names::RAMP_ANGLE.into(), n(3.0));
+    v.insert(names::RAMP_ANGLE_MAX.into(), n(20.0));
+    for flag in [
+        names::ALLOW_SINGLE_POINT_PLUNGE,
+        names::RAMP_STEEPER_NEAR_AXIS,
+    ] {
+        v.insert(flag.into(), ParameterValue::Flag(true));
+    }
+    // Issue #687: a ring beside the end face of the blisk's disc runs with
+    // the tool edge-on to the face. Dropped along the tool axis, a tool
+    // touching a face sideways scores the height of the rim above it, so
+    // the pass's own points failed the check its ramp was held to (pass 3
+    // was refused, "ramps over its own path, yet the tool would cut … into
+    // the finished surface"). A ramp over the pass's own path is no deeper
+    // than the pass beneath it (decision 0543 section 3), and is checked
+    // against that floor.
+    // Decision 0543 D3 as amended (proposed): later passes start with steps
+    // along the length between the blades shorter than the 1.5 mm tool
+    // radius (pass 467 was refused, "shorter than the 1.500 mm (the tool
+    // radius)"). The minimum is ten path tolerances: those passes ramp, and
+    // are listed for the host's check of a tool that cannot cut straight
+    // down.
+    let path = make(&f, &RotaryRoughing, &v, &[]).unwrap();
+    assert!(
+        path.group
+            .segments
+            .iter()
+            .any(|s| s.kind == MoveKind::LeadIn)
+    );
+    assert!(
+        path.straight_plunges.len() > 1,
+        "{:?}",
+        path.straight_plunges
+    );
 }
