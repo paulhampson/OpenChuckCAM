@@ -11,7 +11,8 @@ added as a second model, three setups and seven operations, each showing one kin
 
 Setup 1 (the tutorial's):
   1. "Face end": Facing of the free end (the Facing note);
-  2. "Face end, wide stepover": the same with a Stepover wider than the tool (End facing);
+  2. "Face end, wide stepover": the same with a Stepover (slice thickness along X) of 5 mm,
+     wider than the 3.175 mm tool (End facing);
   3. "Rough, deep stepdown": rotary roughing with a Stepdown deeper than the flutes (Stepdown);
   4. "Rough rings, ramp": rotary roughing in Rings with Entry Ramp and Allow single-point plunge
      off (Ramp entry);
@@ -51,7 +52,9 @@ FINISH = {"adaptive_spacing": "false"}
 FACE = {"shape": '"end"', "stepdown": "0.5", "stepover": "1.0"}
 OPS = [
     ("U", "Face end", SETUP1, "facing", FLAT, FACE),
-    ("V", "Face end, wide stepover", SETUP1, "facing", FLAT, {**FACE, "stepover": "5.0"}),
+    # Written at schema 25, where End facing stored the slice along X as `stepdown`; a build at
+    # schema 28 or later reads it as Stepover (slice thickness along X) (decision 0547 item 3).
+    ("V", "Face end, wide stepover", SETUP1, "facing", FLAT, {**FACE, "stepdown": "5.0"}),
     ("W", "Rough, deep stepdown", SETUP1, "rotary_roughing", FLAT, {**ROUGH, "stepdown": "30.0"}),
     ("X", "Rough rings, ramp", SETUP1, "rotary_roughing", FLAT,
      {**ROUGH, "pass_shape": '"rings"', "entry": '"ramp"', "ramp_angle": "3.0"}),

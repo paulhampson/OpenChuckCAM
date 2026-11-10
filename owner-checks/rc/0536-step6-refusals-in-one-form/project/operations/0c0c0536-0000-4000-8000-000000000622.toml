@@ -9,5 +9,5 @@ selections = []
 
 [parameters]
 shape = "end"
-stepdown = 0.5
-stepover = 5.0
+stepdown = 5.0
+stepover = 1.0

@@ -1,11 +1,12 @@
-<!-- Title: Release candidate: owner checks for the message work (0536 steps 3 to 5) -->
+<!-- Title: Release candidate: owner checks for the message work (0536 steps 3 to 6) -->
+<!-- Posted as #668 with steps 3 to 5; the step 6 section below replaces its placeholder. -->
 <!-- Body for the coordinator to post (lane OWNERCHECKS2). Everything below the line is the issue body. -->
 
 ---
 
-**Owner checks on the release candidate** for the message work of [decision 0536](https://github.com/paulhampson/OpenChuckCAM/blob/main/docs/decisions/0536-message-levels-operation-reference-and-setting-links.md), build steps 3 to 5, all merged on `main` (#648, #659, #653; `main` at `0d640692` holds all three). One section per step: what changed, the steps on a public project, and what to expect. Tick each box when it passes, or reply with **FAIL and what you saw** (numbers and messages only).
+**Owner checks on the release candidate** for the message work of [decision 0536](https://github.com/paulhampson/OpenChuckCAM/blob/main/docs/decisions/0536-message-levels-operation-reference-and-setting-links.md), build steps 3 to 6, all merged on `main` (#648, #659, #653, #684; `main` at `0d640692` holds steps 3 to 5, `ee190429` step 6). One section per step: what changed, the steps on a public project, and what to expect. Tick each box when it passes, or reply with **FAIL and what you saw** (numbers and messages only).
 
-Each project is public (the user guide's baluster tutorial job, with small changes). Download the zip, unzip it anywhere and open its `project` folder with **File > Open project**. Use the release candidate, or a build from `main` at `0d640692` or later (**Help > About OpenChuckCAM** shows the commit).
+Each project is public (the user guide's baluster tutorial job, with small changes; step 6 adds the public `cylinder.step`). Download the zip, unzip it anywhere and open its `project` folder with **File > Open project**. Use the release candidate, or a build from `main` at `0d640692` or later (`ee190429` or later for step 6) (**Help > About OpenChuckCAM** shows the commit).
 
 > [!WARNING]
 > Nothing in these checks shows that a program is safe to run. They look at messages, links and labels only. Do not run their G-code on a machine. Generated G-code must be verified by you before it is run on a machine.
@@ -60,16 +61,29 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 - [ ] Step 5 passes
 
-## Step 6: every strategy's refusals in the one form
+## Step 6 (#684): every refusal, the Facing notes and the setup checks in the one form
 
-To come (not built yet). A section and a check will be added here when it is merged.
+**What changed** ([decision 0644](https://github.com/paulhampson/OpenChuckCAM/blob/main/docs/decisions/0644-refusals-take-the-one-form.md)). An operation that cannot be generated reads like every other message, "Topic (operation '...'): ...", the topic naming the check that refused, with one full stop and **Show setting** at the setting it names. The Facing notes take the topic Facing. The command line's setup checks read "Topic (setup '...'): ....". A refusal that lists passes names them as the notes do. A count of one is singular ("1 layer"). No message names a requirement, decision or open item. OI-360 is closed by your decision (the read of every dialog's messages is not done).
+
+**Steps** ([folder](https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form), [zip](https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form/0536-step6-refusals-in-one-form.zip), [CHECK.md](https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/rc/0536-step6-refusals-in-one-form/CHECK.md); about 10 minutes; seven operations, each set up to give one kind of message): open the project, **Operations**, **Generate**, read **Messages** and **Results**, click each **Show setting**, and read the checks of **Setup 2, low clearance**.
+
+**Expect:**
+- "Facing (operation 'Face end'): facing covered the end faces it was asked to."
+- "End facing (operation 'Face end, wide stepover'): the Stepover (slice thickness along X) must be above zero and no greater than the cutting diameter." **Show setting** at Stepover (slice thickness along X).
+- "Stepdown (operation 'Rough, deep stepdown'): 30 mm is more than the tool's 25.000 mm of flute; ... Use a smaller Stepdown or a tool with longer flutes." **Show setting** at Stepdown.
+- "Ramp entry (operation 'Rough rings, ramp'): pass 31 is a single point, ..." **Show setting** at Allow single-point plunge.
+- "Links (operation 'Finish, low clearance'): the stock reaches 12.000 mm from the rotary axis, beyond the retract height of 10.000 mm, so links could cross it. Enlarge the setup's clearance." (no "(OP-14)").
+- "Lead entry (operation 'Axial lead, through stock'): 88 passes, from pass 1 to pass 88 (1, 2, 3 ... 86, 87, 88), are entered by a straight plunge into the stock ..." **Show setting** at Entry.
+- "Clearance (setup 'Setup 2, low clearance'): the safe cylinder (radius 10.000 mm) does not enclose the stock (radius 12.000 mm)." (also on the command line: `openchuck-cli setup`).
+
+**Before:** "operation '...' cannot be generated: End facing: ...", "... parameter stepdown: ...", "... so links could cross it (OP-14); enlarge the setup's clearance", "88 passes, the first pass 1, are entered ...", "operation 'Face end': Facing covered ...", setup checks with no topic or full stop, "1 layers".
 
 - [ ] Step 6 passes
 
 ## Known, not part of these checks
 
-- The Facing line is the one note without a topic in front ("operation 'Face end': Facing covered ..."); it is your wording, parked for your decision.
-- `openchuck-cli setup` still lists setup and workholding findings in the older form; reported to the message lane. (The doubled full stop in the command line's acknowledgement refusal, "... before running.. Read them", is fixed by #670.)
+- The Facing line and the setup listing of the command line, noted here under steps 3 to 5, take the one form with step 6. (The doubled full stop in the command line's acknowledgement refusal, "... before running.. Read them", is fixed by #670.)
+- `openchuck-cli report` prints the machine profile's own provenance notes, with decision and open-item numbers ("(decision 0013)", "OI-471"); they are the profile's data, not messages, and are not part of step 6.
 - Several earlier checks quote these texts and pass in either form: #600, #622 and #567 (and #611, whose workholding texts are unchanged).
 
 ---
