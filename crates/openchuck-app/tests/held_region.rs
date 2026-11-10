@@ -681,9 +681,9 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
 }
 
 /// A copy of the public baluster example (its stock held 8 mm at the
-/// start) in a fresh folder, with its Finish operation (helical finishing)
-/// in Rings with `step` steps between them.
-fn baluster_in_rings(step: &str) -> PathBuf {
+/// start) in a fresh folder named for `tag`, with only its Finish operation
+/// (helical finishing); returns the folder and the Finish operation's file.
+fn baluster_finish(tag: &str) -> (PathBuf, PathBuf) {
     fn copy(from: &Path, to: &Path) {
         std::fs::create_dir_all(to).unwrap();
         for entry in std::fs::read_dir(from).unwrap() {
@@ -699,7 +699,7 @@ fn baluster_in_rings(step: &str) -> PathBuf {
     let from = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../testdata/examples/baluster/baluster-project");
     let dir = std::env::temp_dir().join(format!(
-        "openchuck-held-rings-{step}-{}",
+        "openchuck-held-baluster-{tag}-{}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&dir);
@@ -710,12 +710,49 @@ fn baluster_in_rings(step: &str) -> PathBuf {
     let finish = dir.join("operations/34e3aa5e-36cc-4614-be6d-ec39cf22f5f8.toml");
     let text = std::fs::read_to_string(&finish).unwrap();
     assert!(text.contains("strategy = \"helical_finishing\""));
+    (dir, finish)
+}
+
+/// [`baluster_finish`] with the Finish operation in Rings with `step` steps
+/// between them.
+fn baluster_in_rings(step: &str) -> PathBuf {
+    let (dir, finish) = baluster_finish(&format!("rings-{step}"));
+    let text = std::fs::read_to_string(&finish).unwrap();
     std::fs::write(
         &finish,
         format!("{text}pass_shape = \"rings\"\nring_step = \"{step}\"\n"),
     )
     .unwrap();
     dir
+}
+
+#[test]
+fn req_set_09_req_op_04_the_baluster_finish_names_no_shoulder_at_the_held_end() {
+    // Issue #765: the tutorial's Finish warned of "a step across the rotary
+    // axis ... at X 8.589", which is the held bar's own end face (X 7) found
+    // one tool radius away, not a face of the part (decision record 0343
+    // item 6). The held region's own warning, that nothing within the
+    // tool's reach of it is cut, stays (decision record 0161 item 3).
+    let (dir, _) = baluster_finish("shoulder");
+    let app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+    let run = app.regenerate().unwrap();
+    let warnings: Vec<&str> = run
+        .groups
+        .iter()
+        .flat_map(|g| &g.warnings)
+        .map(|w| w.text.as_str())
+        .collect();
+    assert!(
+        !warnings.iter().any(|w| w.contains("does not turn at")),
+        "{warnings:#?}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("Nothing within one tool radius of the held region")),
+        "{warnings:#?}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
