@@ -68,7 +68,7 @@ toml = "=1.1.8"
 # The icon renderer in xtask only (decision 0542); no text, fonts or raster images in the icon.
 resvg = { version = "=0.49.0", default-features = false }
 # Post templates (decision record 0019); `openchuck-post` only. `fuel` needs `multi_template`.
-minijinja = { version = "=3.0.3", default-features = false, features = ["builtins", "macros", "multi_template", "debug", "fuel", "serde"] }
+minijinja = { version = "=3.0.5", default-features = false, features = ["builtins", "macros", "multi_template", "debug", "fuel", "serde"] }
 stl_io = "=0.11.0"
 # The STEP kernel (decision record 0003): occt-sys builds OpenCASCADE 7.8.1 (build
 # dependency of openchuck-import only, feature `kernel`); cc compiles our C ABI wrapper.
