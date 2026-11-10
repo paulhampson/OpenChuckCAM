@@ -10,6 +10,5 @@ selections = []
 [parameters]
 adaptive_spacing = false
 extend = "far end"
-face_free_ends = false
 pass_shape = "rings"
 stepover = 1.0

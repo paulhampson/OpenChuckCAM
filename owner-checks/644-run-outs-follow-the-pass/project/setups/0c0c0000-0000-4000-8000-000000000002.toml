@@ -1,7 +1,7 @@
 schema = 25
 id = "0c0c0000-0000-4000-8000-000000000002"
 order = "V"
-name = "Setup 1"
+name = "Setup 1, Face free ends on"
 part = "0c0c0000-0000-4000-8000-000000000001"
 material = "Hardwood"
 part_offset = 0.0
