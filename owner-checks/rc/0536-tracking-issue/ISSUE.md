@@ -113,10 +113,18 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 **Before** (`a3e1ad22`): the X 8.589 warning as well.
 
-**#633** (the same note at an X outside the selection and the stock) has the same cause and is fixed by the same change: on the owner-check projects it names, "... at X -15.001" (`555-axial-into-tab`), "... at X -16.001" (`548-tab-length-limited-op`, both operations) and "... at X -3.411" (`547-flute-check-outside-selection`) are gone, their programs byte-identical. A real face of the part beside a held region is still named, by design. Evidence: https://github.com/paulhampson/OpenChuckCAM/issues/633#issuecomment-6773407563
+**#633** (the same warning at an X outside the selection and the stock) has the same cause and is fixed by the same change. Its own check:
+
+- Folder: https://github.com/paulhampson/OpenChuckCAM/tree/owner-checks/2026.1-alpha/owner-checks/633-no-step-note-outside-selection
+- Zip: https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/633-no-step-note-outside-selection/633-no-step-note-outside-selection.zip
+- CHECK.md: https://github.com/paulhampson/OpenChuckCAM/blob/owner-checks/2026.1-alpha/owner-checks/633-no-step-note-outside-selection/CHECK.md
+
+**Steps** (about 5 minutes; the three owner-check projects #633 names, as three setups of one project): open the project, **Operations**, **Generate**, open **Messages**, look for "Held region (operation '...'): the tool does not turn at a step across the rotary axis ... at X ...".
+
+**Expect:** none. The only Held region warning left is on **Whole part**, "nothing within one tool radius of the held region ... is cut" (by design). **Before** (`a3e1ad22`): on Tenon side at X -15.001, on Vase only and Whole part at X -16.001, on Finish vase at X -3.411. Programs byte-identical.
 
 - [ ] #765 passes
-- [ ] #633 passes (optional: generate one of those three projects and look for the note)
+- [ ] #633 passes (its check above: no "does not turn at a step" warning on any of the five operations)
 
 ## Known, not part of these checks
 
