@@ -78,4 +78,4 @@ Run with the command-line tool (`openchuck-cli regenerate project --post linuxcn
 
 - The project is written at schema 25. A build at schema 28 or later exchanges End facing's stored `stepover` and `stepdown` when it reads such a file (decision 0547 item 3), so operation 2's file says `stepdown = 5.0`: the interface shows it as Stepover (slice thickness along X) 5 mm.
 - **Show setting** and the interface cannot be run without a display here: step 3 is yours to confirm. The settings the refusals carry are read from the code (`crates/openchuck-path/src/facing/end.rs`, the roughing parameter check, the ramp and lead entry refusals).
-- `openchuck-cli report` still prints the machine profile's provenance notes with decision and open-item numbers ("(decision 0013)", "OI-471"); those are the text of the machine profile's own data, not messages, and are reported separately.
+- `openchuck-cli report` prints the machine profile's provenance notes with decision and open-item numbers ("(decision 0013)", "OI-471"): by design, the owner decided on 10 Nov 2026 that they are the profile's data, not messages under decision 0644.
