@@ -96,7 +96,7 @@ The checks were prepared with the command-line tool on `main` (before and after 
 
 - [ ] Step 6 passes
 
-## Follow-up (#765, fixed in #769): no false shoulder warning beside the held bar
+## Follow-up (#765 and #633, fixed in #769): no false shoulder warning beside the held bar
 
 **What changed** ([decision 0551](https://github.com/paulhampson/OpenChuckCAM/blob/main/docs/decisions/0551-the-held-regions-own-end-is-not-a-shoulder.md)). The tutorial's Finish warned "the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589": X 8.589 is one tool radius past the held bar's own end (X 7), not a shoulder of the part. Only faces of the part are named now. The programs are byte-identical; only the warning goes. The "nothing within one tool radius of the held region ... is cut" warning and the setup's grip warning stay, so the badge still reads **Needs attention**, by design.
 
@@ -111,9 +111,12 @@ The checks were prepared with the command-line tool on `main` (before and after 
 - No "... does not turn at a step across the rotary axis ... at X 8.589 ...".
 - The badge reads **Needs attention**.
 
-**Before** (`a3e1ad22`): the X 8.589 warning as well. The same fix removes the warnings #633 names (X -15.001, -16.001, -3.411 on earlier owner-check projects), with their programs unchanged.
+**Before** (`a3e1ad22`): the X 8.589 warning as well.
+
+**#633** (the same note at an X outside the selection and the stock) has the same cause and is fixed by the same change: on the owner-check projects it names, "... at X -15.001" (`555-axial-into-tab`), "... at X -16.001" (`548-tab-length-limited-op`, both operations) and "... at X -3.411" (`547-flute-check-outside-selection`) are gone, their programs byte-identical. A real face of the part beside a held region is still named, by design. Evidence: https://github.com/paulhampson/OpenChuckCAM/issues/633#issuecomment-6773407563
 
 - [ ] #765 passes
+- [ ] #633 passes (optional: generate one of those three projects and look for the note)
 
 ## Known, not part of these checks
 
