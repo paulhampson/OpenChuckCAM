@@ -484,8 +484,9 @@ impl Entry {
         let super::path_ramp::Ramp {
             moves,
             floors,
+            leg,
             steep,
-        } = super::path_ramp::back_and_forth(&path, top, self.ramp_tan, minimum).map_err(
+        } = super::path_ramp::back_and_forth(&path, top, self.ramp_tan, minimum, radius).map_err(
             |refusal| {
                 let what = if arc { "stretch" } else { "line" };
                 let (text, setting) = match refusal {
@@ -518,7 +519,9 @@ impl Entry {
             },
         )?;
         self.emit(b, input, common, pass, &moves, &floors, MoveKind::LeadIn)?;
-        if total < radius {
+        // Legs are at least the tool radius where the stretch allows, so
+        // only a stretch shorter than the radius leaves them shorter.
+        if leg < radius - EPS {
             b.straight_plunges.push(pass);
         }
         if steep {

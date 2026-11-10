@@ -175,7 +175,8 @@ In the drawing (5 mm of descent, Ramp angle 3 degrees, maximum 15): fixed, a rin
 - **Why there is a minimum at all.** A stretch within a few tolerances of zero is within the path's own precision: its back and forth is a plunge in all but name. Ten tolerances keeps each leg a real sideways move.
 - **Below the minimum:** refused in the 0536 form, as before, with the length and the minimum ("… shorter than the 0.100 mm (ten times the tolerance) a ramp needs to go back and forth over. Set Entry to Plunge or Helix.").
 - **The tool's centre.** Over a stretch shorter than the tool radius, the tool's centre may go down into stock its edge has not cut. The pass is listed in `GeneratedPath::straight_plunges`, so the application refuses a tool that cannot cut straight down (D7), naming the tool and the first pass. A centre-cutting tool ramps.
-- **Unchanged:** a step shorter than the tool radius before a ring is still followed on past the step, as point 1 says (the longer stretch is preferred); only the refusal limit moves. Passes that ramped before give the same program.
+- **Legs at least the tool radius (the owner's option (b), 10 Nov 2026, relayed; found by review on #761).** Where little descent is needed, two legs of half the travel the angle needs could be shorter than the tool radius even on a long pass, and the tool's centre would go down within less than a radius without the pass being listed. Each leg is now at least the tool radius wherever the stretch is that long: the ramp is then shallower than the angle, never steeper, and runs on the pass's own height once it reaches it. Only a stretch shorter than the radius leaves shorter legs, and that pass is listed. No refusal is added; ramps whose legs were shorter than the radius change.
+- **Unchanged:** a step shorter than the tool radius before a ring is still followed on past the step, as point 1 says (the longer stretch is preferred); only the refusal limit moves. Passes that ramped before give the same program, except where the legs rule above lengthens their legs.
 
 **Where the tool's ability to plunge is checked (D7).** The path library does not know whether the tool is centre cutting. The application checks after generation: a Ramp or Lead operation whose path holds a plunge (a single-point pass) is refused, naming the tool, when the tool cannot plunge. This also covers decision 0544 item 7.
 
@@ -270,6 +271,8 @@ Tests:
 - `path_ramp::tests::req_op_11_each_move_stands_on_the_pass_s_own_height_beneath_it`.
 
 The owner's own blisk project is not in the repository: the owner re-runs it himself and reports numbers only.
+
+Review on #761 (CodeRabbit): the listing compared the stretch, not the legs the ramp used; fixed by the legs rule above. Test: `path_ramp::tests::req_op_11_legs_are_at_least_the_tool_radius_where_the_path_allows`.
 
 **Not verified.** No machine trial. The owner's own projects behind OI-553 and OI-790 are not in the repository: the owner re-runs them himself (numbers only). Chip load and tool suitability on entry are not modelled.
 
