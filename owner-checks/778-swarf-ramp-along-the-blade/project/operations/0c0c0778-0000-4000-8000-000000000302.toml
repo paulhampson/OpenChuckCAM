@@ -1,0 +1,11 @@
+schema = 27
+id = "0c0c0778-0000-4000-8000-000000000302"
+order = "W"
+name = "Blade swarf, lead"
+setup = "b1150000-0000-4000-8000-000000000002"
+strategy = "swarf"
+tool = "b1150000-0000-4000-8000-000000000101"
+selections = ["0c0c0778-0000-4000-8000-000000000201"]
+
+[parameters]
+entry = "lead"
