@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (RAMPENTRY; issue #778; decision 0645, proposed)
+## Unreleased (RAMPENTRY; issue #778; decision 0645, accepted)
 
 - **Added, changed output:** `Strategy::ramps_round_the_part`, a provided method (true by default): whether a ramp entry may turn A round the part before a pass that starts as a ring or a spiral (decision 0543 D2). Swarf returns false, so its Entry Ramp goes back and forth over the pass's own path along the blade, A reversing during the entry only, instead of turning A round the rotary axis at the pass's start, where on the blisk it cut through the other blades' tips (issue #778). Swarf with Entry Ramp changes; every other strategy and entry is unchanged. Generated G-code remains the user's to verify before running it on a machine.
 

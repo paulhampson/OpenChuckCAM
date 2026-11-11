@@ -1,11 +1,11 @@
 # 0645: A swarf ramp follows the pass along the face, never round the part (OP-07, OP-11, OP-12, NFR-07, NFR-12; issue #778; lane RAMPENTRY)
 
-- **Status:** proposed by lane RAMPENTRY on 10 Nov 2026 for the project owner to accept. The owner chose option (a) on 10 Nov 2026 (relayed by the coordinator, decision 0049); this record writes that choice down and waits for his acceptance (OI-2141).
+- **Status:** accepted by the project owner on 11 Nov 2026, relayed by the coordinator (decision 0049). Proposed by lane RAMPENTRY on 10 Nov 2026, after the owner chose option (a) that day (relayed).
 - **Date:** 10 Nov 2026.
 - **Found by:** the owner (issue #778, sev2, on 0.55.0 `ea1f3f96`): with Entry Ramp, swarf on the blisk gouged the far-end tips of the other blades.
 - **What it amends:** [0543](0543-a-ramp-entry-follows-the-toolpath.md) D2 (a spiral is ramped round the rotary axis at its start X), for strategies whose passes turn A without cutting all round the part: swarf.
 - **Builds on:** 0543 section 3 (the dominance argument: a ramp position that is a pose of the pass raised along the tool axis cuts no deeper than the pass), D3 (back and forth over the pass's own path, A reversing during the entry only) and point 4 (the minimum stretch and the legs at least the tool radius); [0111](0111-swarf-through-the-application.md) and [0532](0532-swarf-keeps-off-the-faces-at-its-ends.md) (swarf on a STEP part, its face set and its neighbours); [0048](0048-pre-1-0-api-changes.md).
-- **Open items:** OI-2141 (the owner's acceptance of this record), new.
+- **Open items:** OI-2141 (the owner's acceptance of this record), closed on 11 Nov 2026 with the acceptance.
 
 ## Context
 
@@ -17,7 +17,7 @@ The spiral ramp's own proof is a drop of the tool on the operation's surface (05
 
 ![The part unrolled, X across and A up. Before: the swarf pass runs along the blade, and the ramp turns A at the pass's start X through the other blades' tips. Decision 0645: the ramp goes back and forth over the pass's own path, A reversing, and descends along the tool axis to the pass's first point.](0645-a-swarf-ramp-follows-the-pass-along-the-face.svg)
 
-## Decision (proposed; the owner chose (a) on 10 Nov 2026, relayed)
+## Decision (accepted on 11 Nov 2026, relayed; the owner chose (a) on 10 Nov 2026)
 
 1. **A strategy says whether its ramps may go round the part.** `Strategy::ramps_round_the_part` (true by default) says whether a ramp may turn A round the part before a pass that starts as a ring or a spiral (0543 D2), on a stretch round the axis the pass does not cut. Swarf returns false.
 2. **Then the ramp follows the pass.** For such a strategy, a pass that starts as a spiral or a ring is ramped back and forth over its own path up to its first rapid, as a partial ring is (0543 D3): A reverses during the entry only, and the reversals are counted in the existing note. Every ramp position is a pose of the pass raised along the tool axis, so by 0543 section 3 it cuts no deeper than the pass, against the whole part and not only the face set. The minimum stretch and the leg length of 0543 point 4 apply.
