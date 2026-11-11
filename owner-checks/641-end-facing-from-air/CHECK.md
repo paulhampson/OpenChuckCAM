@@ -1,5 +1,8 @@
 # Check for issue #641: End facing enters each band from air and checks its engagement
 
+> [!IMPORTANT]
+> **Step 5 re-check (11 November 2026):** your FAIL of step 5 on rc1 (posting grouped by setup refused, "line 2842: rotary counter reset ...") is fixed by #782 (decision 0646, `main` at `f12329a4`). Re-check step 5 with [`STEP5-RECHECK.md`](STEP5-RECHECK.md); the rest of this check is unchanged.
+
 **What was fixed** (pull request #656, lane PATHFEED, [decision 0547](../../docs/decisions/0547-end-facing-enters-from-air-and-checks-its-engagement.md) with the owner's answer A to its question 4; Facing, **Shape** Unheld end):
 
 1. **Each band starts and ends in air beside the stock** where the stock allows: the cut across the face is lengthened at each end so the tool comes down, and leaves, with the whole tool the approach distance clear of the stock. Before, each band fed sideways along X into the end face at full band depth and turned 90 degrees in the material.
