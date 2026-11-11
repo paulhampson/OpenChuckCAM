@@ -23,7 +23,9 @@ The first release of OpenChuckCAM, an alpha (2026.1-alpha). It is for trying the
 If you used a development build, these change what the program does or what it writes. Operations saved with an earlier build open in this one, but some give a different program, as listed here. Generate them again and check the new program before you run it.
 
 Ramp entry
-: A ramp now follows the pass's own path down to its first cut point: back and forth over the start of a line, round a ring before its first point, or round the part at the start of a spiral. The program of every operation with **Entry** set to `ramp` changes. Ramps beside a held region, on a part that rises along its length and on passes that turn A now generate where they were refused before.
+: A ramp now follows the pass's own path down to its first cut point: back and forth over the start of a line, round a ring before its first point, or round the part at the start of a spiral (a swarf pass is the exception, below). The program of every operation with **Entry** set to `ramp` changes. Ramps beside a held region, on a part that rises along its length and on passes that turn A now generate where they were refused before.
+
+: A swarf pass, which turns A along a blade, is not ramped round the part like a spiral; its ramp goes back and forth along the blade, following the pass. A swarf operation with **Entry** set to `ramp` can give a different program.
 
 : **Back-and-forth ramp** no longer has an effect. It is shown only on an operation saved with it on.
 
@@ -89,6 +91,8 @@ Icon
 - The refusal to write files with possible collisions not yet acknowledged no longer shows a doubled full stop.
 - When a recovered project's checkpoints cannot be written, Messages always shows the error "Recovery checkpoint: …" with **Save**, instead of sometimes a warning.
 - Zooming over a shown selection set on a large model no longer redraws the whole set on each frame.
+- A swarf ramp on a part with blades no longer sweeps the tool through the neighbouring blades' tips (found on a blisk).
+- A program file that contains an End facing operation, grouped by setup, by project or by tool, is no longer refused when posting with "rotary counter reset is not at a reached declared boundary or does not match the controller" (Makera Z1) or "the G-code ends before the IR does" (LinuxCNC). The program is unchanged.
 
 ### Known limitations
 
