@@ -5,3 +5,8 @@ captured_at = "55e6348de7be25505f93a282eeda14e777395e56"
 captured_on = "2026-11-10"
 renderer = "Mesa lavapipe (software Vulkan) on Xvfb"
 window = "1920x1080"
+# Reviewed against f12329a4fa5b (lane SHOTS-2): the only screen-folder change since the capture,
+# #782, adds a test to crates/openchuck-app/src/facing.rs; #781 changes swarf ramps, and no figure
+# uses Entry = ramp. No figure, caption, alt text or quoted message changes.
+reviewed_at = "f12329a4fa5baf846f96f5ebf9dc77f2076b9995"
+reviewed_on = "2026-11-11"
