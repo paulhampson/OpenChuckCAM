@@ -2859,6 +2859,13 @@ impl Strategy for Swarf {
         Some("it reads the rulings of the exact faces of a STEP model, and a mesh has none")
     }
 
+    /// A swarf pass turns A along a blade without cutting all round the
+    /// part, so its ramp follows the pass along the face, never round the
+    /// part through the other blades (decision record 0645; issue #778).
+    fn ramps_round_the_part(&self) -> bool {
+        false
+    }
+
     fn schema(&self) -> ParameterSchema {
         use parameter::*;
         let mut schema = ParameterSchema::with_common(vec![

@@ -1271,3 +1271,173 @@ fn req_ui_12_ramp_entry_refusals_carry_their_topic_and_setting() {
         other => panic!("expected a refusal, got {other:?}"),
     }
 }
+
+/// One pass that turns A while it moves along X, as swarf along a blade
+/// does: a spiral to the pass-shape reader. `round` is the strategy's
+/// [`Strategy::ramps_round_the_part`].
+#[derive(Debug)]
+struct AlongTheFace {
+    round: bool,
+}
+
+impl Strategy for AlongTheFace {
+    fn name(&self) -> &str {
+        "test_along_the_face"
+    }
+    fn label(&self) -> &str {
+        "Along the face (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn ramps_round_the_part(&self) -> bool {
+        self.round
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        parameters: &openchuck_path::Parameters,
+        context: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        Through(
+            (0..=40)
+                .map(|k| (10.0 + 0.25 * f64::from(k), f64::from(k)))
+                .collect(),
+        )
+        .passes(input, parameters, context)
+    }
+}
+
+#[test]
+fn req_op_11_req_op_07_a_swarf_like_pass_ramps_along_its_own_path_never_round_the_part() {
+    // Issue #778 (decision 0645): a pass that turns A while it moves along
+    // X reads as a spiral, and its ramp turned A round the part at the
+    // pass's start X before the first point; on the blisk that swept the
+    // tool through the other blades. A strategy whose passes do not cut all
+    // round the part (swarf) has its ramp go back and forth over the pass's
+    // own path instead: every entry pose lies between the pass's own X and
+    // A, A reverses during the entry only, and the descent is within the
+    // ramp angle.
+    let f = cylinder();
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let round = make(&f, &AlongTheFace { round: true }, &v, &[]).unwrap();
+    let (_, moves, _) = entries(&round).into_iter().next().unwrap();
+    assert!(
+        moves.iter().any(|m| m.a.0 < -1.0),
+        "a strategy that cuts all round may ramp round the part"
+    );
+    let path = make(&f, &AlongTheFace { round: false }, &v, &[]).unwrap();
+    let all = entries(&path);
+    let (before, moves, head) = &all[0];
+    assert!(moves.len() > 2, "a ramp, not a plunge: {}", moves.len());
+    assert_eq!(moves.last(), Some(head));
+    for m in moves {
+        let at = f.rotary.to_axis(m.tip, m.a);
+        assert!((-1e-6..=40.0 + 1e-6).contains(&m.a.0), "A {}", m.a.0);
+        assert!(
+            (10.0 - 1e-6..=20.0 + 1e-6).contains(&at.along),
+            "X {}",
+            at.along
+        );
+        // On the pass's own tool line: X and A move together as the pass's.
+        assert!(
+            (at.along - (10.0 + 0.25 * m.a.0)).abs() < 1e-6,
+            "{at:?} at A {}",
+            m.a.0
+        );
+    }
+    let tan = ANGLE.to_radians().tan();
+    let mut p = *before;
+    for m in moves {
+        let (from, at) = (f.rotary.to_axis(p.tip, p.a), f.rotary.to_axis(m.tip, m.a));
+        let radius = 0.5 * (from.across.hypot(from.height) + at.across.hypot(at.height));
+        let travel = (at.along - from.along).hypot(at.across - from.across)
+            + radius * (m.a.0 - p.a.0).abs().to_radians();
+        let drop = from.across.hypot(from.height) - at.across.hypot(at.height);
+        assert!(drop <= travel * tan + 1e-6, "{drop} over {travel}");
+        p = *m;
+    }
+    // The note states the reversals; it gives no "too short a stretch"
+    // reason, which a pass ramped along its face does not have (#781 review).
+    assert!(
+        path.notices
+            .iter()
+            .filter(|n| n.text.contains("reversing A"))
+            .all(|n| !n.text.contains("too short")),
+        "{:?}",
+        path.notices
+    );
+    assert!(
+        path.notices.iter().any(|n| n.text.contains("reversing A")),
+        "{:?}",
+        path.notices
+    );
+}
+
+/// [`RingOnAxis`] from a strategy that does not ramp round the part.
+#[derive(Debug)]
+struct RingOnAxisNotRound;
+
+impl Strategy for RingOnAxisNotRound {
+    fn name(&self) -> &str {
+        "test_ring_on_axis_not_round"
+    }
+    fn label(&self) -> &str {
+        "Ring on the axis, not round (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn ramps_round_the_part(&self) -> bool {
+        false
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        parameters: &openchuck_path::Parameters,
+        context: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        RingOnAxis.passes(input, parameters, context)
+    }
+}
+
+#[test]
+fn req_op_11_req_nfr_07_a_pass_on_the_axis_not_ramped_round_the_part_is_listed_as_a_plunge() {
+    // #781 review (decision 0645; 0543 D7): a strategy that does not ramp
+    // round the part has no descent on the axis planned, so a pass that
+    // starts on the rotary axis inside the stock is plunged, and listed for
+    // the host's check of a tool that cannot cut straight down.
+    let f = cylinder();
+    let mut long = f.input();
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 46.0,
+    };
+    long.stock = &stock;
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let path = run(|ctx| generate(&RingOnAxisNotRound, &long, &v, ctx)).unwrap();
+    assert_eq!(path.straight_plunges, [0]);
+    // Beyond the stock there is nothing to plunge into: not listed.
+    let mut short = f.input();
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 41.0,
+    };
+    short.stock = &stock;
+    let path = run(|ctx| generate(&RingOnAxisNotRound, &short, &v, ctx)).unwrap();
+    assert!(
+        path.straight_plunges.is_empty(),
+        "{:?}",
+        path.straight_plunges
+    );
+}
