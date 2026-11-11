@@ -90,7 +90,7 @@ egui-winit = { version = "=0.37.0", default-features = false }
 wgpu = "=30.0.1"
 # Native open and save dialogs, `openchuck-ui` only (decision record 0029 item 15, OI-127).
 rfd = "=0.17.2"
-log = "=0.4.34"
+log = "=0.4.35"
 windows-sys = { version = "=0.61.2", default-features = false, features = ["Win32_System_Console", "Win32_System_SystemInformation"] }
 
 # Test, golden-file and benchmark crates (dev-dependencies only).
