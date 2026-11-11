@@ -1361,9 +1361,83 @@ fn req_op_11_req_op_07_a_swarf_like_pass_ramps_along_its_own_path_never_round_th
         assert!(drop <= travel * tan + 1e-6, "{drop} over {travel}");
         p = *m;
     }
+    // The note states the reversals; it gives no "too short a stretch"
+    // reason, which a pass ramped along its face does not have (#781 review).
+    assert!(
+        path.notices
+            .iter()
+            .filter(|n| n.text.contains("reversing A"))
+            .all(|n| !n.text.contains("too short")),
+        "{:?}",
+        path.notices
+    );
     assert!(
         path.notices.iter().any(|n| n.text.contains("reversing A")),
         "{:?}",
         path.notices
+    );
+}
+
+/// [`RingOnAxis`] from a strategy that does not ramp round the part.
+#[derive(Debug)]
+struct RingOnAxisNotRound;
+
+impl Strategy for RingOnAxisNotRound {
+    fn name(&self) -> &str {
+        "test_ring_on_axis_not_round"
+    }
+    fn label(&self) -> &str {
+        "Ring on the axis, not round (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn ramps_round_the_part(&self) -> bool {
+        false
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        parameters: &openchuck_path::Parameters,
+        context: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        RingOnAxis.passes(input, parameters, context)
+    }
+}
+
+#[test]
+fn req_op_11_req_nfr_07_a_pass_on_the_axis_not_ramped_round_the_part_is_listed_as_a_plunge() {
+    // #781 review (decision 0645; 0543 D7): a strategy that does not ramp
+    // round the part has no descent on the axis planned, so a pass that
+    // starts on the rotary axis inside the stock is plunged, and listed for
+    // the host's check of a tool that cannot cut straight down.
+    let f = cylinder();
+    let mut long = f.input();
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 46.0,
+    };
+    long.stock = &stock;
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let path = run(|ctx| generate(&RingOnAxisNotRound, &long, &v, ctx)).unwrap();
+    assert_eq!(path.straight_plunges, [0]);
+    // Beyond the stock there is nothing to plunge into: not listed.
+    let mut short = f.input();
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 41.0,
+    };
+    short.stock = &stock;
+    let path = run(|ctx| generate(&RingOnAxisNotRound, &short, &v, ctx)).unwrap();
+    assert!(
+        path.straight_plunges.is_empty(),
+        "{:?}",
+        path.straight_plunges
     );
 }

@@ -13,6 +13,13 @@ use crate::rotary::AxisPosition;
 /// kept by decision 0543).
 pub(super) const MAX_LEGS: usize = 10_000;
 
+/// The most moves one back-and-forth ramp may have, checked before they
+/// are built: the legs times the pass's points each leg goes over. The same
+/// bound as the other entries' segments; a long pass (swarf's runs follow
+/// whole passes, decision 0645) with many legs would otherwise fill memory
+/// before the leg limit refuses it (#781 review).
+pub(super) const MAX_MOVES: usize = 100_000;
+
 /// The heights of a ramp over a path whose points are `travel` (distance
 /// along the ramp from its start, rising) above `base` (the pass's own
 /// height there). The ramp starts at `top` and ends at the last base. It
@@ -69,6 +76,8 @@ pub(super) enum Refusal {
     TooShort { length: f64 },
     /// More legs than [`MAX_LEGS`].
     TooManyLegs { legs: usize },
+    /// More moves than [`MAX_MOVES`].
+    MoveLimit { moves: usize },
 }
 
 /// A back-and-forth ramp over `path` (the pass's own positions and angles
@@ -132,6 +141,13 @@ pub(super) fn back_and_forth(
                     usize::MAX
                 },
             });
+        }
+        // The moves the legs would take, before any is built: each leg
+        // goes over the pass's points up to its length, and the point at it.
+        let per_leg = along.iter().take_while(|s| **s < leg - 1e-12).count() + 1;
+        let moves = (legs as usize).saturating_mul(per_leg);
+        if moves > MAX_MOVES {
+            return Err(Refusal::MoveLimit { moves });
         }
         let ramp = legs_over(
             path,
@@ -470,5 +486,18 @@ mod tests {
         let path = line(4, 0.5, |_| 10.0);
         let ramp = back_and_forth(&path, 10.05, TAN, 0.1, 3.0).unwrap();
         assert!((ramp.leg - 2.0).abs() < 1e-9, "{}", ramp.leg);
+    }
+
+    /// #781 review: a long pass with many legs is refused by its count of
+    /// moves before any move is built, not by filling memory first.
+    #[test]
+    fn req_nfr_07_a_ramp_of_too_many_moves_is_refused_before_it_is_built() {
+        // 30 mm in 30,001 points; 100 mm of rise at 0.1 needs 1,000 mm of
+        // travel, so 34 legs over the whole line: over a million moves.
+        let path = line(30_000, 0.001, |_| 10.0);
+        match back_and_forth(&path, 110.0, TAN, 0.1, 0.0) {
+            Err(Refusal::MoveLimit { moves }) => assert!(moves > MAX_MOVES, "{moves}"),
+            other => panic!("{other:?}"),
+        }
     }
 }

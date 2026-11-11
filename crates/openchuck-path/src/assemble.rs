@@ -771,18 +771,15 @@ pub(crate) fn assemble_limited(
         let passes: Vec<usize> = b.reversed_ramps.iter().map(|r| r.0).collect();
         let reversals: usize = b.reversed_ramps.iter().map(|r| r.1).sum();
         let one = passes.len() == 1;
+        // The reason is not said: a partial ring reverses because its
+        // stretch is short (decision 0543 D3), a swarf pass because its ramp
+        // must not turn round the part (decision 0645; #781 review).
         let text = format!(
-            "{} with too short a stretch to ramp along without turning the part, so {} \
-             back and forth over {} own path, reversing A {} in all during the {}",
+            "{} back and forth over {} own path, reversing A {} in all during the {}",
             if one {
-                format!("{} starts", list(&passes))
+                format!("{}: its ramp goes", list(&passes))
             } else {
-                format!("{} start", list(&passes))
-            },
-            if one {
-                "its ramp goes"
-            } else {
-                "their ramps go"
+                format!("{}: their ramps go", list(&passes))
             },
             if one { "the pass's" } else { "each pass's" },
             if reversals == 1 {

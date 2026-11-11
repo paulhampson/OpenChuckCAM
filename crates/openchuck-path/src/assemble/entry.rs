@@ -370,6 +370,18 @@ impl Entry {
         match shape {
             // Reached only when there is nothing to descend into
             // (`ring_plan` plans the descent on the axis otherwise).
+            // A strategy that does not ramp round the part (decision 0645)
+            // has no descent on the axis planned: a plunge into stock there
+            // is listed for the host's check of a tool that cannot cut
+            // straight down (decision 0543 D7; #781 review).
+            _ if on_axis && !self.round_the_part => {
+                let at = [(b.rotary.to_axis(head.tip, head.a), head.a)];
+                let height = at[0].0.height;
+                if stock_top_along(b, stock, &at, 0.0, self.probe_height) > height + EPS {
+                    b.straight_plunges.push(pass);
+                }
+                plunge(b, stock, common, head)
+            }
             _ if on_axis => plunge(b, stock, common, head),
             Start::SinglePoint => self.single_point(b, stock, common, pass, head),
             // A strategy whose passes turn A without cutting all round the
@@ -530,6 +542,17 @@ impl Entry {
                      Plunge or Helix.",
                             pass + 1,
                             super::path_ramp::MAX_LEGS
+                        ),
+                        crate::params::names::RAMP_ANGLE,
+                    ),
+                    super::path_ramp::Refusal::MoveLimit { moves } => (
+                        format!(
+                            "pass {} would need {} to ramp down its {what} of \
+                             {total:.3} mm, more than the {} allowed. Raise Ramp angle, or set \
+                             Entry to Plunge or Helix.",
+                            pass + 1,
+                            crate::counted(moves, "move", "moves"),
+                            super::path_ramp::MAX_MOVES
                         ),
                         crate::params::names::RAMP_ANGLE,
                     ),
