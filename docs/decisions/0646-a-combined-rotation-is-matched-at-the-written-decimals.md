@@ -1,11 +1,11 @@
 # 0646: A combined rotation is matched at the written decimals in every replay (GC-08, OP-24, NFR-06, NFR-07, NFR-12; issue #641; lane ENDFACE-POST)
 
-- **Status:** proposed by lane ENDFACE-POST on 10 Nov 2026, for the project owner to accept. The fix is an owner-approved exception to the release freeze (a failure in the owner's release testing of 0.55.0-rc1, relayed by the coordinator, decision 0049). The number is provisional: the Merge Manager assigns the final number at release.
+- **Status:** accepted by the project owner on 11 Nov 2026, relayed by the coordinator (decision 0049). Proposed by lane ENDFACE-POST on 10 Nov 2026. The fix is an owner-approved exception to the release freeze (a failure in the owner's release testing of 0.55.0-rc1, relayed by the coordinator, decision 0049). The number is provisional: the Merge Manager assigns the final number at release.
 - **Date:** 10 Nov 2026.
 - **Found by:** the owner, on the 0.55.0-rc1 build (`ea1f3f96`), at step 5 (Post and export) of the check for issue #641 (branch `owner-checks/2026.1-alpha`, `owner-checks/641-end-facing-from-air/CHECK.md`): "cannot post the G-code: Facing written-motion verification: line 2842: rotary counter reset is not at a reached declared boundary or does not match the controller". Investigated by lane ENDFACE-POST.
 - **What it amends:** none. It carries out [0506](0506-combine-pure-a-runs.md) ("every pose lies on it exactly: the same written X, Y and Z") in the binary32 replay of [0547](0547-end-facing-enters-from-air-and-checks-its-engagement.md)'s Facing written-motion check, which applied the rule to the float values instead of the written words.
 - **Builds on:** [0506](0506-combine-pure-a-runs.md) (one block for consecutive pure-A poses), [0241](0241-continuous-rotary-operation-boundaries.md) and [0247](0247-long-operation-rotary-accumulation.md) (counter resets at declared boundaries), [0547](0547-end-facing-enters-from-air-and-checks-its-engagement.md) (the Facing check of the written words, decimal and binary32).
-- **Open items:** OI-2142 (the owner's acceptance of this record), new.
+- **Open items:** OI-2142 (the owner's acceptance of this record), new, closed on 11 Nov 2026 with the acceptance.
 
 ## Context
 
