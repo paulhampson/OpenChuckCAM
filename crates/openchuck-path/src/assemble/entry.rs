@@ -82,6 +82,10 @@ pub(super) struct Entry {
     /// A height above all the stock (the retract height), from which the
     /// stock under a ramp's path is probed.
     probe_height: f64,
+    /// A ramp may turn A round the part before a ring or spiral pass
+    /// ([`crate::Strategy::ramps_round_the_part`]); otherwise it follows
+    /// the pass (decision record 0645).
+    round_the_part: bool,
 }
 
 impl Entry {
@@ -89,6 +93,7 @@ impl Entry {
         input: &StrategyInput<'_>,
         common: &CommonParameters,
         e: &EntryParameters,
+        round_the_part: bool,
     ) -> Result<Self> {
         let radius = input.tool.cutting_radius();
         let leave = common.stock_to_leave.0;
@@ -125,6 +130,7 @@ impl Entry {
                 crate::params::Retract::Clearance => input.clearance.radius.0,
                 crate::params::Retract::SafeZ => input.clearance.safe_z.0,
             },
+            round_the_part,
         })
     }
 
@@ -364,8 +370,33 @@ impl Entry {
         match shape {
             // Reached only when there is nothing to descend into
             // (`ring_plan` plans the descent on the axis otherwise).
+            // A strategy that does not ramp round the part (decision 0645)
+            // has no descent on the axis planned: a plunge into stock there
+            // is listed for the host's check of a tool that cannot cut
+            // straight down (decision 0543 D7; #781 review).
+            _ if on_axis && !self.round_the_part => {
+                let at = [(b.rotary.to_axis(head.tip, head.a), head.a)];
+                let height = at[0].0.height;
+                if stock_top_along(b, stock, &at, 0.0, self.probe_height) > height + EPS {
+                    b.straight_plunges.push(pass);
+                }
+                plunge(b, stock, common, head)
+            }
             _ if on_axis => plunge(b, stock, common, head),
             Start::SinglePoint => self.single_point(b, stock, common, pass, head),
+            // A strategy whose passes turn A without cutting all round the
+            // part (swarf along a blade): back and forth over the pass's
+            // own path up to its first rapid, A reversing during the entry
+            // only, never round the part (decision record 0645; #778).
+            Start::FullRing { end, .. } if !self.round_the_part => {
+                self.follow(b, input, stock, common, pass, points, end, true)
+            }
+            Start::Spiral { .. } if !self.round_the_part => {
+                let last = (1..points.len())
+                    .find(|k| rapids.contains(k))
+                    .map_or(points.len().saturating_sub(1), |k| k - 1);
+                self.follow(b, input, stock, common, pass, points, last, true)
+            }
             Start::FullRing { .. } | Start::Spiral { .. } => plunge(b, stock, common, head),
             Start::Line { end } => {
                 // A line shorter than the minimum (the step before a ring,
@@ -511,6 +542,17 @@ impl Entry {
                      Plunge or Helix.",
                             pass + 1,
                             super::path_ramp::MAX_LEGS
+                        ),
+                        crate::params::names::RAMP_ANGLE,
+                    ),
+                    super::path_ramp::Refusal::MoveLimit { moves } => (
+                        format!(
+                            "pass {} would need {} to ramp down its {what} of \
+                             {total:.3} mm, more than the {} allowed. Raise Ramp angle, or set \
+                             Entry to Plunge or Helix.",
+                            pass + 1,
+                            crate::counted(moves, "move", "moves"),
+                            super::path_ramp::MAX_MOVES
                         ),
                         crate::params::names::RAMP_ANGLE,
                     ),
@@ -692,7 +734,7 @@ impl Entry {
         points: &[CutPoint],
         rapids: &[usize],
     ) -> Result<Option<RingRamp>> {
-        if self.style != EntryStyle::Ramp {
+        if self.style != EntryStyle::Ramp || !self.round_the_part {
             return Ok(None);
         }
         let shape = pass_shape::start(&b.rotary, points, rapids, self.tolerance);

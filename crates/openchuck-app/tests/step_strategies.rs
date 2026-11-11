@@ -1146,3 +1146,164 @@ fn req_op_11_req_imp_02_a_ramp_on_a_step_part_follows_the_pass_without_gouging()
         );
     }
 }
+
+/// Issue #778: swarf with Entry Ramp on the public blisk, as the user
+/// guide's swarf example sets it up (`blisk-start`, the blade wall, face 19,
+/// the 3 mm flat end mill, the faces next to it given so the pass keeps off
+/// the walls at its ends, as the application gives them). The swarf pass
+/// turns A while its tip moves along the blade; its entry ramp, checked only
+/// against the operation's face set, turned A round the part at the pass's
+/// start and swept the tool through the other blades' tips at the far end
+/// (0.946 mm deep at X 60.6 on `main` `ccc9a878`). Now it follows the pass
+/// (decision record 0645). The independent bounded checker (decision 0255)
+/// measures every entry move (its poses and the quarter, half and three
+/// quarter points of each machine move) and every cutting move against
+/// every face of the blisk, not only the face set: the entry cuts no deeper
+/// than the pass itself, within the checker's tolerance.
+#[test]
+fn req_op_11_req_op_07_a_swarf_ramp_on_the_blisk_cuts_no_deeper_than_its_pass() {
+    use openchuck_path::params::names;
+    use openchuck_path::region::RegionConstraint;
+    use openchuck_path::swarf::Swarf;
+    use openchuck_path::{AcceptAll, AnalyticStock, RotaryMapping, StrategyInput};
+    use openchuck_testkit::contact::{ConvexTool, Geometry, Settings};
+    use openchuck_types::brep::FaceId;
+    use openchuck_types::ir::PathTags;
+    use openchuck_types::machine::Clearance;
+
+    let model = blisk_on_axis();
+    let blade = FaceId(19);
+    let next: Vec<FaceId> = model
+        .edges
+        .iter()
+        .filter(|e| e.faces.contains(&blade))
+        .flat_map(|e| e.faces.iter().copied())
+        .filter(|f| *f != blade)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let neighbours = BrepSurface::with_faces(&model, &next).unwrap();
+    let tool = Tool {
+        shape: ToolShape::FlatEnd,
+        diameter: Millimetres(3.0),
+        flute_length: Millimetres(16.0),
+        overall_length: Millimetres(50.0),
+        shank_diameter: Millimetres(3.0),
+        flute_count: 2,
+        material: None,
+        centre_cutting: Some(true),
+    }
+    .profile()
+    .unwrap();
+    let machine = builtin("makera-z1").unwrap().unwrap();
+    let rotary = RotaryMapping::of_profile(&machine);
+    let surface = BrepSurface::with_faces(&model, &[blade]).unwrap();
+    let stock = AnalyticStock::Cylinder {
+        radius: 21.0,
+        x_start: 9.0,
+        x_end: 61.0,
+    };
+    let tags = PathTags {
+        operation: "op".into(),
+        setup: "setup".into(),
+        tool: "tool".into(),
+    };
+    let input = StrategyInput {
+        surface: &surface,
+        stock: &stock,
+        collision: &AcceptAll,
+        tool: &tool,
+        rotary,
+        clearance: Clearance {
+            radius: Millimetres(26.0),
+            safe_z: Millimetres(36.0),
+        },
+        max_feeds: machine.max_feeds,
+        tags: &tags,
+        facing: None,
+        keep_out: &[],
+        shank: None,
+    };
+    let mut values: BTreeMap<String, openchuck_path::ParameterValue> = [
+        (names::TOLERANCE, 0.01),
+        (names::FEED, 300.0),
+        (names::PLUNGE_FEED, 100.0),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), openchuck_path::ParameterValue::Number(v)))
+    .collect();
+    values.insert(
+        names::ENTRY.into(),
+        openchuck_path::ParameterValue::Text("ramp".into()),
+    );
+    let region = RegionConstraint {
+        neighbours: Some(&neighbours),
+        ..RegionConstraint::default()
+    };
+    let cancel = CancelToken::new();
+    let path = openchuck_path::generate_in_region(
+        &Swarf,
+        &input,
+        &region,
+        &values,
+        &JobContext::new(&cancel, &NoProgress),
+    )
+    .unwrap();
+    let exact = Geometry::of_faces(&model).unwrap();
+    let convex = ConvexTool::new(&tool).unwrap();
+    let settings = Settings {
+        margin: 0.5,
+        tolerance: 0.001,
+        budget: 4_000_000,
+    };
+    // The deepest cut (a negative clearance) and where, of the entry moves
+    // and of the cutting moves.
+    let mut entry: (f64, Point3) = (0.0, Point3::new(0.0, 0.0, 0.0));
+    let mut cutting: f64 = 0.0;
+    let mut entry_moves = 0usize;
+    let mut prev = path.group.start;
+    for s in &path.group.segments {
+        let is_entry = matches!(s.kind, MoveKind::LeadIn | MoveKind::Plunge);
+        if is_entry || s.kind == MoveKind::Cutting {
+            entry_moves += usize::from(is_entry);
+            let (pa, pb) = (
+                rotary.to_axis(prev.tip, prev.a),
+                rotary.to_axis(s.end.tip, s.end.a),
+            );
+            for f in [0.25, 0.5, 0.75, 1.0] {
+                let a = openchuck_types::units::Degrees(prev.a.0 + (s.end.a.0 - prev.a.0) * f);
+                let tip = rotary.to_model(
+                    openchuck_path::rotary::AxisPosition {
+                        along: pa.along + (pb.along - pa.along) * f,
+                        across: pa.across + (pb.across - pa.across) * f,
+                        height: pa.height + (pb.height - pa.height) * f,
+                    },
+                    a,
+                );
+                let c = exact
+                    .clearance(&convex, tip, rotary.tool_axis(a).get(), &settings)
+                    .unwrap()
+                    .lower;
+                if is_entry && c < entry.0 {
+                    entry = (c, tip);
+                } else if !is_entry {
+                    cutting = cutting.min(c);
+                }
+            }
+        }
+        prev = s.end;
+    }
+    assert!(entry_moves > 2, "a ramp, not a plunge: {entry_moves} moves");
+    assert!(
+        entry.0 >= cutting.min(0.0) - 0.02,
+        "the entry cuts {:.3} mm into the blisk at {:?}, the pass {:.3} mm",
+        -entry.0,
+        entry.1,
+        -cutting
+    );
+    println!(
+        "swarf ramp on the blisk: {entry_moves} entry moves, deepest {:.4} mm; the pass's \
+         cutting moves {:.4} mm",
+        -entry.0, -cutting
+    );
+}

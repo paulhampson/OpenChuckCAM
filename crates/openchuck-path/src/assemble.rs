@@ -441,18 +441,21 @@ pub fn assemble_with_entry(
     entry: &EntryParameters,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
-    assemble_limited(passes, input, common, entry, None, context)
+    assemble_limited(passes, input, common, entry, None, true, context)
 }
 
 /// [`assemble_with_entry`], with every cutting move inside a pass that goes
 /// down along the tool axis slowed, where needed, so its tip goes down no
 /// faster than `descent_limit` (the plunge feed; decision record 0548).
+/// `round_the_part` is [`Strategy::ramps_round_the_part`](crate::Strategy::ramps_round_the_part).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn assemble_limited(
     passes: &[Pass],
     input: &StrategyInput<'_>,
     common: &CommonParameters,
     entry: &EntryParameters,
     descent_limit: Option<FeedRate>,
+    round_the_part: bool,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
     let rotary = input.rotary;
@@ -569,7 +572,7 @@ pub(crate) fn assemble_limited(
         straight_plunges: Vec::new(),
     };
 
-    let entry = entry::Entry::new(input, common, entry)?;
+    let entry = entry::Entry::new(input, common, entry, round_the_part)?;
     let entry_nub_radius = entry.nub_radius();
     if entry_nub_radius > 0.0 {
         split_nubs(
@@ -768,18 +771,15 @@ pub(crate) fn assemble_limited(
         let passes: Vec<usize> = b.reversed_ramps.iter().map(|r| r.0).collect();
         let reversals: usize = b.reversed_ramps.iter().map(|r| r.1).sum();
         let one = passes.len() == 1;
+        // The reason is not said: a partial ring reverses because its
+        // stretch is short (decision 0543 D3), a swarf pass because its ramp
+        // must not turn round the part (decision 0645; #781 review).
         let text = format!(
-            "{} with too short a stretch to ramp along without turning the part, so {} \
-             back and forth over {} own path, reversing A {} in all during the {}",
+            "{} back and forth over {} own path, reversing A {} in all during the {}",
             if one {
-                format!("{} starts", list(&passes))
+                format!("{}: its ramp goes", list(&passes))
             } else {
-                format!("{} start", list(&passes))
-            },
-            if one {
-                "its ramp goes"
-            } else {
-                "their ramps go"
+                format!("{}: their ramps go", list(&passes))
             },
             if one { "the pass's" } else { "each pass's" },
             if reversals == 1 {
