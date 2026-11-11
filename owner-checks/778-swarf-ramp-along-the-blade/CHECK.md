@@ -66,7 +66,7 @@ Run with the command-line tool (`openchuck-cli regenerate project --post linuxcn
 | Entry Z | 21.952 down to 9.059 | 21.931 down to 9.059 |
 | Blade swarf, lead | refused, 11.046 mm | refused, the same |
 
-The depths are lane RAMPENTRY's, from the independent bounded checker in its test `req_op_11_req_op_07_a_swarf_ramp_on_the_blisk_cuts_no_deeper_than_its_pass` (`crates/openchuck-app/tests/step_strategies.rs`, against every face of the blisk): before, 0.946 mm at X 60.6; after, the entry's deepest 0.0268 mm, no deeper than the swarf pass's own cutting (the twist overcut swarf already warns about). That test needs the STEP kernel and was not run here.
+The depths are lane RAMPENTRY's, from the independent bounded checker in its test `req_op_11_req_op_07_a_swarf_ramp_on_the_blisk_cuts_no_deeper_than_its_pass` (`crates/openchuck-app/tests/step_strategies.rs`, against every face of the blisk): before, 0.946 mm at X 60.6; after, the entry's deepest 0.0268 mm, against the swarf pass's own cutting moves 0.0265 mm (the twist overcut swarf already warns about). That test needs the STEP kernel and was not run here.
 
 **Simulation** (`openchuck-cli simulate project`, cell 0.1 mm, Blade swarf, ramp on its own):
 
@@ -76,6 +76,6 @@ The depths are lane RAMPENTRY's, from the independent bounded checker in its tes
 | Overcut beyond one cell (0.1 mm) | at 22,315 samples, all at X 59.3 to 60.0 (the far-end tips) | none |
 | Result | "10 problem(s) found in the simulation" | no problems |
 
-The simulation's depths are limited by its 0.1 mm cell; the checker's figures above are the finer ones.
+**Two different measures, so the numbers differ:** lane RAMPENTRY's checker measures each move on its own (a sampled lower bound of the tool's clearance against every face of the blisk; rapids, links and retracts are not measured): before, the entry cut 0.946 mm at X 60.6; after, the entry's 172 moves cut at most 0.0268 mm and the pass's own cutting moves 0.0265 mm (the blade's twist, which swarf already warns of). The simulation measures the stock left after the whole operation against the part, in 0.1 mm cells: before 1.700 mm, after 0.0558 mm. Neither is wrong; they measure different things.
 
 The view cannot be run without a display here.

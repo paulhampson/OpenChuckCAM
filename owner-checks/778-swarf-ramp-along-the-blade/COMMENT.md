@@ -8,7 +8,9 @@
 
 **Expected:** the entry is 172 moves back and forth along the blade (X 21.5 to 59.8), reversing A 3 times ("Ramp entry (operation 'Blade swarf, ramp'): pass 1: its ramp goes back and forth over the pass's own path, reversing A 3 times in all during the entry."). Simulated, the deepest overcut is 0.0558 mm, within one cell, and no problems are reported. The pass's own Overcut warnings (0.0158 mm, the twist of the face) are unchanged. **Blade swarf, lead** is refused by name, as before (the known lead case, #572).
 
-**Before** (`ccc9a878` and `ea1f3f96`): the entry was 451 moves at X 59.804, turning A about 4.2 turns round the part; the simulation cut the other blades' tips up to 1.700 mm (the bounded checker in lane RAMPENTRY's test: 0.946 mm at X 60.6; after, the entry's deepest 0.0268 mm, no deeper than the pass's own cutting).
+**Before** (`ccc9a878` and `ea1f3f96`): the entry was 451 moves at X 59.804, turning A about 4.2 turns round the part; the simulation cut the other blades' tips up to 1.700 mm (the bounded checker in lane RAMPENTRY's test: 0.946 mm at X 60.6; after, the entry's deepest 0.0268 mm, the pass's own cutting moves 0.0265 mm).
+
+**Two different measures:** RAMPENTRY's checker measures each move on its own against every face of the blisk (entry 0.946 mm before; after, entry 0.0268 mm and the pass's own cutting 0.0265 mm, the blade's twist swarf already warns of; rapids and links not measured). The simulation measures the stock left after the whole operation, in 0.1 mm cells (1.700 mm before, 0.0558 mm after). They measure different things, so the numbers need not match.
 
 Nothing here shows that a program is safe to run: do not run this project's G-code on a machine.
 
