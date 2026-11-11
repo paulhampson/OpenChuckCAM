@@ -51,7 +51,7 @@ Rings beside a held region
 : Helical finishing and rest machining in **Rings** beside a held region now start on a whole ring at the edge of the held region, as roughing does, instead of with a short cut along the part with A held. Ring operations with a held region at an end of the part change, saved ones too.
 
 Extend past the stock
-: Helical finishing with **Extend past the stock** now carries its spiral or rings on past the part in their own motion, so the stock past the part's end is cut all round. Saved operations with it on change, and the run-out is longer; the operation's note gives the turns and the length added.
+: Helical finishing with **Extend past the stock** now carries its spiral or rings on past the part in their own motion, so the stock past the part's end is cut round the part, down to the height of the pass's last point. It is not cut down to the rotary axis: past a pointed or domed end a core of stock stays, which **Face free ends** or a Facing operation takes down (see [Extend past the stock](reference/operations.md#settings-some-strategies-share)). Saved operations with it on change, and the run-out is longer; the operation's note gives the turns and the length added.
 
 Roughing descents
 : Rotary roughing and Facing (flat and round) now go down into the stock inside a pass no faster than the plunge feed.
@@ -98,6 +98,7 @@ Icon
 - **The programs are not signed.** Builds for this release are not signed or notarised. macOS refuses to open the program the first time and Windows SmartScreen may warn. [Install and first run](start/install.md) and the README in each download give the steps.
 - **The macOS build has not been tested by hand.** It is built and its automatic tests run, including starting the program, but nobody has worked through it on a Mac: not the first-run dialogs of a downloaded copy, opening it from Finder or the Dock, the clipboard, Command-key shortcuts, the menu bar, full screen or the file dialogs. It is for Apple silicon only. The Windows build has had less hands-on testing than the Linux build.
 - **Collisions with the machine are not checked.** The program does not model the chuck, the tailstock, the spindle, the tool holder or the machine body.
+- **The end of a pointed part.** Past the part's end, finishing runs on at the height of its last point, so a core of stock stays past a pointed or domed end unless **Face free ends** or Facing takes it down, and a small blunt nub can stay at the point even then.
 - **Partial paths.** With [adaptive spacing](glossary.md#adaptive-spacing) on, a finishing operation can stop short and ask you to accept a partial path. A partial path is not complete.
 - **No screen reader support.**
 - **The project format may change** in a later release.
