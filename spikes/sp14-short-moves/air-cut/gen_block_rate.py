@@ -2,6 +2,10 @@
 """SP-14: writes the Z1 block-rate air-cut program (decision 0222 item 7).
 
 Run: python3 -I gen_block_rate.py > block_rate_z1.nc
+     python3 -I gen_block_rate.py N > split/block_rate_z1_sN.nc  (N = 1..14)
+       writes section N alone (split/README.md): a G0 to the section's start
+       X and A, then the section exactly as in the full file, then the same
+       footer. With no argument the output is the full file, byte for byte.
 
 Air cut only: no tool, no material, attended, gate 4 rules. Each section is
 100 mm of X at F1000 (6.0 s nominal) made of equal collinear blocks of one
@@ -11,6 +15,8 @@ X length still sets each block's time and A stays far below its 3600 deg/min
 limit. Sections alternate direction to stay inside X 0..100.
 """
 import math
+import sys
+ONLY = int(sys.argv[1]) if len(sys.argv) > 1 else 0   # 0 = all sections (original file)
 
 F = 1000.0                     # mm/min
 TIMES_MS = [20, 10, 7, 5, 3, 2, 1]
@@ -41,6 +47,13 @@ for part in ("A", "B"):
         n = round(LENGTH * 60000.0 / (F * t))   # blocks in the section
         step = LENGTH / n
         sign = 1.0 if x0 == 0.0 else -1.0
+        if ONLY and section != ONLY:
+            if part == "B":
+                a = a + A_PER_MM * LENGTH
+            x0 = x0 + sign * LENGTH
+            continue
+        if ONLY:
+            out.append(f"G0 X{fmt(x0)} Y0.000 Z50.000 A{fmt(a)}")
         out.append(f"(section {section}: part {part}, {t} ms blocks, {n} lines)")
         # Marker before each section: Z up 5 mm and back (0.6 s), then go.
         out.append("G1 Z55.000 F1000.0")
