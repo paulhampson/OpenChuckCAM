@@ -7,7 +7,7 @@
   - [Decision 0013](0013-z1-profile-consensus.md) items 1, 3 and 7 (accepted), for A only: the Z1's A limit is 1800 deg/min for feeds and rapids, not 3600. X, Y and Z are unchanged. The value stays *confirmed*.
   - [Decision 0007](0007-sp-12-z1-conventions.md)'s limits row and the A limit that [decision 0076](0076-feed-word-limit-and-rounding.md) applies: both now read 1800 for the built-in Z1. The feed rule and the code that applies it are unchanged.
 - **Builds on:** [0076](0076-feed-word-limit-and-rounding.md) (the F word counts A's travel; the profile's A limit sets a move's time), [0317](0317-z1-measured-axis-height-and-safe-z.md) item 3 (a project's old Z1 copy is named, never changed), [0109](0109-z1-copy-without-an-id-migrates-by-name.md) (a copy with no ID is the Z1 by its name).
-- **Open items:** OI-2143 (the owner's acceptance of this record and the re-verification runs below), new; OI-2145 (the user guide's scallop example states the tutorial's programmed times, which change, and its figures need a re-capture), new. OI-267 is updated.
+- **Open items:** OI-2143 (the owner's acceptance of this record and the re-verification runs below), new; OI-2145 (the user guide's scallop example states the tutorial's programmed times, which change, and its figures need a re-capture), new. OI-267 was closed on `main` by the owner's air cut of 14 Nov 2026, which also bears this record out (below).
 
 Requirements and architecture are not edited by this record. No project or machine schema changes, and no public API of the library family changes (`openchuck-path` changes behaviour only, item 2).
 
@@ -23,7 +23,7 @@ if((THEKERNEL->factory_set->FuncSetting & (1<<0)) && (a == 3))
     actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
 ```
 
-`M203.1` prints the rates the controller holds, per second. On the owner's Z1 (firmware 1.1.3) it prints `A: 30`: 30 deg/s, 1800 deg/min.
+`M203.1` prints the rates the controller holds, per second. On the owner's Z1 (firmware 1.1.3) it prints `A: 30`: 30 deg/s, 1800 deg/min. The owner's air cut of the same day (OI-267, relayed) agrees: `G1 A360 F4000` took about 12 s, a full turn at 30 deg/s.
 
 What the profile's A limit does in the software:
 
@@ -72,7 +72,7 @@ What the profile's A limit does in the software:
   The programmed time includes the rapids and links, timed at the profile's rapid limits; the axial and indexed jobs change only there (their A turns between passes are rapids), and their G-code does not change. The firmware's own rule applied to the written programs (see *Verification*) gives the same time for the rc2 programs and the new ones, so the machine should run them exactly as before: only what the program says about its speed changes.
 - On the sphere, the cone, the groove and cone_held_tabs, every finishing move away from the part's ends is now held at A's limit, below the programmed contact feed of 480 mm/min (on the sphere down to about 156 mm/min, as the run's feed-limit note says), so the chip load is lower there than the cutting data ask for. It was so on the machine before too, since the firmware already capped A; now the program says so. The golden audit's contact-feed check (decision 0020 item 14) checks each such move against the rotary limit, and its feed statistics come from lobed alone; the audit handles a job with every move at the limit instead of failing on an empty list. The schema 11 Z1 fixture's migration test now checks that the copy keeps its own 3600 deg/min (SET-01) and that the rest of its limits are the built-in Z1's. Both test changes were accepted by the owner with item 2's code change.
 - The LinuxCNC programs change too: they take their times from the same IR (GC-10), so a move that A's limit slows has a lower F there as well.
-- OI-267 (an A-only move whose F is above 1200 mm/min) narrows: with A at 1800 such an F needs r above 33.4 mm.
+- OI-267 (an A-only move whose F is above 1200 mm/min) is closed: the firmware neither refuses nor clamps such an F word, only A's rate limit applies. With A at 1800 such an F needs r above 33.4 mm.
 - `openchuck-project` gains `machines::has_old_z1_a_limit`, an addition (no version bump needed, decision 0048); `openchuck-app` re-exports it and adds the warning.
 - The user guide's scallop example quotes the tutorial project's programmed times in two screenshots and a table; they change (Rough 13:25 to 25:25, Finish 14:57 to 24:54) and are left to a re-capture after this change (OI-2145).
 - Documents updated in this change: decisions 0007, 0013, 0076 and 0222 (notes), the UI specification (the Setup dock), the gate 4 and 5 instructions (P3), the Z1 safe-practice checklist, the user guide (machine profiles, confirming machine values) and the release notes.
