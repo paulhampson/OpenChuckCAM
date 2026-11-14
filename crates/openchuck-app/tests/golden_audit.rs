@@ -464,6 +464,7 @@ fn audit_geometry(
         })
         .collect();
     let mut errors = Vec::new();
+    let mut at_limit = 0_usize;
     for (k, m) in cuts.iter().enumerate().skip(1) {
         let before = nearest_start(&cuts, k, part);
         let length = dist(before, contacts[k]);
@@ -506,10 +507,24 @@ fn audit_geometry(
                     m.line,
                     -e * 100.0
                 );
+                at_limit += 1;
                 continue;
             }
             errors.push(e.abs());
         }
+    }
+    // With the Z1's A at 1800 deg/min (decision record 0647), a part whose
+    // contact stays near the axis can have every move away from its ends at
+    // A's limit: each was checked above, and none is left at the programmed
+    // feed to take statistics of.
+    if errors.is_empty() {
+        assert!(at_limit > 0, "{name}: no cutting move away from the ends");
+        println!(
+            "  {name}: {} cutting moves, deepest gouge {:.4} mm, all {at_limit} moves away from the ends at the rotary limit",
+            cuts.len(),
+            gouge.depth
+        );
+        return contacts;
     }
     errors.sort_by(f64::total_cmp);
     let median = errors[errors.len() / 2];
