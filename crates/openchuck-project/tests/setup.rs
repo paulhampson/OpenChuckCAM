@@ -292,7 +292,19 @@ fn req_prj_04_req_op_13_an_older_z1_copy_migrates_to_count_a_in_its_feed_word() 
     let project = file::load(&fixture).unwrap();
     let machine = project.machine().unwrap();
     assert_eq!(machine.max_feeds.rotary_in_feed, RotaryInFeed::Makera);
-    assert_eq!(machine.max_feeds, z1().max_feeds);
+    // The copy keeps its own limits: A at the 3600 deg/min the built-in Z1
+    // held then, which the setup warns about but never changes (SET-01,
+    // decision record 0647); the rest are the built-in Z1's.
+    let (rotary, rapid_rotary) = (machine.max_feeds.rotary, machine.max_feeds.rapid_rotary);
+    assert_eq!((rotary.0, rapid_rotary.0), (3600.0, 3600.0));
+    assert_eq!(
+        openchuck_types::machine::MaxFeeds {
+            rotary: z1().max_feeds.rotary,
+            rapid_rotary: z1().max_feeds.rapid_rotary,
+            ..machine.max_feeds
+        },
+        z1().max_feeds
+    );
     assert_eq!(z1().max_feeds.rotary_in_feed, RotaryInFeed::Makera);
 
     // Any other profile keeps A counted separately, as it was timed before.
