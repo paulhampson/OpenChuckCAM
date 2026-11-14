@@ -1553,6 +1553,18 @@ fn old_z1_axis_height_text() -> String {
     )
 }
 
+/// What a setup says when the project's Makera Z1 copy still has the old A
+/// limit of 3600 deg/min (decision record 0647). It names the controller's
+/// limit and how to read it on the machine: the user checks their own
+/// (NFR-12).
+fn old_z1_a_limit_text() -> String {
+    "This project's Makera Z1 copy has the old A limit, 3600 deg/min. \
+     The Z1's controller turns A at most 1800 deg/min (30 deg/s), so programs from this copy ask for feeds the machine does not reach and their time estimates are short. \
+     Choose the Makera Z1 again in the setup's machine section to update the copy. \
+     To check your own Z1, send M203.1 in its console: it prints A's limit in deg/s."
+        .to_owned()
+}
+
 use crate::lead_in::clause;
 
 /// A setup warning in the one form: "Clearance (setup '<name>'): ...",
@@ -2466,6 +2478,35 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             action: Some(action),
                         });
                     }
+                }
+                if crate::setup::has_old_z1_a_limit(project.machine_id(), m) {
+                    // The copy is the project's own (SET-01); it is not
+                    // changed, only named (decision record 0647).
+                    let text = crate::lead_in::in_form(
+                        topic::MACHINE_PROFILE,
+                        &Context::setup(&s.name),
+                        &clause(&old_z1_a_limit_text()),
+                    );
+                    raise(
+                        &mut items,
+                        at(SetupPart::Machine),
+                        ItemStatus::new(
+                            ItemState::Warning,
+                            "the Makera Z1 copy has the old A limit",
+                        ),
+                    );
+                    messages.push(Message::formed(
+                        Severity::Warning,
+                        text.clone(),
+                        Some((at(SetupPart::Machine), s.name.clone())),
+                        Some(MessageAction::ReviewSetup(s.id)),
+                    ));
+                    setup_checks.push(SetupCheck {
+                        setup: s.id,
+                        passed: false,
+                        text,
+                        action: Some(MessageAction::ReviewSetup(s.id)),
+                    });
                 }
                 if crate::setup::has_old_z1_axis_height(project.machine_id(), m) {
                     // The copy is the project's own (SET-01); it is not

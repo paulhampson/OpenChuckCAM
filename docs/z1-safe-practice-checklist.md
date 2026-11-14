@@ -40,7 +40,7 @@ Use with the [air-cut procedure](z1-air-cut-procedure.md). Tick each box; stop a
 - [ ] The stock is no larger than the stock in the project, and the stock position (X0, centre on the axis) is checked by hand.
 - [ ] The tool is the tool in the project (3 mm ball end mill, 8 mm flute length, for the reference jobs), fitted with the correct stick-out and tightened. The tool number in the program is the tool in the spindle.
 - [ ] The tool change (`M5`, `T<n> M6`) has been tested separately and attended, or I change the tool by hand and have checked the program's tool change lines (OI-41).
-- [ ] Spindle speed, plunge and cutting feeds are what I expect and within the machine's limits (profile: 1200 mm/min X and Y, 600 Z, 3600 deg/min A).
+- [ ] Spindle speed, plunge and cutting feeds are what I expect and within the machine's limits (profile: 1200 mm/min X and Y, 600 Z, 1800 deg/min A; decision 0647).
 - [ ] Feed override starts low and goes up only while the cut sounds and looks right.
 - [ ] Eye and ear protection on; loose clothing, long hair and jewellery secured away from the chuck; dust and chips managed as for the material.
 - [ ] I stay at the machine for the whole cut and stop at any unexpected sound, vibration, motion or smell.

@@ -76,6 +76,9 @@ Messages
 Workholding
 : **Apply** in the workholding section now stores the workholding when an automatic tab has no room or overlaps a tab placed by hand, and keeps that finding as a warning on the tab's row. Only a tab outside the end zones is still refused.
 
+Makera Z1 A limit
+: The built-in Makera Z1 profile now limits A to 1800 degrees per minute (30 degrees per second), not 3600. The Z1's controller holds A to that rate: on firmware 1.1.3, `M203.1` in the console prints `A: 30`. Programs that turn A while cutting take longer and their F words change, and the time estimates on the setup sheet and in the simulation use the controller's limit; positions and rapids are unchanged. A project made with an earlier build keeps its own copy of the profile and warns that it has the old A limit: choose the Makera Z1 again in the setup's machine section to update it, then generate again. If `M203.1` on your Z1 prints `A: 60`, its limit is 3600 and you can set that in your own copy of the profile.
+
 Icon
 : OpenChuckCAM has its own icon in the window and the taskbar, and on the Windows program file.
 
@@ -109,7 +112,7 @@ Icon
 
 ### Makera Z1 machine values
 
-These values in the built-in Makera Z1 profile were confirmed on the project owner's machine (firmware 1.1.2): the rotary axis along X, the direction of A+, the continuous A range, the axis height with the probe as the reference tool, the maximum feeds, the tool length measurement and the minimum block time.
+These values in the built-in Makera Z1 profile were confirmed on the project owner's machine (firmware 1.1.2): the rotary axis along X, the direction of A+, the continuous A range, the axis height with the probe as the reference tool, the maximum feeds (the A limit of 1800 degrees per minute on firmware 1.1.3), the tool length measurement and the minimum block time.
 
 These six are **not confirmed** on a machine, and the program marks them so: the travel, the clearance (safe Z and clearance radius), the block window, the spindle speed range, the spindle to axis distance and the recommended minimum safe Z. Measure them on your own machine before you rely on them: see [Confirm machine profile values](how-to/confirm-machine-values.md). Every value can differ on your machine, confirmed or not.
 

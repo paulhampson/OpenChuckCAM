@@ -256,6 +256,31 @@ pub fn has_old_z1_axis_height(id: Option<&str>, profile: &MachineProfile) -> boo
     z1 && old
 }
 
+/// The A limit, in degrees per minute, the built-in Z1 profile held for feeds
+/// and rapids before the owner's `M203.1` reading (decision record 0647):
+/// 3600 deg/min (10 RPM), from Makera's website and the firmware's default
+/// configuration (decision record 0013).
+const OLD_Z1_A_LIMIT: f64 = 3600.0;
+
+/// Whether `profile`, stored with library ID `id`, is a copy of the built-in
+/// Makera Z1 that still has the old A limit of 3600 deg/min on its feeds or
+/// rapids (decision record 0647). It is the Z1 by its ID, or, with no ID, by
+/// its name (decision record 0109), and its feed limits are still the
+/// built-in profile's, marked confirmed: a limit the user changed is
+/// theirs, since a Z1 can carry a different configuration. The copy is not
+/// changed: the project's copy is the source of truth (SET-01), so the
+/// caller warns and the user chooses the Z1 again.
+pub fn has_old_z1_a_limit(id: Option<&str>, profile: &MachineProfile) -> bool {
+    let z1 = match id {
+        Some(id) => id == MAKERA_Z1_ID,
+        None => profile.name == MAKERA_Z1_NAME,
+    };
+    let feeds = &profile.max_feeds;
+    #[allow(clippy::float_cmp)] // The exact value the old built-in profile wrote.
+    let old = feeds.rotary.0 == OLD_Z1_A_LIMIT || feeds.rapid_rotary.0 == OLD_Z1_A_LIMIT;
+    z1 && old && profile.is_confirmed(openchuck_types::machine::ProfileField::MaxFeeds)
+}
+
 /// A new machine ID, for a profile entering a library without one.
 pub fn new_machine_id() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -599,6 +624,68 @@ mod tests {
         let mut measured = old;
         measured.rotary_origin.z = -50.2;
         assert!(!has_old_z1_axis_height(Some(MAKERA_Z1_ID), &measured));
+    }
+
+    /// The Z1's controller turns A at most 30 deg/s, 1800 deg/min (firmware
+    /// `Robot.cpp:295-298`; the owner's `M203.1` on firmware 1.1.3 prints
+    /// `A: 30`), so the built-in profile holds A to 1800 deg/min for feeds
+    /// and rapids, and says where the value comes from and how to check it
+    /// (SET-01, GC-09, UI-13; decision record 0647).
+    #[test]
+    fn req_set_01_req_gc_09_the_z1_turns_a_at_most_1800_deg_per_min() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert_eq!(z1.max_feeds.rotary.0, 1800.0);
+        assert_eq!(z1.max_feeds.rapid_rotary.0, 1800.0);
+        assert!(z1.is_confirmed(ProfileField::MaxFeeds));
+        let source = &z1.provenance[&ProfileField::MaxFeeds].source;
+        for fact in [
+            "Robot.cpp:295-298",
+            "M203.1",
+            "A: 30",
+            "1800 deg/min",
+            "0647",
+        ] {
+            assert!(source.contains(fact), "{fact}: {source}");
+        }
+        assert!(!source.contains("3600 deg/min (10 RPM)"), "{source}");
+    }
+
+    /// A project copy of the Z1 that still has the old A limit (3600 deg/min,
+    /// as the built-in profile held it before decision record 0647) is
+    /// recognised by its ID, or by its name when it has none, so the setup
+    /// can warn; a copy whose feed limits the user changed is the user's own
+    /// (SET-01, UI-13; decision records 0109, 0317 and 0647).
+    #[test]
+    fn req_set_01_req_ui_13_a_z1_copy_with_the_old_a_limit_is_recognised() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        let mut old = z1.clone();
+        old.max_feeds.rotary.0 = 3600.0;
+        old.max_feeds.rapid_rotary.0 = 3600.0;
+        assert!(has_old_z1_a_limit(Some(MAKERA_Z1_ID), &old));
+        assert!(has_old_z1_a_limit(None, &old));
+        assert!(!has_old_z1_a_limit(Some(MAKERA_Z1_ID), &z1));
+        assert!(!has_old_z1_a_limit(None, &z1));
+        // Either of the two A limits left at the old value is enough.
+        let mut rapid_only = z1.clone();
+        rapid_only.max_feeds.rapid_rotary.0 = 3600.0;
+        assert!(has_old_z1_a_limit(Some(MAKERA_Z1_ID), &rapid_only));
+        // Another machine's profile, or a renamed copy with no ID, is the
+        // user's own.
+        assert!(!has_old_z1_a_limit(Some("another-id"), &old));
+        let mut renamed = old.clone();
+        renamed.name = "My Z1".to_owned();
+        assert!(!has_old_z1_a_limit(None, &renamed));
+        // A limit the user set themselves (a Z1 whose M203.1 prints A: 60)
+        // is not flagged: editing it marks the feed limits unconfirmed.
+        let mut own = old;
+        own.provenance.insert(
+            ProfileField::MaxFeeds,
+            openchuck_types::machine::Provenance {
+                state: openchuck_types::machine::Confirmation::Unconfirmed,
+                source: "Changed by the user; check it on the machine".to_owned(),
+            },
+        );
+        assert!(!has_old_z1_a_limit(Some(MAKERA_Z1_ID), &own));
     }
 
     #[test]

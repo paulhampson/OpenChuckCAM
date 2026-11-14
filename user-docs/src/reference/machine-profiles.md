@@ -115,7 +115,7 @@ Recommended minimum safe Z
 | Axis height (machine Z) | -48.6 mm | yes |
 | Rotary reference X, Y | -180.4 mm, -108.8 mm | yes, but the X datum is still being checked |
 | Travel | X -200 to 0, Y -200 to 0, Z -100 to 0 mm | no |
-| X and Y feed, Z feed, A feed | 1200 mm/min, 600 mm/min, 3600 degrees/min | yes |
+| X and Y feed, Z feed, A feed | 1200 mm/min, 600 mm/min, 1800 degrees/min | yes (A on firmware 1.1.3: `M203.1` prints `A: 30`, in degrees per second) |
 | A in the feed word | makera | yes |
 | Safe cylinder radius, Safe Z | 40 mm, 40 mm | no (program defaults, not machine values) |
 | Highest tool number | 1000 | not applicable |

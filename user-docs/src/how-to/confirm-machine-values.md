@@ -19,7 +19,7 @@ These are the program's own instructions, from the triangle's tooltip:
 | A+ direction | Send a small A+ move with a mark on the chuck and see which way its top turns. |
 | A range | Turn A past a full turn each way and see whether the controller stops it. |
 | Travel | Jog each axis to its limits and read the machine coordinates (G53). |
-| Maximum feeds | Take them from the controller's settings or the machine's documented limits. |
+| Maximum feeds | Take them from the controller's settings or the machine's documented limits. A setting can be capped by the firmware: on a Makera Z1, send `M203.1` in the console, which prints each axis's limit as the controller holds it (A in degrees per second, so `A: 30` is 1800 degrees/min). |
 | Spindle speed range | Check the spindle's lowest and highest speed in the machine's documents or controller settings. |
 | Clearance | Set a clearance on the setup to suit its stock. |
 | Minimum clearance radius | Measure the largest radius about the rotary axis of the chuck body, the jaws at the opening you use, the headstock and the tailstock, and add a margin. |

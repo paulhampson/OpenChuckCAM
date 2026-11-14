@@ -2337,6 +2337,67 @@ fn req_set_01_req_ui_13_an_old_z1_copy_warns_and_the_measured_z1_does_not() {
     }
 }
 
+/// A project whose Makera Z1 copy still has the old A limit (3600 deg/min)
+/// keeps it, and the setup checks say so and how to update it; the built-in
+/// Z1, whose A limit is the controller's 1800 deg/min, does not warn
+/// (SET-01, UI-13, GC-09; decision record 0647).
+#[test]
+#[allow(clippy::float_cmp)] // The exact limits set and kept.
+fn req_set_01_req_ui_13_req_gc_09_an_old_z1_a_limit_warns_and_the_new_z1_does_not() {
+    let entry = openchuck_app::setup::builtin_entry(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    let warnings = |tag: &str, a_limit: f64, id: Option<String>| {
+        let mut f = fixture(tag, "cube_ascii.stl");
+        let mut machine = entry.profile.clone();
+        machine.max_feeds.rotary.0 = a_limit;
+        machine.max_feeds.rapid_rotary.0 = a_limit;
+        f.app
+            .execute(Command::SetMachineFrom {
+                machine: Some(Box::new(machine)),
+                id,
+            })
+            .unwrap();
+        let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+        let o = f.app.overview(Some(&checks), &JobLog::default());
+        // The project keeps its copy: the warning never changes it.
+        let kept = f.app.project().machine().unwrap().max_feeds.rotary.0;
+        assert_eq!(kept, a_limit, "{tag}");
+        let checks: Vec<String> = o
+            .setup_checks
+            .iter()
+            .filter(|c| !c.passed)
+            .map(|c| c.text.clone())
+            .collect();
+        let messages: Vec<String> = o.messages.iter().map(|m| m.text.clone()).collect();
+        (checks, messages)
+    };
+    for (tag, id) in [("old-a-id", entry.id.clone()), ("old-a-name", None)] {
+        let (checks, messages) = warnings(tag, 3600.0, id);
+        let check = checks
+            .iter()
+            .find(|t| t.contains("old A limit"))
+            .unwrap_or_else(|| panic!("{tag}: {checks:?}"));
+        for words in [
+            "Makera Z1",
+            "3600 deg/min",
+            "1800 deg/min",
+            "M203.1",
+            "Choose the Makera Z1 again",
+        ] {
+            assert!(check.contains(words), "{words}: {check}");
+        }
+        assert!(
+            messages.iter().any(|m| m.contains("old A limit")),
+            "{tag}: {messages:?}"
+        );
+    }
+    let (checks, messages) = warnings("new-a", 1800.0, entry.id.clone());
+    for text in checks.iter().chain(&messages) {
+        assert!(!text.contains("old A limit"), "{text}");
+    }
+}
+
 /// On the Makera Z1 (tool lengths measured, the spindle 73.1 mm above the
 /// axis at home), a setup warns once per enabled operation's tool whose
 /// assumed stick-out takes the spindle past the top of the Z travel at the

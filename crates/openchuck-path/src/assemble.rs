@@ -296,12 +296,20 @@ impl Builder<'_> {
         } else {
             z
         };
+        // A fed turn of A is timed for A as written, as the line is: the
+        // post works the F word out from A to three decimals, which can turn
+        // 0.001 degree further (decision records 0076 and 0647).
+        let written_da = if kind.is_fed() && da > EPS {
+            da + WRITTEN_A_ALLOWANCE
+        } else {
+            da
+        };
         let axis_time = 60.0
             * [
                 dx / linear,
                 dy / linear,
                 dz / z,
-                da / rotary,
+                written_da / rotary,
                 if line > EPS {
                     counted / line_limit
                 } else {
@@ -1611,9 +1619,11 @@ mod tests {
             60.0 * (10.0 * p / 360.0) / seconds
         };
         // Counted separately, A's limit sets the time and the Z1's F is over.
+        // The turn is timed as written, up to 0.001 degree further (decision
+        // record 0647).
         let separate = time(RotaryInFeed::Separate, &from, &to);
         assert!(
-            (separate - 60.0 * 10.0 / 3600.0).abs() < 1e-12,
+            (separate - 60.0 * (10.0 + WRITTEN_A_ALLOWANCE) / 3600.0).abs() < 1e-12,
             "{separate}"
         );
         assert!(makera_f(separate) > 1400.0, "F{:.1}", makera_f(separate));
@@ -1626,6 +1636,78 @@ mod tests {
         let a_only = point(5.0, 18.0, 10.0, Point3::ORIGIN);
         let seconds = time(RotaryInFeed::Makera, &from, &a_only);
         assert!((seconds - separate).abs() < 1e-12, "{seconds}");
+    }
+
+    /// A fed turn of A held to A's own limit is timed for A written to three
+    /// decimals: each end may round half a unit up, so the written turn can
+    /// be 0.001 degree longer than the exact one. Timed for the exact turn,
+    /// the F word the post works out from the written A went over the limit:
+    /// on the Z1's 1800 deg/min, an edge-following engraving wrote `F1802.2`
+    /// on LinuxCNC, a gate 1 failure (GC-09, OP-13; decision records 0076
+    /// and 0647).
+    #[test]
+    fn req_gc_09_req_op_13_a_turn_at_a_s_limit_stays_within_it_as_written() {
+        let machine = MachineProfile::example_x_rotary();
+        let rotary = RotaryMapping::of_profile(&machine);
+        let profile = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: openchuck_types::units::Millimetres(3.0),
+            flute_length: openchuck_types::units::Millimetres(8.0),
+            overall_length: openchuck_types::units::Millimetres(40.0),
+            shank_diameter: openchuck_types::units::Millimetres(3.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap();
+        let limit = 1800.0;
+        let mut feeds = machine.max_feeds;
+        feeds.rotary = RotaryFeedRate(limit);
+        // Written to three decimals, A goes from 0.000 to 0.401: 0.401
+        // degree written for 0.4002 turned.
+        let (a0, a1) = (0.0004, 0.4006);
+        let written = 0.401;
+        for rule in [RotaryInFeed::Separate, RotaryInFeed::Makera] {
+            let from = point(5.0, 12.0, a0, Point3::ORIGIN);
+            let to = point(5.0, 12.0, a1, Point3::ORIGIN);
+            let mut b = Builder {
+                rotary,
+                tool_radius: 1.5,
+                profile: &profile,
+                max_feeds: MaxFeeds {
+                    rotary_in_feed: rule,
+                    ..feeds
+                },
+                collision: &AcceptAll,
+                pose: ToolPose {
+                    tip: from.tip,
+                    axis: rotary.tool_axis(from.a),
+                    a: from.a,
+                },
+                contact: from.tip,
+                segments: Vec::new(),
+                notes: Vec::new(),
+                raised_entries: 0,
+                steep_ramps: Vec::new(),
+                single_point_plunges: Vec::new(),
+                steepened_ramps: Vec::new(),
+                nubs: Vec::new(),
+                reversed_ramps: Vec::new(),
+                on_axis_ramps: Vec::new(),
+                straight_plunges: Vec::new(),
+            };
+            let end = b.pose(to.tip, to.a);
+            // A contact feed far above the limits, so A's limit sets the time.
+            b.push(MoveKind::Cutting, end, Some(to.tip), Some(FeedRate(1.0e6)))
+                .unwrap();
+            let seconds = b.segments[0].duration.0;
+            // The written turn over the move's time is A's rate as written.
+            let rate = 60.0 * written / seconds;
+            assert!(rate <= limit, "{rule:?}: A at {rate:.2} deg/min");
+            // And the allowance is no more than the rounding.
+            assert!(rate > limit * 0.999, "{rule:?}: A at {rate:.2} deg/min");
+        }
     }
 
     /// Issue #600: a turn of A with the contact point at the rotary axis
