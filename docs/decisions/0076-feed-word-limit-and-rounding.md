@@ -24,6 +24,8 @@ Lane Z's tests of every strategy on STEP parts (decision 0056, proposed, on lane
 
 The gate 2 time tolerance (1 %, `Tolerances::time_relative`) is a verification-plan matter and is not changed.
 
+*Note (14 Nov 2026):* the A limit this record applies is the profile's. For the built-in Z1 it is now 1800 deg/min, not 3600 ([decision 0647](0647-the-z1-turns-a-at-most-1800-deg-per-min.md), proposed): a move whose time A's limit sets has F = 5 P on the Z1, and the A limit sets the time wherever r is below 33.4 mm (14.3 mm before). The rule and the code are unchanged.
+
 ## Decision
 
 1. **The machine profile says how the controller counts A in its feed word.** `MaxFeeds` gains `rotary_in_feed` (`RotaryInFeed`): `separate` (the default and every profile so far: the F word is the XYZ line's speed, and A has only its own limit) or `makera` (the Z1: the F word is the speed of `max(L, dA * (2 pi max(r, 1) + 30) / 360)`). It is a fact about the machine's controller, beside the limits it qualifies (SET-01); the post's feed rule still turns each move's time into the F word (decision 0007 item 3, GC-04), so the IR stays the same for every post (GC-10). The built-in Z1 profile sets `makera`; its provenance cites the air cut.

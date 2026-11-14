@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (ALIMIT, issue #793; decision 0647, proposed)
+
+- **Added:** a setup check and a warning in Messages, under the topic Machine profile, when the project's Makera Z1 copy still holds the old A limit of 3600 deg/min; it names the controller's 1800 deg/min and `M203.1`, and asks the user to choose the Makera Z1 again. `setup::has_old_z1_a_limit` is re-exported.
+
 ## Unreleased (MSGREVIEW, decision 0644, accepted; decision 0536 step 6; issue #567)
 
 - **Changed (breaking for a host that matches `AppError`):** `AppError::Refused` gains `setting`, and every refusal to generate is one, displayed in the one form through `lead_in::in_form` ("End facing (operation 'Face'): ….", "Stepover (operation 'Rough'): must be above 0 mm."). It is built from `PathError::Refused` directly; a refused parameter takes its field's label as its topic and its key as the setting; `Surface`, `Region` and `RotaryLimit` take the topics Surface, Region and Rotary axis. `AppError::Operation` is removed: the application's own refusals take topics (Machine profile, Setup, Tool, Part, Stock, Material, Operation, Selection set, STEP part, Workholding, Travel, Stock to leave, Cutting data, Setting, Box facing). `AppError::refused` and `AppError::with_setting` build one. RAMPENTRY's list of refusal topics goes. The followed-edges stock-to-leave refusal no longer names OP-11. A count of one takes the singular (`openchuck_path::counted`) in the notes, the posting summary, the setup sheet and the tabs chip. The Ramp and Lead entry refusal for a tool that cannot cut straight down names its passes as the notes do ("88 passes, from pass 1 to pass 88 (1, 2, 3 ... 86, 87, 88), are entered …").

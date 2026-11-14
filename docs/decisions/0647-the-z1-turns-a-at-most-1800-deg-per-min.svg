@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="380" viewBox="0 0 680 380" font-family="sans-serif" font-size="13">
+  <rect width="680" height="380" fill="#ffffff"/>
+  <text x="20" y="22" font-weight="bold">The Z1's F word on a move whose time A's limit sets</text>
+  <text x="20" y="40" fill="#555">F = A limit x (2 pi r + 30) / 360, with r the end point's distance from the axis (decision 0007)</text>
+  <!-- axes: r 0..50 mm -> x 70..610; F 0..1500 -> y 320..60 -->
+  <line x1="70" y1="320" x2="620" y2="320" stroke="#000"/>
+  <line x1="70" y1="320" x2="70" y2="55" stroke="#000"/>
+  <text x="560" y="352">r (mm)</text>
+  <text x="78" y="58">F (mm/min)</text>
+  <g fill="#555" font-size="12">
+    <text x="66" y="338">0</text>
+    <text x="173" y="338">10</text>
+    <text x="281" y="338">20</text>
+    <text x="389" y="338">30</text>
+    <text x="497" y="338">40</text>
+    <text x="605" y="338">50</text>
+    <text x="40" y="324">0</text>
+    <text x="34" y="237">500</text>
+    <text x="26" y="150">1000</text>
+    <text x="26" y="64">1500</text>
+  </g>
+  <!-- the linear limit -->
+  <line x1="70" y1="112" x2="620" y2="112" stroke="#000" stroke-dasharray="5,4"/>
+  <text x="470" y="130">X and Y limit, 1200 mm/min</text>
+  <!-- where A sets the time with 1800 -->
+  <rect x="70" y="112" width="361" height="208" fill="#2a7ab0" fill-opacity="0.10"/>
+  <text x="180" y="300" fill="#2a7ab0">A's limit sets the time (1800: r below 33.4 mm)</text>
+  <!-- 3600 deg/min, the old profile -->
+  <polyline points="70,268 224,112 276,60" fill="none" stroke="#c00000" stroke-width="3" stroke-dasharray="7,4"/>
+  <text x="284" y="76" fill="#c00000" font-size="12">old profile, 3600 deg/min:</text>
+  <text x="284" y="92" fill="#c00000" font-size="12">F asks A for twice its rate</text>
+  <!-- 1800 deg/min, the controller -->
+  <polyline points="70,294 431,112 534,60" fill="none" stroke="#2a7ab0" stroke-width="3"/>
+  <text x="470" y="160" fill="#2a7ab0">controller, 1800 deg/min</text>
+  <text x="470" y="176" fill="#2a7ab0">(M203.1 prints A: 30)</text>
+  <circle cx="224" cy="112" r="4" fill="#c00000"/>
+  <text x="230" y="130" fill="#c00000" font-size="12">14.3</text>
+  <circle cx="431" cy="112" r="4" fill="#2a7ab0"/>
+  <text x="437" y="130" fill="#2a7ab0" font-size="12">33.4</text>
+</svg>

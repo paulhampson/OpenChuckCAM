@@ -187,7 +187,7 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
     - **Part A** (sections 1 to 7): X only.
     - **Part B** (sections 8 to 14): the same, with A advancing in every block.
     - **The A step in part B.** Each block moves A by 60 % of its X length's worth under the Z1 rule: 0.628 degrees per mm of X at Z50, where P = 2π·50 + 30 mm. So X still sets each block's time, and A stays far below its limit.
-    - **Why not the 0.2 degree step first proposed.** It cannot hold the short block times. The Z1's A axis is limited to 3600 degrees per minute (decision 0013), so a 0.2 degree step needs at least 3.3 ms. The rule's A term (0.19 mm at r = 50) would also outweigh the X length below 10 ms.
+    - **Why not the 0.2 degree step first proposed.** It cannot hold the short block times. The Z1's A axis is limited to 3600 degrees per minute (decision 0013), so a 0.2 degree step needs at least 3.3 ms. *(Note, 14 Nov 2026: the limit is 1800 deg/min, [decision 0647](0647-the-z1-turns-a-at-most-1800-deg-per-min.md), so such a step needs at least 6.7 ms; the reasoning stands.)* The rule's A term (0.19 mm at r = 50) would also outweigh the X length below 10 ms.
     - Part B exercises the firmware's mixed X and A path (`Robot.cpp:1640-1704`).
   - **Predicted times.** The prediction is inference from the firmware source: the planner plans the newest block to end at rest, and the acceleration is 150 mm/s². The 32-block queue then allows at most `sqrt(2 x 150 x 32 x L)` mm/s:
 

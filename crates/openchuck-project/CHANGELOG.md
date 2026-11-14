@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased (ALIMIT, issue #793; decision 0647, proposed)
+
+- **Changed:** the built-in Makera Z1 profile limits A to 1800 deg/min for feeds and rapids (was 3600): the firmware caps A at 30 deg/s (`Robot.cpp:295-298`) and the owner's Z1 prints `A: 30` for `M203.1`. Every Z1 program that turns A near the axis is timed for it, so its F words and estimates change; no position changes. No schema change.
+- **Added:** `machines::has_old_z1_a_limit`, whether a project's Z1 copy still holds the old 3600 deg/min on an A limit, unedited, so the application can warn; the copy is never changed (SET-01).
+
 ## Unreleased (PATHFEED, issue #641; decision 0547, accepted)
 
 - **Changed (project schema 28):** End facing reads `stepover` as the slice along X and `stepdown` as the band along the tool, the other way round from before. Loading a file written at schema 27 or older exchanges the stored `stepover` and `stepdown` of each Facing operation whose `shape` is `end`, so it machines as before; a value it did not store stays unstored. Every other operation is unchanged. Files are written at schema 28.

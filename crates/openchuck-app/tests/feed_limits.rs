@@ -35,6 +35,7 @@ use openchuck_app::setup::{Millimetres, Stock, builtin};
 use openchuck_app::{Application, Command, PostSelection, Threads};
 use openchuck_testkit::parts::revolve;
 use openchuck_types::geometry::Point3;
+use openchuck_types::ir::MoveKind;
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
 use openchuck_types::units::{FeedRate, SpindleSpeed};
@@ -530,4 +531,139 @@ fn req_nfr_12_req_gc_07_req_ui_12_the_feed_summary_matches_the_per_move_notes_by
         std::fs::remove_dir_all(dir).unwrap();
     }
     assert!(seen > 0, "no job was slowed by the machine's feed limits");
+}
+
+/// A move's words in a program line: the letter and its number.
+fn word(line: &str, letter: char) -> Option<f64> {
+    line.split_whitespace()
+        .find_map(|w| w.strip_prefix(letter))
+        .and_then(|v| v.parse().ok())
+}
+
+/// The Makera Z1's time in seconds for one fed move of the program, as its
+/// firmware works it out: the F word counts A's travel round the part,
+/// `max(L, dA * P / 360) / F`, or `dA * min(P, 360) / 360 / F` for A alone,
+/// with `P = 2 pi r + 30` and `r` the end point's distance from the axis
+/// (decision record 0007), and then no axis goes faster than its own limit:
+/// X and Y 1200 mm/min, Z 600 and A `a_limit` deg/min (`Robot.cpp`, the
+/// rate scaling of each actuator; decision records 0013 and 0647). Returns
+/// the time and the A rate the F word alone asks for, in deg/min.
+fn z1_firmware_seconds(from: [f64; 4], to: [f64; 4], f: f64, a_limit: f64) -> (f64, f64) {
+    let d: Vec<f64> = from.iter().zip(&to).map(|(a, b)| (b - a).abs()).collect();
+    let line = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    let p = std::f64::consts::TAU * to[1].hypot(to[2]) + 30.0;
+    let counted = if line > 0.0 {
+        line.max(d[3] * p / 360.0)
+    } else {
+        d[3] * p.min(360.0) / 360.0
+    };
+    let rule = 60.0 * counted / f;
+    let axes = 60.0 * (d[0] / 1200.0).max(d[1] / 1200.0).max(d[2] / 600.0).max(d[3] / a_limit);
+    (rule.max(axes), 60.0 * d[3] / rule)
+}
+
+/// The Z1's controller turns A at most 30 deg/s, 1800 deg/min (firmware
+/// `Robot.cpp:295-298`; the owner's `M203.1` on firmware 1.1.3 prints
+/// `A: 30`; decision record 0647). Helical finishing of the box in 5 degree
+/// steps rolls the ball round its corners, where the contact feed would turn
+/// A faster than that: each such move is timed at 1800 deg/min (GC-04,
+/// GC-09), its F word asks the firmware for no more, and the time estimate
+/// is what the firmware's rule gives for the written program (GC-06, GC-12).
+/// With the old 3600 deg/min the F words asked A for up to 3600 and the
+/// estimate was short.
+#[test]
+fn req_gc_04_req_gc_09_req_gc_06_req_gc_12_z1_moves_turn_a_at_most_1800_deg_per_min_and_are_timed_so()
+ {
+    let a_limit = builtin("makera-z1").unwrap().unwrap().max_feeds.rotary.0;
+    assert_eq!(a_limit, 1800.0);
+    let corner = 10.0_f64.hypot(15.0);
+    let job = Job {
+        name: "box_helical_5",
+        mesh: prism(&rectangle(0.0, 0), 0.0, 20.0),
+        radius: corner,
+        operations: vec![("helical_finishing", vec![("max_angle_step", 5.0)])],
+    };
+    let (dir, mut app) = build(&job, "a-limit");
+    app.set_post(Some(PostSelection::parse("makera-z1")));
+    let result = app.regenerate().unwrap();
+
+    // The IR: no move turns A faster than its limit, and the moves whose
+    // contact feed asked for more are held at exactly the limit.
+    let (mut asked, mut held, mut fed_seconds) = (0, 0, 0.0);
+    for group in &result.toolpath.groups {
+        let mut a = group.start.a.0;
+        for s in &group.segments {
+            let da = (s.end.a.0 - a).abs();
+            a = s.end.a.0;
+            if s.kind.is_fed() {
+                fed_seconds += s.duration.0;
+            }
+            if da < 1e-9 {
+                continue;
+            }
+            let at_limit = 60.0 * da / a_limit;
+            assert!(
+                s.duration.0 >= at_limit * (1.0 - 1e-9),
+                "{:?}: {da} deg in {} s",
+                s.kind,
+                s.duration.0
+            );
+            if let (MoveKind::Cutting, Some(f)) = (s.kind, s.contact_feed) {
+                if 60.0 * s.contact_length.0 / f.0 < at_limit {
+                    asked += 1;
+                    if (s.duration.0 - at_limit).abs() <= 1e-6 * at_limit {
+                        held += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(asked > 0 && held > 0, "asked {asked}, held {held}");
+
+    // The written program, timed as the firmware times it.
+    let (_, text) = &result.gcode[0];
+    let (mut pos, mut f, mut fed) = ([0.0_f64; 4], 0.0, false);
+    let (mut z1_seconds, mut steps, mut fastest) = (0.0, 0, 0.0_f64);
+    for line in text.lines().filter(|l| !l.starts_with('(')) {
+        if line.contains("G92.4") {
+            pos[3] = word(line, 'A').unwrap_or(pos[3]);
+            continue;
+        }
+        if line.contains("G28") || line.contains("G53") {
+            break;
+        }
+        if line.contains("G0") {
+            fed = false;
+        }
+        if line.contains("G1") {
+            fed = true;
+        }
+        f = word(line, 'F').unwrap_or(f);
+        let mut to = pos;
+        for (i, letter) in ['X', 'Y', 'Z', 'A'].into_iter().enumerate() {
+            to[i] = word(line, letter).unwrap_or(to[i]);
+        }
+        if fed && to != pos {
+            let (seconds, a_rate) = z1_firmware_seconds(pos, to, f, a_limit);
+            z1_seconds += seconds;
+            // A 5 degree helical step: the F word asks for no more than A's
+            // limit, to the written decimals (F to 0.5 %, A to 0.001 deg).
+            let da = (to[3] - pos[3]).abs();
+            if (da - 5.0).abs() < 0.01 {
+                steps += 1;
+                fastest = fastest.max(a_rate);
+                assert!(a_rate <= a_limit * 1.006, "{line}: A at {a_rate:.0} deg/min");
+            }
+        }
+        pos = to;
+    }
+    assert!(steps > 100, "{steps} helical steps");
+    assert!(fastest > 0.99 * a_limit, "fastest A {fastest:.0} deg/min");
+    // The estimate is the firmware's time for the written program.
+    let off = (z1_seconds - fed_seconds) / fed_seconds;
+    assert!(
+        off.abs() < 0.005,
+        "the Z1 takes {z1_seconds:.1} s, estimated {fed_seconds:.1} s"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
 }
