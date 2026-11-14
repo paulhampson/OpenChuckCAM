@@ -8,7 +8,7 @@
 - **Builds on:** [0222](0222-short-moves-minimum-block-time.md) (the block-rate air cut and its 7 ms result), [0232](0232-block-rate-program-checked-as-sp-12-was.md) (K1 to K4), [0245](0245-short-block-report-and-slowdown.md) (Report and Slow down at 7 ms / 32 blocks).
 - **Related:** [0647](https://github.com/paulhampson/OpenChuckCAM/tree/claude/lane-alimit-793) (lane ALIMIT, unmerged at the time of writing): the firmware clamps A to 1800 deg/min, which explains #793's slow helical programs. That clamp does not touch this test: part B asks A for about 10.5 deg/s.
 - **Spike:** branch `spike/sp-14-split-files`, commit `fed4809`, one commit on `spike/sp-14-short-moves` at 69d532f. Never merged. Write-up in `spikes/sp14-short-moves/air-cut/split/README.md` and `split/K4-RESULTS.md` on that branch.
-- **Open items:** OI-2144, new (the whole-file refusal, and how blocks shorter than 5 ms are timed).
+- **Open items:** OI-2144, new: (a) the whole-file refusal, deferred by the owner on 14 Nov 2026 (relayed), no bisect now; (b) how blocks shorter than 5 ms are timed, open.
 
 Numbering: on 14 Nov 2026 the highest record on `main` was 0646 and the highest open item OI-2142. Lane ALIMIT's unmerged branch holds 0647 and OI-2143. The coordinator reserved 0648 and OI-2144 for this lane, and no branch uses either.
 
@@ -68,7 +68,7 @@ To tell a size limit from a content problem, lane FWDIFF split the program into 
 
 ## Findings
 
-1. **The split files run where the full program was refused.** The largest file (s14, 257,706 bytes, 6,014 lines) loaded and ran; the full program (1,170,259 bytes, 27,966 lines) did not. The likely cause is a file size or line-count limit somewhere between those two, in Makera Studio or on the ESP32. This is inferred, not read: neither is open source. A content cause is unlikely, since every section's lines run unchanged in the split files. OI-2144 holds the next experiment.
+1. **The split files run where the full program was refused.** The largest file (s14, 257,706 bytes, 6,014 lines) loaded and ran; the full program (1,170,259 bytes, 27,966 lines) did not. The likely cause is a file size or line-count limit somewhere between those two, in Makera Studio or on the ESP32. This is inferred, not read: neither is open source. A content cause is unlikely, since every section's lines run unchanged in the split files. The owner deferred this on 14 Nov 2026 (relayed): no bisect now, and it is not a release to-do. OI-2144 (a) keeps the hypothesis and the proposed experiment, a bisect with intermediate sizes, for when it is taken up.
 2. **Blocks shorter than 5 ms are much slower than the published source predicts** (hypothesis about the cause only).
    - A model of the published planner (`Robot::append_milestone`, `Planner`, `configZ1.default`: acceleration 150 mm/s², junction deviation 0.01, 32-block queue) gives 6.1 s per section down to 2 ms.
    - At 1 ms it gives 7.95 s, because the queue's stopping distance (`sqrt(2 a 32 L)`, 12.6 mm/s) caps the speed.
@@ -103,4 +103,4 @@ To tell a size limit from a content problem, lane FWDIFF split the program into 
 - **Machine results:** the owner's, relayed by the coordinator on 14 Nov 2026. Times to the second.
 - **The source model:** a transcription of the published firmware's planner for this investigation. It is not product code and is not committed. It reproduces #793's slow helical programs within 2 % once A is capped at 30 deg/s (0647).
 - **Not verified:** the cause of the whole-file refusal; the cause of the per-line floor; the shipped 1.1.3 binary against the published source; the ESP32 firmware; whether the same per-line floor applied on 1.1.2.
-- **Open items:** OI-2144.
+- **Open items:** OI-2144: (a) deferred by the owner (14 Nov 2026), (b) open.
