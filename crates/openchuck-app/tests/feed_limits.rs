@@ -564,8 +564,8 @@ fn z1_firmware_seconds(from: [f64; 4], to: [f64; 4], f: f64, a_limit: f64) -> (f
 
 /// The Z1's controller turns A at most 30 deg/s, 1800 deg/min (firmware
 /// `Robot.cpp:295-298`; the owner's `M203.1` on firmware 1.1.3 prints
-/// `A: 30`; decision record 0647). Helical finishing of the box in 5 degree
-/// steps rolls the ball round its corners, where the contact feed would turn
+/// `A: 30`; decision record 0647). Helical finishing of the box in steps of
+/// at most 5 degrees rolls the ball round its corners, where the contact feed would turn
 /// A faster than that: each such move is timed at 1800 deg/min (GC-04,
 /// GC-09), its F word asks the firmware for no more, and the time estimate
 /// is what the firmware's rule gives for the written program (GC-06, GC-12).
@@ -646,10 +646,11 @@ fn req_gc_04_req_gc_09_req_gc_06_req_gc_12_z1_moves_turn_a_at_most_1800_deg_per_
         if fed && to != pos {
             let (seconds, a_rate) = z1_firmware_seconds(pos, to, f, a_limit);
             z1_seconds += seconds;
-            // A 5 degree helical step: the F word asks for no more than A's
-            // limit, to the written decimals (F to 0.5 %, A to 0.001 deg).
+            // A helical step (at most 5 degrees; 2.5 where the path is
+            // refined): the F word asks for no more than A's limit, to the
+            // written decimals (F to 0.5 %, A to 0.001 deg).
             let da = (to[3] - pos[3]).abs();
-            if (da - 5.0).abs() < 0.01 {
+            if da >= 1.0 {
                 steps += 1;
                 fastest = fastest.max(a_rate);
                 assert!(a_rate <= a_limit * 1.006, "{line}: A at {a_rate:.0} deg/min");
