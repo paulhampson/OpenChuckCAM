@@ -638,7 +638,13 @@ mod tests {
         assert_eq!(z1.max_feeds.rapid_rotary.0, 1800.0);
         assert!(z1.is_confirmed(ProfileField::MaxFeeds));
         let source = &z1.provenance[&ProfileField::MaxFeeds].source;
-        for fact in ["Robot.cpp:295-298", "M203.1", "A: 30", "1800 deg/min", "0647"] {
+        for fact in [
+            "Robot.cpp:295-298",
+            "M203.1",
+            "A: 30",
+            "1800 deg/min",
+            "0647",
+        ] {
             assert!(source.contains(fact), "{fact}: {source}");
         }
         assert!(!source.contains("3600 deg/min (10 RPM)"), "{source}");

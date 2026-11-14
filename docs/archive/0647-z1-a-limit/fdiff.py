@@ -87,7 +87,11 @@ def main():
     old = sys.argv[1]
     new = sys.argv[2] if len(sys.argv) > 2 else None
     args = ["git", "diff", "--name-only", old] + ([new] if new else []) + ["--", "testdata/golden"]
-    files = subprocess.run(args, check=True, capture_output=True, text=True).stdout.split()
+    files = [
+        f
+        for f in subprocess.run(args, check=True, capture_output=True, text=True).stdout.split()
+        if f.endswith((".nc", ".ngc"))
+    ]
     bad = 0
     print(f"{'file':52} {'fed blocks':>10} {'F changed':>10} {'estimates':>9} {'merged A':>8}  other")
     for path in sorted(files):

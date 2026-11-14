@@ -9,7 +9,7 @@
 - **Builds on:** [0076](0076-feed-word-limit-and-rounding.md) (the F word counts A's travel; the profile's A limit sets a move's time), [0317](0317-z1-measured-axis-height-and-safe-z.md) item 3 (a project's old Z1 copy is named, never changed), [0109](0109-z1-copy-without-an-id-migrates-by-name.md) (a copy with no ID is the Z1 by its name).
 - **Open items:** OI-2143 (the owner's acceptance of this record and the re-verification runs below), new. OI-267 is updated.
 
-Requirements and architecture are not edited by this record. No project or machine schema changes, and no public API of the library family changes.
+Requirements and architecture are not edited by this record. No project or machine schema changes, and no public API of the library family changes (`openchuck-path` changes behaviour only, item 2).
 
 ## Context
 
@@ -37,13 +37,15 @@ What the profile's A limit does in the software:
 ## Decision
 
 1. **The built-in Z1's A limit is 1800 deg/min** (owner, 14 Nov 2026, relayed). `crates/openchuck-project/machines/makera-z1.toml` sets `rotary` and `rapid_rotary` to 1800. The value stays *confirmed*: its source cites `Robot.cpp:295-298` and the owner's `M203.1` reading `A: 30` on firmware 1.1.3, and says how to check a machine: a Z1 that prints `A: 60` can raise both A limits to 3600 in a copy of the profile. It is a plain limit, not a new profile field for the factory setting: the software needs the rate the controller holds, which `M203.1` shows, not the reason for it.
-2. **No code change for the timing.** Path assembly already times every move from the profile's limits (decision 0076), so the F words, the estimates (GC-06, GC-12, SIM-08, setup sheet) and the GC-17 report follow the new value. Positions, A words and rapids do not change: a G0 has no F word, and the A limit changes only how long a move takes.
+2. **The timing follows the profile, with one correction.** Path assembly already times every move from the profile's limits (decision 0076), so the F words, the estimates (GC-06, GC-12, SIM-08, setup sheet) and the GC-17 report follow the new value. Positions, A words and rapids do not change: a G0 has no F word, and the A limit changes only how long a move takes.
+
+   The new limit exposed one defect (found by this lane, not in the brief). A fed move held to A's own limit was timed for the exact turn, but the post works the F word out from A written to three decimals, which can turn up to 0.001 degree further. With 3600 no move reached A's limit, so it never showed; at 1800, edge following on a STEP part wrote `F1802.2` on LinuxCNC, a gate 1 failure (GC-09). A fed move that turns A is now timed for the turn plus 0.001 degree, the same allowance decision 0076 item 2 already gives A in the Makera term and the line gives its positions (`openchuck-path::assemble`). A move A's limit sets takes up to 0.001 degree's time longer (0.02 % of a 5 degree step); nothing else changes.
 3. **A project's old Z1 copy warns.** A project's machine copy is the project's own (SET-01), so it is not changed. When the copy is the Z1 (by its library ID, or by its name when it has none, decision 0109), still holds 3600 on either A limit, and its feed limits are still the built-in profile's (marked *confirmed*: the machine editor marks a value the user changes unconfirmed, UI-13), the setup checks and Messages say, under the topic Machine profile:
 
    "This project's Makera Z1 copy has the old A limit, 3600 deg/min. The Z1's controller turns A at most 1800 deg/min (30 deg/s), so programs from this copy ask for feeds the machine does not reach and their time estimates are short. Choose the Makera Z1 again in the setup's machine section to update the copy. To check your own Z1, send M203.1 in its console: it prints A's limit in deg/s."
 
    This follows decision 0317 item 3. A copy whose feed limits the user changed is theirs and is not flagged, so a Z1 that prints `A: 60` and keeps 3600 in its own copy does not warn.
-4. **Sample projects and golden programs.** The fifteen sample machine copies (`testdata/projects/*/machine.toml` and `testdata/examples/*/*/machine.toml`) take item 1, so they neither warn nor differ from the built-in profile. The golden programs are blessed again. Only F words change: a diff check strips the F words from the old and new files and finds them byte-identical (see *Verification*).
+4. **Sample projects and golden programs.** The fifteen sample machine copies (`testdata/projects/*/machine.toml` and `testdata/examples/*/*/machine.toml`) take item 1, so they neither warn nor differ from the built-in profile. The golden programs are blessed again: the reference jobs, the first cut and the blisk's helical programs for both posts (item 1), and the grouping programs and one line of the carving golden's `seconds` column on the example machine (item 2's allowance). Only F words and the estimates in operation comments change: a diff check strips them from the old and new files and finds the rest identical line for line (see *Verification*). drilling, swarf, face_flow, cone_axial, cone_axial_lead, cone_indexed and the blisk's axial program do not change.
 
 ## Options not chosen
 
@@ -53,7 +55,21 @@ What the profile's A limit does in the software:
 
 ## Consequences
 
-- Every Z1 program that turns A while cutting near the axis takes longer and states the time it takes. The estimates for the reference jobs grow: {{ESTIMATES}}.
+- Every Z1 program that turns A while cutting near the axis states a longer time. The setup sheet's programmed time (Z1 post, the committed sample projects):
+
+  | Job | At 3600 deg/min | At 1800 deg/min |
+  | --- | --- | --- |
+  | sphere | 1:21 | 2:12 |
+  | groove | 2:21 | 3:07 |
+  | cone_held_tabs | 2:32 | 4:31 |
+  | cone | 1:46 | 3:09 |
+  | lobed | 1:39 | 2:24 |
+  | cone_axial | 7:01 | 7:07 |
+  | cone_axial_lead | 7:18 | 7:24 |
+  | cone_indexed | 1:02 | 1:06 |
+  | first_cut | 38:37 | 1:07:52 |
+
+  The programmed time includes the rapids and links, timed at the profile's rapid limits; the axial and indexed jobs change only there (their A turns between passes are rapids), and their G-code does not change. The firmware's own rule applied to the written programs (see *Verification*) gives the same time for the rc2 programs and the new ones, so the machine should run them exactly as before: only what the program says about its speed changes.
 - The LinuxCNC programs change too: they take their times from the same IR (GC-10), so a move that A's limit slows has a lower F there as well.
 - OI-267 (an A-only move whose F is above 1200 mm/min) narrows: with A at 1800 such an F needs r above 33.4 mm.
 - `openchuck-project` gains `machines::has_old_z1_a_limit`, an addition (no version bump needed, decision 0048); `openchuck-app` re-exports it and adds the warning.
@@ -69,11 +85,11 @@ The rc2 gate 4 run (firmware 1.1.3) stands for everything that does not depend o
 
 1. **Gates 1 to 3 in CI and the full test suite** on the new build (automatic): gate 1 now holds every A-only F word and every A rate to 1800, and the golden audit checks the new programs against the 1800 limit.
 2. **The LinuxCNC replay (gate 3)** of the changed programs, since their F words change.
-3. **A spot check on the Z1**, at 100 % override, no tool, no material: the sphere (new estimate about {{SPHERE}} s), the groove (about {{GROOVE}} s) and cone_held_tabs (about {{CHT}} s), which are the reference programs that turn A longest. Each measured time must match its new estimate within 10 %. As a control, cone_axial or drilling, whose estimates do not change, must still take its rc2 time.
+3. **A spot check on the Z1**, at 100 % override, no tool, no material: the sphere (new programmed time 2:12; the firmware rule gives 126 s of fed moves, and the owner measured 127 s on rc2), the groove (3:07; 182 s fed) and cone_held_tabs (4:31; 265 s fed), which are the reference programs that turn A longest. Each measured time must match its new estimate within 10 %. As a control, cone_axial (7:07, 6 s more than before, all in its A rapids) or drilling must still take its rc2 time, since its G-code does not change.
 4. **The first-cut air cut** (C11) has not run yet, so it runs once, on the new build only.
 5. **The gate 5 first cut** runs on the new build only.
 
-**What the spot checks cannot show.** They time whole programs, so a move that is too slow can hide behind one that is too fast; the per-move model is checked in CI (the test in item 1 of *Verification*), not on the machine. With no tool and no material they show nothing about cutting forces or surface finish at the new feeds, which are lower where A's limit binds, so the chip load drops there. They run on one Z1 on firmware 1.1.3; a Z1 with a different factory setting may hold A at another rate (check with `M203.1`). Gate 4's measured block-time limit (7 ms) is unchanged, but the A-limited moves now take longer, so a program's short-block report can only fall. As before, every generated program is the user's to check before it runs (NFR-12).
+**What the spot checks cannot show.** They time whole programs, so a move that is too slow can hide behind one that is too fast; the per-move model is checked in CI (the test in item 1 of *Verification*), not on the machine. With no tool and no material they show nothing about cutting forces or surface finish at the new feeds, which are lower where A's limit binds, so the chip load drops there. They run on one Z1 on firmware 1.1.3; a Z1 with a different factory setting may hold A at another rate (check with `M203.1`). Gate 4's measured block-time limit (7 ms) is unchanged; the A-limited moves now state their real, longer time, so a program's short-block report can only fall. As before, every generated program is the user's to check before it runs (NFR-12).
 
 ## Verification
 

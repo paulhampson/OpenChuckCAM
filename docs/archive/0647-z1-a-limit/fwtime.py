@@ -5,7 +5,7 @@
 Fed moves: max(L, dA*P/360)/F (or dA*min(P,360)/360/F for A alone), P = 2 pi r + 30
 (decision 0007), then no axis faster than X/Y 1200, Z 600 mm/min and A at the given
 limit (deg/min). Rapids: a rough model (the XYZ line at 1200 mm/min, A at its limit),
-for comparison only. Usage: python3 fwtime.py <A limit> <file or main:path>...
+for comparison only. Usage: python3 fwtime.py <A limit> <file or commit:path>...
 """
 import math
 import subprocess
@@ -41,5 +41,5 @@ def run(text,alim):
         pos=to
     return tot,rap
 for path in sys.argv[2:]:
-    t=open(path).read() if not path.startswith('main:') else subprocess.run(['git','show',path],capture_output=True,text=True).stdout
+    t=subprocess.run(['git','show',path],capture_output=True,text=True,check=True).stdout if ':' in path else open(path).read()
     a,b=run(t,float(sys.argv[1]));print(path,'fed %.1f s rapid %.1f s total %.1f s'%(a,b,a+b))

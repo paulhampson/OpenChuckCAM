@@ -11,8 +11,8 @@ use openchuck_types::kinematics::{RotaryFrame, facing_at, model_up};
 
 pub use openchuck_project::machines::{
     MACHINE_SCHEMA, MAKERA_Z1, ProfileEntry, builtin, builtin_entry, builtin_keys,
-    has_old_z1_a_limit, has_old_z1_axis_height, list_library, list_library_entries, load_profile, load_profile_entry,
-    new_machine_id, save_profile, save_profile_entry,
+    has_old_z1_a_limit, has_old_z1_axis_height, list_library, list_library_entries, load_profile,
+    load_profile_entry, new_machine_id, save_profile, save_profile_entry,
 };
 pub use openchuck_types::geometry::{Aabb, Point3};
 pub use openchuck_types::machine::{

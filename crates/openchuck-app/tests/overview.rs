@@ -2342,6 +2342,7 @@ fn req_set_01_req_ui_13_an_old_z1_copy_warns_and_the_measured_z1_does_not() {
 /// Z1, whose A limit is the controller's 1800 deg/min, does not warn
 /// (SET-01, UI-13, GC-09; decision record 0647).
 #[test]
+#[allow(clippy::float_cmp)] // The exact limits set and kept.
 fn req_set_01_req_ui_13_req_gc_09_an_old_z1_a_limit_warns_and_the_new_z1_does_not() {
     let entry = openchuck_app::setup::builtin_entry(openchuck_app::setup::MAKERA_Z1)
         .unwrap()

@@ -558,7 +558,11 @@ fn z1_firmware_seconds(from: [f64; 4], to: [f64; 4], f: f64, a_limit: f64) -> (f
         d[3] * p.min(360.0) / 360.0
     };
     let rule = 60.0 * counted / f;
-    let axes = 60.0 * (d[0] / 1200.0).max(d[1] / 1200.0).max(d[2] / 600.0).max(d[3] / a_limit);
+    let axes = 60.0
+        * (d[0] / 1200.0)
+            .max(d[1] / 1200.0)
+            .max(d[2] / 600.0)
+            .max(d[3] / a_limit);
     (rule.max(axes), 60.0 * d[3] / rule)
 }
 
@@ -572,6 +576,7 @@ fn z1_firmware_seconds(from: [f64; 4], to: [f64; 4], f: f64, a_limit: f64) -> (f
 /// With the old 3600 deg/min the F words asked A for up to 3600 and the
 /// estimate was short.
 #[test]
+#[allow(clippy::float_cmp)] // The exact limit the profile writes, and positions read as written.
 fn req_gc_04_req_gc_09_req_gc_06_req_gc_12_z1_moves_turn_a_at_most_1800_deg_per_min_and_are_timed_so()
  {
     let a_limit = builtin("makera-z1").unwrap().unwrap().max_feeds.rotary.0;
@@ -608,12 +613,14 @@ fn req_gc_04_req_gc_09_req_gc_06_req_gc_12_z1_moves_turn_a_at_most_1800_deg_per_
                 s.kind,
                 s.duration.0
             );
-            if let (MoveKind::Cutting, Some(f)) = (s.kind, s.contact_feed) {
-                if 60.0 * s.contact_length.0 / f.0 < at_limit {
-                    asked += 1;
-                    if (s.duration.0 - at_limit).abs() <= 1e-6 * at_limit {
-                        held += 1;
-                    }
+            if let (MoveKind::Cutting, Some(f)) = (s.kind, s.contact_feed)
+                && 60.0 * s.contact_length.0 / f.0 < at_limit
+            {
+                asked += 1;
+                // Held at the limit, for A as written (0.001 degree more).
+                let written = 60.0 * (da + 0.001) / a_limit;
+                if (s.duration.0 - written).abs() <= 1e-6 * written {
+                    held += 1;
                 }
             }
         }
@@ -653,7 +660,10 @@ fn req_gc_04_req_gc_09_req_gc_06_req_gc_12_z1_moves_turn_a_at_most_1800_deg_per_
             if da >= 1.0 {
                 steps += 1;
                 fastest = fastest.max(a_rate);
-                assert!(a_rate <= a_limit * 1.006, "{line}: A at {a_rate:.0} deg/min");
+                assert!(
+                    a_rate <= a_limit * 1.006,
+                    "{line}: A at {a_rate:.0} deg/min"
+                );
             }
         }
         pos = to;
