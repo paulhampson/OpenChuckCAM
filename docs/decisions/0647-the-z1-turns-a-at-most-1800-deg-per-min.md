@@ -95,4 +95,25 @@ The rc2 gate 4 run (firmware 1.1.3) stands for everything that does not depend o
 
 ## Verification
 
-{{VERIFICATION}}
+Run by lane ALIMIT on 14 Nov 2026 in a Linux cloud container (4 cores, rustc 1.97), on branch `claude/lane-alimit-793` from `main` at `bc1df28` (the 0.55.0-rc2 commit). Raw evidence is in [`docs/archive/0647-z1-a-limit/`](../archive/0647-z1-a-limit/README.md).
+
+**Tests written from the requirements before the change.** The profile, timing and rounding tests were seen to fail first; the two warning tests were written with `has_old_z1_a_limit` and its message and passed at once:
+
+- `openchuck-project` `machines::tests::req_set_01_req_gc_09_the_z1_turns_a_at_most_1800_deg_per_min`: the built-in Z1's two A limits are 1800 and their source cites `Robot.cpp:295-298`, `M203.1`, `A: 30` and this record.
+- `openchuck-project` `machines::tests::req_set_01_req_ui_13_a_z1_copy_with_the_old_a_limit_is_recognised`: by ID and by name, either A limit, not another machine, not a renamed copy, not a limit the user edited.
+- `openchuck-app` `overview::req_set_01_req_ui_13_req_gc_09_an_old_z1_a_limit_warns_and_the_new_z1_does_not`: the check and the message, their words, and the copy kept unchanged.
+- `openchuck-app` `feed_limits::req_gc_04_req_gc_09_req_gc_06_req_gc_12_z1_moves_turn_a_at_most_1800_deg_per_min_and_are_timed_so`: helical finishing of a square box on the Z1. In the IR no move turns A faster than 1800 deg/min, and moves whose contact feed asked for more are held at it. In the written program every helical step's F asks A for at most 1800 (to the written decimals), and the firmware's rule gives the IR's fed time within 0.5 %. With 3600 it failed on the IR (`0.3125 deg in 0.0062 s`).
+- `openchuck-path` `assemble::tests::req_gc_09_req_op_13_a_turn_at_a_s_limit_stays_within_it_as_written`: a turn written 0.401 degree for 0.4002 turned stays within 1800 under both feed rules (1803.6 before item 2's correction).
+
+**Changed tests:** `assemble::tests::req_op_13_a_controller_that_counts_a_in_the_feed_word_keeps_it_within_the_limit` (the expected time includes the written-A allowance); `golden_audit::req_gc_09_req_gc_10_req_nfr_08_reference_job_golden_files_pass_the_audit` (a job with every move at the rotary limit); `setup::req_prj_04_req_op_13_an_older_z1_copy_migrates_to_count_a_in_its_feed_word` (the copy keeps its own A limit). The owner accepted all three with item 2 (relayed, 14 Nov 2026).
+
+**Results:**
+
+- Full suite, `cargo nextest run --workspace --locked --no-fail-fast`: 3412 tests, 3410 passed, 2 failed; the two were the audit and the migration test above, fixed afterwards and passing when run again on the final code. No new test is long: the new `feed_limits` test takes 0.4 s, the others under 0.1 s.
+- STEP kernel tests (OpenCASCADE 7.8.1 built locally): `cargo nextest run -p openchuck-app --features kernel-tests --test step_pipeline`: 11 of 11 pass. The drilling, swarf and face_flow golden programs do not change.
+- Diff check, `python3 docs/archive/0647-z1-a-limit/fdiff.py bc1df28`: in every changed G-code file only F words and the estimate comments change. Fed blocks whose F changes: sphere 720 of 722, cone 1080 of 1082, groove 1098 of 1100, lobed 1154 of 1802, cone_held_tabs 1585 of 1587, first_cut 14,639 of 15,450 (both posts each).
+- Firmware time, `python3 docs/archive/0647-z1-a-limit/fwtime.py 1800 bc1df28:<file> <file>`: the rc2 Z1 programs and the new ones take the same fed time under the firmware's rule with A at 1800, within 0.02 % (sphere 126.3 s, groove 182.2 s, cone_held_tabs 265.1 and 265.2 s, first_cut 3163.0 and 3163.6 s).
+- `cargo fmt --all`, `cargo clippy --workspace --all-targets`: clean. `cargo xtask records`, `deps`, `licences`, `trace`: ok. `cargo semver-checks --package openchuck-path --baseline-rev bc1df28`: no update required.
+- Coverage of the changed lines (`cargo llvm-cov nextest --profile coverage`, the crates' own tests): every new line of `machines.rs`, `assemble.rs` and `overview.rs` is run.
+
+**Not verified here:** nothing ran on a Z1 or on LinuxCNC; the re-verification runs above do that (OI-2143). The firmware source was read at `main` of `MakeraInc/MakeraZ1Firmware`; that 1.1.2 and 1.1.3 hold the same lines is lane FWDIFF's reading. What sets bit 0 of `FuncSetting` on a given machine was not checked: the owner's `M203.1` reading is the evidence for the owner's Z1. The user guide's scallop example is left to OI-2145.
