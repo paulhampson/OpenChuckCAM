@@ -3,7 +3,7 @@
 - **Status:** accepted (14 Oct 2026) by the project owner, after the attended air cut on a Z1 running firmware 1.1.2. The desk part was written on 11 Oct 2026 as a proposal; the air cut results are in the section *Air cut results* below. Every convention in the findings table is now confirmed on the machine, except the tool change, which the air cut does not exercise (OI-41).
 - **Date:** 11 Oct 2026 (desk part); amended 14 Oct 2026 (air cut).
 - **Spike branch:** `spike/sp-12-z1-conventions` (throwaway, never merged; full write-up in `spikes/sp12/RESULT.md`, air-cut procedure and record sheet in `spikes/sp12/AIR-CUT.md`).
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-03 and OI-04 (settled by the air cut, apart from the machine Z of the axis, OI-60) and OI-37 to OI-41 (OI-37 to OI-40 closed; OI-41 open).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-03 and OI-04 (settled by the air cut, apart from the machine Z of the axis, OI-60) and OI-37 to OI-41 (all closed; OI-41 on 14 Nov 2026 by the owner's attended tool-change test, firmware 1.1.3).
 
 ## Context
 
@@ -81,7 +81,7 @@ Replayed under the Z1 rule, SP-3's G94 file (compensated for LinuxCNC) takes 142
 
 ## Open items for later decisions
 
-Items 1 to 4 are closed (see the table's *State* column); item 5 stays open.
+Items 1 to 4 are closed (see the table's *State* column); item 5 closed on 14 Nov 2026.
 
 | # | Item | Decide in | Needs | State |
 | --- | --- | --- | --- | --- |
@@ -89,4 +89,4 @@ Items 1 to 4 are closed (see the table's *State* column); item 5 stays open.
 | 2 | Where the per-controller feed rule is computed: in the post template (SP-10's engine) or in the neutral machine program stage with the rule named by the post. (OI-38) | Slice 6 (with SP-10) | Air cut T3 and T4 results | Closed: decision 0019 item 5 chose Rust; the air cut measured the `makera` rule |
 | 3 | Z1 limits: feeds and travel disagree between Makera's Fusion and FreeCAD files and Studio's table. (OI-39) | Slice 3 | The owner's Z1 and Makera Studio | Closed 11 Oct 2026 by decision 0013 |
 | 4 | Work offset: Z1 programs need G54 Y0 Z0 on the A axis; map SET-05 and the profile's `rotary_origin` onto that. (OI-40) | Slice 3 | | Closed 11 Oct 2026 by decision 0011 |
-| 5 | The tool change is not exercised by the air cut (no tool). (OI-41) | Slice 20 (gate 5), or an attended tool-change test before it | Project owner and the Z1 | Open |
+| 5 | The tool change is not exercised by the air cut (no tool). (OI-41) | Slice 20 (gate 5), or an attended tool-change test before it | Project owner and the Z1 | Closed 14 Nov 2026: the owner's attended test on the Z1 (firmware 1.1.3, relayed) ran `M5`, `T1 M6`, `T2 M6` and `G28` as derived (OI-41) |

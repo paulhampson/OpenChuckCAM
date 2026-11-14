@@ -1,6 +1,6 @@
 # 0648: The Z1 block-rate air cut runs one section per file; 7 ms holds on firmware 1.1.3 (GC-17, NFR-12; issue #793; lane FWDIFF)
 
-- **Status:** proposed by lane FWDIFF on 14 Nov 2026. The owner's two decisions recorded under *Decision* (a record of its own; the K4 copy with `G61`) were relayed by the coordinator on 14 Nov 2026 (decision [0049](0049-relayed-acceptance-of-records.md)). Only the owner accepts this record, relayed by the coordinator.
+- **Status:** Accepted by the project owner on 14 Nov 2026, relayed by the coordinator (decision 0049). Proposed by lane FWDIFF on 14 Nov 2026; the owner's two decisions recorded under *Decision* (a record of its own; the K4 copy with `G61`) were relayed by the coordinator the same day.
 - **Date:** 14 Nov 2026.
 - **Lane:** FWDIFF, an investigation of Makera Z1 firmware 1.1.2 against 1.1.3 for issue [#793](https://github.com/paulhampson/OpenChuckCAM/issues/793), on the coordinator's instruction.
 - **Requirements:** GC-17 (short-block demand), GC-09 (the Z1 post), GC-10 (the verification post), NFR-12 (the user verifies a program before it runs).
