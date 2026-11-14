@@ -24,7 +24,7 @@ Lane Z's tests of every strategy on STEP parts (decision 0056, proposed, on lane
 
 The gate 2 time tolerance (1 %, `Tolerances::time_relative`) is a verification-plan matter and is not changed.
 
-*Note (14 Nov 2026):* the A limit this record applies is the profile's. For the built-in Z1 it is now 1800 deg/min, not 3600 ([decision 0647](0647-the-z1-turns-a-at-most-1800-deg-per-min.md), proposed): a move whose time A's limit sets has F = 5 P on the Z1, and the A limit sets the time wherever r is below 33.4 mm (14.3 mm before). The rule and the code are unchanged.
+*Note (14 Nov 2026):* the A limit this record applies is the profile's. For the built-in Z1 it is now 1800 deg/min, not 3600 ([decision 0647](0647-the-z1-turns-a-at-most-1800-deg-per-min.md), accepted): a move whose time A's limit sets has F = 5 P on the Z1, and the A limit sets the time wherever r is below 33.4 mm (14.3 mm before). The rule and the code are unchanged.
 
 ## Decision
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (ALIMIT, issue #793; decision 0647, proposed)
+## Unreleased (ALIMIT, issue #793; decision 0647, accepted)
 
 - **Added:** a setup check and a warning in Messages, under the topic Machine profile, when the project's Makera Z1 copy still holds the old A limit of 3600 deg/min; it names the controller's 1800 deg/min and `M203.1`, and asks the user to choose the Makera Z1 again. `setup::has_old_z1_a_limit` is re-exported.
 
